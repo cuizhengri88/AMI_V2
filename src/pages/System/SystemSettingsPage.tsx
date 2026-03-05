@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { DB_CONNECTION } from '../../config/dbConfig';
+import { invokeDbConnectionTest } from '../../lib/dbClient';
 import { 
   Settings, 
   Monitor, 
@@ -18,9 +20,14 @@ import {
 
 export default function SystemSettingsPage() {
   const [windowSize, setWindowSize] = useState('1920x1080');
-  const [dbHost, setDbHost] = useState('db.enterprise-server.com');
-  const [dbPort, setDbPort] = useState('5432');
+  const [dbHost, setDbHost] = useState(DB_CONNECTION.host);
+  const [dbPort, setDbPort] = useState(String(DB_CONNECTION.port));
+  const [dbName, setDbName] = useState(DB_CONNECTION.database);
+  const [dbUser, setDbUser] = useState(DB_CONNECTION.username);
+  const [dbPassword, setDbPassword] = useState(DB_CONNECTION.password);
+  const [dbSchema, setDbSchema] = useState(DB_CONNECTION.schema);
   const [isRemoteDb, setIsRemoteDb] = useState(true);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
   
   // Brand Settings
   const [programName, setProgramName] = useState(localStorage.getItem('programName') || 'GovData');
@@ -39,6 +46,37 @@ export default function SystemSettingsPage() {
     localStorage.setItem('logoUrl', logoUrl);
     alert('설정이 저장되었습니다. 페이지를 새로고침하면 적용됩니다.');
     window.location.reload();
+  };
+
+  const handleTestDbConnection = async () => {
+    try {
+      setIsTestingConnection(true);
+      const result = await invokeDbConnectionTest<{
+        success: boolean;
+        message: string;
+        current_schema: string;
+        server_version: string;
+      }>({
+        host: dbHost.trim(),
+        port: Number(dbPort),
+        database: dbName.trim(),
+        username: dbUser.trim(),
+        password: dbPassword,
+        schema: dbSchema.trim(),
+      });
+
+      alert(
+        `${result.message}\nSchema: ${result.current_schema}\nVersion: ${result.server_version.split('\n')[0]}`,
+      );
+    } catch (error: any) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error?.message || 'DB 연결 테스트 중 오류가 발생했습니다.';
+      alert(message);
+    } finally {
+      setIsTestingConnection(false);
+    }
   };
 
   return (
@@ -175,13 +213,57 @@ export default function SystemSettingsPage() {
                     placeholder="5432"
                   />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">데이터베이스명 (Database)</label>
+                  <input
+                    type="text"
+                    value={dbName}
+                    onChange={(e) => setDbName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    placeholder="postgres"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">사용자명 (User)</label>
+                  <input
+                    type="text"
+                    value={dbUser}
+                    onChange={(e) => setDbUser(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    placeholder="postgres"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">비밀번호 (Password)</label>
+                  <input
+                    type="password"
+                    value={dbPassword}
+                    onChange={(e) => setDbPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    placeholder="password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">스키마 (Schema)</label>
+                  <input
+                    type="text"
+                    value={dbSchema}
+                    onChange={(e) => setDbSchema(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    placeholder="czr_ami"
+                  />
+                </div>
               </div>
             )}
             
             <div className="flex justify-end">
-              <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-700 transition-colors">
-                <RefreshCw size={16} />
-                연결 테스트
+              <button
+                onClick={handleTestDbConnection}
+                disabled={isTestingConnection}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <RefreshCw size={16} className={isTestingConnection ? 'animate-spin' : ''} />
+                {isTestingConnection ? '테스트 중...' : '연결 테스트'}
               </button>
             </div>
           </div>

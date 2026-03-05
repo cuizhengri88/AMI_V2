@@ -3,12 +3,15 @@ name = "govdata"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs" # 이 줄이 있는지 꼭 확인하세요!
+default-run = "govdata"
 
 [dependencies]
 # "all" 대신 "dev" 기능을 넣거나, 일단은 기본 설정으로 바꿉니다.
 tauri = { version = "2.1.1", features = [] } 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio-postgres = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [build-dependencies]
 tauri-build = { version = "2.0.3", features = [] }
