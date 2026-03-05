@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { 
   Plus, 
   Search, 
@@ -28,6 +29,7 @@ const initialProducts = [
 const sizes = ['XS', 'S', 'M', 'L', 'XL'];
 
 export default function ProductManagementPage() {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -58,8 +60,8 @@ export default function ProductManagementPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">상품 관리</h1>
-          <p className="text-slate-500 mt-1">의류 상품 등록 및 재고 현황을 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('menu.product_management')}</h1>
+          <p className="text-slate-500 mt-1">{t('product.description')}</p>
         </div>
         
         <button 
@@ -67,7 +69,7 @@ export default function ProductManagementPage() {
           className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"
         >
           <Plus size={18} />
-          신규 상품 등록
+          {t('common.add')}
         </button>
       </div>
 
@@ -78,7 +80,7 @@ export default function ProductManagementPage() {
             <Package size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">전체 상품</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('product.stats.total')}</p>
             <p className="text-2xl font-black text-slate-900">1,284</p>
           </div>
         </div>
@@ -87,7 +89,7 @@ export default function ProductManagementPage() {
             <ShoppingBag size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">판매 중</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('product.stats.selling')}</p>
             <p className="text-2xl font-black text-slate-900">1,150</p>
           </div>
         </div>
@@ -96,7 +98,7 @@ export default function ProductManagementPage() {
             <Layers size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">품절/부족</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('product.stats.out_of_stock')}</p>
             <p className="text-2xl font-black text-slate-900">134</p>
           </div>
         </div>
@@ -108,7 +110,7 @@ export default function ProductManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="상품명 또는 상품코드 검색..." 
+              placeholder={t('product.search_placeholder')} 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
@@ -117,14 +119,14 @@ export default function ProductManagementPage() {
           
           <div className="flex items-center gap-2">
             <select className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20">
-              <option>전체 카테고리</option>
-              <option>상의</option>
-              <option>하의</option>
-              <option>아우터</option>
+              <option value="all">{t('product.category_all')}</option>
+              <option value="top">{t('product.category_top')}</option>
+              <option value="bottom">{t('product.category_bottom')}</option>
+              <option value="outer">{t('product.category_outer')}</option>
             </select>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50">
               <Filter size={16} />
-              필터
+              {t('common.filter')}
             </button>
           </div>
         </div>
@@ -132,14 +134,14 @@ export default function ProductManagementPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상품코드</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상품명</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">카테고리</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">사이즈 (공통코드)</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">가격</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">재고</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">상태</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_code')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_name')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_category')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_size')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{t('product.col_price')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_stock')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_status')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -172,7 +174,9 @@ export default function ProductManagementPage() {
                     product.status === '재고부족' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                     'bg-red-50 text-red-700 border border-red-200'
                   }`}>
-                    {product.status}
+                    {product.status === '판매중' ? t('product.status_selling') : 
+                     product.status === '재고부족' ? t('product.status_low_stock') : 
+                     t('product.status_out_of_stock')}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-center">
@@ -195,16 +199,16 @@ export default function ProductManagementPage() {
         
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="text-xs text-slate-400 font-medium italic">
-            * 사이즈 정보는 [시스템 관리 {'>'} 공통 코드 관리]의 'CLOTH_SIZE' 그룹에서 관리됩니다.
+            {t('product.size_info_tip')}
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 text-xs font-bold text-slate-400 hover:text-slate-600 disabled:opacity-50" disabled>이전</button>
+            <button className="px-3 py-1 text-xs font-bold text-slate-400 hover:text-slate-600 disabled:opacity-50" disabled>{t('common.previous')}</button>
             <div className="flex items-center gap-1">
               <button className="size-6 rounded bg-primary text-white text-xs font-bold">1</button>
               <button className="size-6 rounded hover:bg-slate-200 text-slate-600 text-xs font-bold">2</button>
               <button className="size-6 rounded hover:bg-slate-200 text-slate-600 text-xs font-bold">3</button>
             </div>
-            <button className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-slate-800">다음</button>
+            <button className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-slate-800">{t('common.next')}</button>
           </div>
         </div>
       </div>
@@ -214,38 +218,38 @@ export default function ProductManagementPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="신규 상품 등록" 
+              title={t('product.modal_add_title')} 
               onClose={() => setIsNewModalOpen(false)}
               icon={<Plus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상품명</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_name')}</label>
                     <input 
                       type="text" 
                       required
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder="상품명을 입력하세요"
+                      placeholder={t('product.placeholder_name')}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_category')}</label>
                     <select className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none">
-                      <option>상의</option>
-                      <option>하의</option>
-                      <option>아우터</option>
-                      <option>액세서리</option>
+                      <option value="top">{t('product.category_top')}</option>
+                      <option value="bottom">{t('product.category_bottom')}</option>
+                      <option value="outer">{t('product.category_outer')}</option>
+                      <option value="acc">{t('product.category_acc')}</option>
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">사이즈</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_size')}</label>
                     <select className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none">
                       {sizes.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">판매가 (₩)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input 
@@ -257,7 +261,7 @@ export default function ProductManagementPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">초기 재고</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_initial_stock')}</label>
                     <input 
                       type="number" 
                       required
@@ -273,13 +277,13 @@ export default function ProductManagementPage() {
                     onClick={() => setIsNewModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    등록하기
+                    {t('common.save')}
                   </button>
                 </div>
               </form>
@@ -293,38 +297,38 @@ export default function ProductManagementPage() {
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="상품 정보 수정" 
+              title={t('product.modal_edit_title')} 
               onClose={() => setIsEditModalOpen(false)}
               icon={<Edit2 size={20} className="text-primary" />}
             >
               <form onSubmit={handleUpdate} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상품명</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_name')}</label>
                     <input 
                       type="text" 
                       required
                       value={editProduct?.name}
                       onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder="상품명을 입력하세요"
+                      placeholder={t('product.placeholder_name')}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_category')}</label>
                     <select 
                       value={editProduct?.category}
                       onChange={(e) => setEditProduct({ ...editProduct, category: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      <option>상의</option>
-                      <option>하의</option>
-                      <option>아우터</option>
-                      <option>액세서리</option>
+                      <option value="top">{t('product.category_top')}</option>
+                      <option value="bottom">{t('product.category_bottom')}</option>
+                      <option value="outer">{t('product.category_outer')}</option>
+                      <option value="acc">{t('product.category_acc')}</option>
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">사이즈</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_size')}</label>
                     <select 
                       value={editProduct?.size}
                       onChange={(e) => setEditProduct({ ...editProduct, size: e.target.value })}
@@ -334,7 +338,7 @@ export default function ProductManagementPage() {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">판매가 (₩)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input 
@@ -348,7 +352,7 @@ export default function ProductManagementPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">재고 수량</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_stock')}</label>
                     <input 
                       type="number" 
                       required
@@ -359,16 +363,16 @@ export default function ProductManagementPage() {
                     />
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_status')}</label>
                     <select 
                       value={editProduct?.status}
                       onChange={(e) => setEditProduct({ ...editProduct, status: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      <option value="판매중">판매중</option>
-                      <option value="재고부족">재고부족</option>
-                      <option value="품절">품절</option>
-                      <option value="판매중지">판매중지</option>
+                      <option value="판매중">{t('product.status_selling')}</option>
+                      <option value="재고부족">{t('product.status_low_stock')}</option>
+                      <option value="품절">{t('product.status_out_of_stock')}</option>
+                      <option value="판매중지">{t('product.status_discontinued')}</option>
                     </select>
                   </div>
                 </div>
@@ -379,13 +383,13 @@ export default function ProductManagementPage() {
                     onClick={() => setIsEditModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    수정 완료
+                    {t('common.save')}
                   </button>
                 </div>
               </form>

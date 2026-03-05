@@ -14,61 +14,70 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  LayoutGrid
+  LayoutGrid,
+  Globe
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 
 const menuItems = [
   { 
     id: 100, 
     icon: TrendingUp, 
-    label: '영업 관리', 
+    names: { ko: '매출 관리', en: 'Sales Management', zh: '销售管理' },
     path: '/sales', 
     children: [
-      { id: 1, icon: TrendingUp, label: '매출 통계', path: '/sales-stats' },
-      { id: 4, icon: ShoppingCart, label: '구매 관리', path: '/purchases' },
+      { id: 1, icon: TrendingUp, names: { ko: '매출 통계', en: 'Sales Stats', zh: '销售统计' }, path: '/sales-stats' },
+      { id: 4, icon: ShoppingCart, names: { ko: '구매 관리', en: 'Purchase Management', zh: '购买管理' }, path: '/purchases' },
     ] 
   },
   { 
     id: 200, 
     icon: Package, 
-    label: '상품/재고 관리', 
+    names: { ko: '상품/재고 관리', en: 'Product/Stock Management', zh: '产品/库存管理' },
     path: '/product-stock', 
     children: [
-      { id: 2, icon: ShoppingBag, label: '상품 관리', path: '/products' },
-      { id: 31, icon: Package, label: '재고 관리', path: '/inventory' },
-      { id: 32, icon: HistoryIcon, label: '재고 기록', path: '/inventory/history' },
+      { id: 2, icon: ShoppingBag, names: { ko: '상품 관리', en: 'Product Management', zh: '产品管理' }, path: '/products' },
+      { id: 31, icon: Package, names: { ko: '재고 관리', en: 'Stock Management', zh: '库存管理' }, path: '/inventory' },
+      { id: 32, icon: HistoryIcon, names: { ko: '재고 이력', en: 'Stock History', zh: '库存历史' }, path: '/inventory/history' },
     ] 
   },
   { 
     id: 300, 
     icon: Users, 
-    label: '인사 관리', 
+    names: { ko: '인사 관리', en: 'HR Management', zh: '人事管理' },
     path: '/hr', 
     children: [
-      { id: 5, icon: Users, label: '회원 관리', path: '/users' },
-      { id: 11, icon: Briefcase, label: '직원 관리', path: '/employees' },
+      { id: 5, icon: Users, names: { ko: '사용자 관리', en: 'User Management', zh: '用户管理' }, path: '/users' },
+      { id: 11, icon: Briefcase, names: { ko: '직원 관리', en: 'Employee Management', zh: '员工管理' }, path: '/employees' },
     ] 
   },
   { 
     id: 6, 
     icon: Settings, 
-    label: '시스템 관리', 
+    names: { ko: '시스템 관리', en: 'System Management', zh: '系统管理' },
     path: '/system', 
     children: [
-      { id: 7, icon: LayoutGrid, label: '메뉴 관리', path: '/system/menu' },
-      { id: 8, icon: Database, label: '공통 코드 관리', path: '/system/code' },
-      { id: 9, icon: Shield, label: '권한 관리', path: '/system/role' },
-      { id: 10, icon: Monitor, label: '시스템 설정', path: '/system/settings' },
+      { id: 7, icon: LayoutGrid, names: { ko: '메뉴 관리', en: 'Menu Management', zh: '菜单管理' }, path: '/system/menu' },
+      { id: 8, icon: Database, names: { ko: '코드 관리', en: 'Code Management', zh: '代码管理' }, path: '/system/code' },
+      { id: 9, icon: Shield, names: { ko: '권한 관리', en: 'Role Management', zh: '权限管理' }, path: '/system/role' },
+      { id: 10, icon: Monitor, names: { ko: '시스템 설정', en: 'System Settings', zh: '系统设置' }, path: '/system/settings' },
     ] 
   },
 ];
 
 export default function Sidebar() {
+  const { t, i18n } = useTranslation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<number[]>([100, 200, 300, 6]); // Default expanded categories
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const location = useLocation();
+  
+  const getMenuName = (item: any) => {
+    const lang = i18n.language as 'ko' | 'en' | 'zh';
+    return item.names[lang] || item.names['ko'] || 'Untitled';
+  };
   
   const programName = localStorage.getItem('programName') || 'GovData';
   const logoUrl = localStorage.getItem('logoUrl') || '';
@@ -79,6 +88,11 @@ export default function Sidebar() {
     setExpandedIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
+  };
+
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng);
+    setShowLangMenu(false);
   };
 
   return (
@@ -113,7 +127,7 @@ export default function Sidebar() {
                 to={hasChildren ? '#' : item.path}
                 onClick={(e) => hasChildren && toggleExpand(e, item.id)}
                 end={!hasChildren}
-                title={isCollapsed ? item.label : ''}
+                title={isCollapsed ? getMenuName(item) : ''}
                 className={({ isActive }) => `flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-3 py-2 rounded-lg transition-colors group ${
                   (isActive && !hasChildren) || (hasChildren && isChildActive)
                     ? 'bg-primary/10 text-primary' 
@@ -122,7 +136,7 @@ export default function Sidebar() {
               >
                 <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
                   <item.icon size={20} className="flex-shrink-0" />
-                  {!isCollapsed && <span className="text-sm font-medium truncate">{item.label}</span>}
+                  {!isCollapsed && <span className="text-sm font-medium truncate">{getMenuName(item)}</span>}
                 </div>
                 {!isCollapsed && hasChildren && (
                   <ChevronDown 
@@ -152,7 +166,7 @@ export default function Sidebar() {
                         }`}
                       >
                         <child.icon size={16} className="flex-shrink-0" />
-                        <span className="text-xs font-medium truncate">{child.label}</span>
+                        <span className="text-xs font-medium truncate">{getMenuName(child)}</span>
                       </NavLink>
                     ))}
                   </motion.div>
@@ -163,7 +177,55 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-slate-200">
+      <div className="p-4 border-t border-slate-200 space-y-4">
+        {/* Language Switcher */}
+        <div className="relative">
+          <button 
+            onClick={() => setShowLangMenu(!showLangMenu)}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-600`}
+          >
+            <Globe size={20} className="flex-shrink-0" />
+            {!isCollapsed && (
+              <span className="text-sm font-medium flex-1 text-left">
+                {i18n.language === 'ko' ? '한국어' : i18n.language === 'en' ? 'English' : '中文'}
+              </span>
+            )}
+            {!isCollapsed && <ChevronDown size={14} className={`transition-transform ${showLangMenu ? 'rotate-180' : ''}`} />}
+          </button>
+
+          <AnimatePresence>
+            {showLangMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className={`absolute bottom-full left-0 mb-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50`}
+              >
+                <div className="p-1">
+                  <button 
+                    onClick={() => changeLanguage('ko')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors ${i18n.language === 'ko' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    한국어 (KO)
+                  </button>
+                  <button 
+                    onClick={() => changeLanguage('en')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors ${i18n.language === 'en' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    English (EN)
+                  </button>
+                  <button 
+                    onClick={() => changeLanguage('zh')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors ${i18n.language === 'zh' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    中文 (ZH)
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} p-2 rounded-xl bg-slate-50`}>
           <div className="size-10 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
             <img 

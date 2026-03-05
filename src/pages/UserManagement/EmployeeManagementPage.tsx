@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { UserPlus, Mail, MapPin, Phone, Shield, Search, MoreVertical, Briefcase, Edit2, X, GripHorizontal } from 'lucide-react';
 
 const employees = [
@@ -51,6 +52,7 @@ const employees = [
 ];
 
 export default function EmployeeManagementPage() {
+  const { t } = useTranslation();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
 
@@ -61,8 +63,18 @@ export default function EmployeeManagementPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('직원 정보가 수정되었습니다.');
+    alert(t('employee.modal_edit_title') + ' ' + t('common.save'));
     setIsEditModalOpen(false);
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case '사장': return t('employee.role_ceo');
+      case '매니저': return t('employee.role_manager');
+      case '직원': return t('employee.role_staff');
+      case '알바': return t('employee.role_part_time');
+      default: return role;
+    }
   };
 
   return (
@@ -73,13 +85,13 @@ export default function EmployeeManagementPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">직원 관리</h1>
-          <p className="text-slate-500 mt-1">사내 직원 정보 및 권한을 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('employee.title')}</h1>
+          <p className="text-slate-500 mt-1">{t('employee.description')}</p>
         </div>
         
         <button className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95">
           <UserPlus size={18} />
-          신규 직원 등록
+          {t('employee.add_button')}
         </button>
       </div>
 
@@ -89,24 +101,24 @@ export default function EmployeeManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="직원 검색 (이름, ID)..." 
+              placeholder={t('employee.search_placeholder')} 
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
-          <div className="text-xs text-slate-400 font-medium">총 {employees.length}명의 직원</div>
+          <div className="text-xs text-slate-400 font-medium">{t('employee.total_count', { count: employees.length })}</div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">직원 ID</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">직원명</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">이메일</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">주소</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">전화번호</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">권한 (직책)</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_id')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_name')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_email')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_address')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_phone')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_role')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -146,7 +158,7 @@ export default function EmployeeManagementPage() {
                         'bg-slate-50 text-slate-700 border border-slate-200'
                       }`}>
                         <Briefcase size={12} />
-                        {emp.role}
+                        {getRoleLabel(emp.role)}
                       </div>
                     </div>
                   </td>
@@ -156,7 +168,7 @@ export default function EmployeeManagementPage() {
                       className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 mx-auto bg-primary/5 px-2 py-1 rounded transition-colors"
                     >
                       <Edit2 size={14} />
-                      수정
+                      {t('common.edit')}
                     </button>
                   </td>
                 </tr>
@@ -171,13 +183,13 @@ export default function EmployeeManagementPage() {
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="직원 정보 수정" 
+              title={t('employee.modal_edit_title')} 
               onClose={() => setIsEditModalOpen(false)}
               icon={<Edit2 size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">직원명</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_name')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedEmployee?.name}
@@ -185,19 +197,19 @@ export default function EmployeeManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">직책</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_role')}</label>
                   <select 
                     defaultValue={selectedEmployee?.role}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   >
-                    <option value="사장">사장</option>
-                    <option value="매니저">매니저</option>
-                    <option value="직원">직원</option>
-                    <option value="알바">알바</option>
+                    <option value="사장">{t('employee.role_ceo')}</option>
+                    <option value="매니저">{t('employee.role_manager')}</option>
+                    <option value="직원">{t('employee.role_staff')}</option>
+                    <option value="알바">{t('employee.role_part_time')}</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">이메일</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_email')}</label>
                   <input 
                     type="email" 
                     defaultValue={selectedEmployee?.email}
@@ -205,7 +217,7 @@ export default function EmployeeManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">전화번호</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_phone')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedEmployee?.phone}
@@ -213,7 +225,7 @@ export default function EmployeeManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">주소</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_address')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedEmployee?.address}
@@ -227,13 +239,13 @@ export default function EmployeeManagementPage() {
                     onClick={() => setIsEditModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    저장하기
+                    {t('common.save')}
                   </button>
                 </div>
               </form>

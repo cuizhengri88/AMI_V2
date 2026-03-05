@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { 
   ShoppingCart, 
   Search, 
@@ -38,6 +39,7 @@ const mockProducts = [
 ];
 
 export default function PurchaseManagementPage() {
+  const { t } = useTranslation();
   const [purchases, setPurchases] = useState(initialPurchases);
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -81,14 +83,14 @@ export default function PurchaseManagementPage() {
       status: orderStatus
     };
     setPurchases([newPurchase, ...purchases]);
-    alert('신규 주문이 등록되었습니다.');
+    alert(t('purchase.msg_order_added'));
     setIsNewModalOpen(false);
   };
 
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     setPurchases(prev => prev.map(p => p.id === editOrder.id ? { ...editOrder, total: editOrder.price * editOrder.quantity } : p));
-    alert('주문 정보가 수정되었습니다.');
+    alert(t('purchase.msg_order_updated'));
     setIsEditModalOpen(false);
   };
 
@@ -98,10 +100,20 @@ export default function PurchaseManagementPage() {
   };
 
   const handleRefund = (id: string) => {
-    if (window.confirm('해당 주문을 환불 처리하시겠습니까?')) {
+    if (window.confirm(t('purchase.msg_confirm_refund'))) {
       setPurchases(prev => prev.map(p => 
         p.id === id ? { ...p, status: '환불완료' } : p
       ));
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case '결제완료': return t('purchase.filter_paid');
+      case '환불완료': return t('purchase.filter_refunded');
+      case '환불진행중': return t('purchase.filter_refund_pending');
+      case '결제대기': return t('purchase.filter_payment_pending');
+      default: return status;
     }
   };
 
@@ -127,8 +139,8 @@ export default function PurchaseManagementPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">구매 관리</h1>
-          <p className="text-slate-500 mt-1">고객의 주문 내역을 확인하고 환불 및 결제 상태를 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('purchase.title')}</h1>
+          <p className="text-slate-500 mt-1">{t('purchase.description')}</p>
         </div>
         
         <div className="flex gap-2">
@@ -137,14 +149,14 @@ export default function PurchaseManagementPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20"
           >
             <Plus size={18} />
-            신규 주문 등록
+            {t('purchase.add_button')}
           </button>
           <button 
             onClick={() => setShowDatePicker(!showDatePicker)}
             className={`bg-white border text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 ${showDatePicker ? 'border-primary text-primary ring-2 ring-primary/10' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
           >
             <Calendar size={18} />
-            기간 설정
+            {t('purchase.set_period')}
           </button>
         </div>
       </div>
@@ -160,7 +172,7 @@ export default function PurchaseManagementPage() {
           >
             <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">시작일</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.start_date')}</label>
                 <input 
                   type="date" 
                   value={startDate}
@@ -170,7 +182,7 @@ export default function PurchaseManagementPage() {
               </div>
               <div className="text-slate-300">~</div>
               <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">종료일</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.end_date')}</label>
                 <input 
                   type="date" 
                   value={endDate}
@@ -183,7 +195,7 @@ export default function PurchaseManagementPage() {
                 className="ml-auto text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1"
               >
                 <RotateCcw size={12} />
-                초기화
+                {t('purchase.reset')}
               </button>
             </div>
           </motion.div>
@@ -199,8 +211,8 @@ export default function PurchaseManagementPage() {
             </div>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">+12%</span>
           </div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">오늘의 주문</p>
-          <p className="text-2xl font-black text-slate-900 mt-1">42 건</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('purchase.stat_today_orders')}</p>
+          <p className="text-2xl font-black text-slate-900 mt-1">42 {t('purchase.count_unit')}</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 grid-shadow">
           <div className="flex items-center justify-between mb-4">
@@ -209,7 +221,7 @@ export default function PurchaseManagementPage() {
             </div>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">+8.5%</span>
           </div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">오늘의 매출</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('purchase.stat_today_sales')}</p>
           <p className="text-2xl font-black text-slate-900 mt-1">₩2,450,000</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 grid-shadow">
@@ -219,8 +231,8 @@ export default function PurchaseManagementPage() {
             </div>
             <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded">-2.4%</span>
           </div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">환불 요청</p>
-          <p className="text-2xl font-black text-slate-900 mt-1">3 건</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('purchase.stat_refund_requests')}</p>
+          <p className="text-2xl font-black text-slate-900 mt-1">3 {t('purchase.count_unit')}</p>
         </div>
       </div>
 
@@ -230,7 +242,7 @@ export default function PurchaseManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="주문번호 또는 고객명 검색..." 
+              placeholder={t('purchase.search_placeholder')} 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
@@ -239,14 +251,14 @@ export default function PurchaseManagementPage() {
           
           <div className="flex items-center gap-2">
             <select className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20">
-              <option>전체 상태</option>
-              <option>결제완료</option>
-              <option>환불완료</option>
-              <option>환불진행중</option>
+              <option>{t('purchase.filter_all_status')}</option>
+              <option>{t('purchase.filter_paid')}</option>
+              <option>{t('purchase.filter_refunded')}</option>
+              <option>{t('purchase.filter_refund_pending')}</option>
             </select>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50">
               <Filter size={16} />
-              상세 필터
+              {t('purchase.filter_detail')}
             </button>
           </div>
         </div>
@@ -254,14 +266,14 @@ export default function PurchaseManagementPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">주문번호</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">고객명</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상품명</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">수량</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">총 결제금액</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">주문일시</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">상태</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('purchase.col_order_id')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('purchase.col_customer')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('purchase.col_product')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('purchase.col_quantity')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{t('purchase.col_total_price')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('purchase.col_order_date')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.status')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -293,7 +305,7 @@ export default function PurchaseManagementPage() {
                     'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
                     {order.status === '결제완료' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                    {order.status}
+                    {getStatusLabel(order.status)}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-center">
@@ -310,7 +322,7 @@ export default function PurchaseManagementPage() {
                         className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 border border-rose-100 rounded transition-colors"
                       >
                         <RotateCcw size={10} />
-                        환불
+                        {t('purchase.action_refund')}
                       </button>
                     )}
                   </div>
@@ -322,10 +334,10 @@ export default function PurchaseManagementPage() {
         
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="text-xs text-slate-400 font-medium">
-            최근 24시간 동안 12건의 새로운 주문이 발생했습니다.
+            {t('purchase.recent_orders_info', { count: 12 })}
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-slate-800">더보기</button>
+            <button className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-slate-800">{t('purchase.view_more')}</button>
           </div>
         </div>
       </div>
@@ -335,7 +347,7 @@ export default function PurchaseManagementPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="신규 주문 등록" 
+              title={t('purchase.modal_add_title')} 
               onClose={() => setIsNewModalOpen(false)}
               icon={<Plus size={20} className="text-primary" />}
             >
@@ -343,7 +355,7 @@ export default function PurchaseManagementPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Hash size={12} /> 주문번호 (자동생성)
+                      <Hash size={12} /> {t('purchase.form_order_id_auto')}
                     </label>
                     <input 
                       type="text" 
@@ -354,21 +366,21 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">구매자 선택</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_customer_select')}</label>
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg mb-2">
                       <button 
                         type="button"
                         onClick={() => setCustomerType('member')}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'member' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        기존 회원
+                        {t('purchase.form_customer_member')}
                       </button>
                       <button 
                         type="button"
                         onClick={() => setCustomerType('phone')}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        전화번호 입력
+                        {t('purchase.form_customer_phone')}
                       </button>
                     </div>
                     {customerType === 'member' ? (
@@ -395,7 +407,7 @@ export default function PurchaseManagementPage() {
 
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Package size={12} /> 상품 선택
+                      <Package size={12} /> {t('purchase.form_product_select')}
                     </label>
                     <select 
                       value={selectedProduct.name}
@@ -407,7 +419,7 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">수량</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_quantity')}</label>
                     <input 
                       type="number" 
                       min="1"
@@ -418,24 +430,24 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_status')}</label>
                     <select 
                       value={orderStatus}
                       onChange={(e) => setOrderStatus(e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      <option value="결제완료">결제완료</option>
-                      <option value="결제대기">결제대기</option>
-                      <option value="환불진행중">환불진행중</option>
+                      <option value="결제완료">{t('purchase.filter_paid')}</option>
+                      <option value="결제대기">{t('purchase.filter_payment_pending')}</option>
+                      <option value="환불진행중">{t('purchase.filter_refund_pending')}</option>
                     </select>
                   </div>
 
                   <div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-600">총 결제 금액</span>
+                      <span className="text-sm font-bold text-slate-600">{t('purchase.form_total_price')}</span>
                       <span className="text-xl font-black text-primary">₩{totalPrice.toLocaleString()}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 text-right">단가 ₩{selectedProduct.price.toLocaleString()} × {quantity}개</p>
+                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ₩{selectedProduct.price.toLocaleString()} × {quantity}{t('common.items')}</p>
                   </div>
                 </div>
 
@@ -445,13 +457,13 @@ export default function PurchaseManagementPage() {
                     onClick={() => setIsNewModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    주문 등록
+                    {t('common.save')}
                   </button>
                 </div>
               </form>
@@ -465,7 +477,7 @@ export default function PurchaseManagementPage() {
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="주문 정보 수정" 
+              title={t('purchase.modal_edit_title')} 
               onClose={() => setIsEditModalOpen(false)}
               icon={<Edit2 size={20} className="text-primary" />}
             >
@@ -473,7 +485,7 @@ export default function PurchaseManagementPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Hash size={12} /> 주문번호
+                      <Hash size={12} /> {t('purchase.form_order_id')}
                     </label>
                     <input 
                       type="text" 
@@ -484,7 +496,7 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">구매자 선택</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_customer_select')}</label>
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg mb-2">
                       <button 
                         type="button"
@@ -495,14 +507,14 @@ export default function PurchaseManagementPage() {
                         }}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${(!editOrder?.customerType || editOrder?.customerType === 'member') ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        기존 회원
+                        {t('purchase.form_customer_member')}
                       </button>
                       <button 
                         type="button"
                         onClick={() => setEditOrder({ ...editOrder, customerType: 'phone' })}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${editOrder?.customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        전화번호 입력
+                        {t('purchase.form_customer_phone')}
                       </button>
                     </div>
                     {(!editOrder?.customerType || editOrder?.customerType === 'member') ? (
@@ -529,7 +541,7 @@ export default function PurchaseManagementPage() {
 
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Package size={12} /> 상품 선택
+                      <Package size={12} /> {t('purchase.form_product_select')}
                     </label>
                     <select 
                       value={editOrder?.product}
@@ -544,7 +556,7 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">수량</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_quantity')}</label>
                     <input 
                       type="number" 
                       min="1"
@@ -555,26 +567,26 @@ export default function PurchaseManagementPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_status')}</label>
                     <select 
                       value={editOrder?.status}
                       onChange={(e) => setEditOrder({ ...editOrder, status: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      <option value="결제완료">결제완료</option>
-                      <option value="결제대기">결제대기</option>
-                      <option value="환불완료">환불완료</option>
-                      <option value="환불진행중">환불진행중</option>
+                      <option value="결제완료">{t('purchase.filter_paid')}</option>
+                      <option value="결제대기">{t('purchase.filter_payment_pending')}</option>
+                      <option value="환불완료">{t('purchase.filter_refunded')}</option>
+                      <option value="환불진행중">{t('purchase.filter_refund_pending')}</option>
                     </select>
                   </div>
 
                   {(editOrder?.status === '환불완료' || editOrder?.status === '환불진행중') && (
                     <div className="space-y-1 col-span-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase">환불 사유</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_refund_reason')}</label>
                       <textarea 
                         value={editOrder?.refundReason || ''}
                         onChange={(e) => setEditOrder({ ...editOrder, refundReason: e.target.value })}
-                        placeholder="환불 사유를 입력하세요"
+                        placeholder={t('purchase.form_refund_reason_placeholder')}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none min-h-[80px] resize-none"
                       />
                     </div>
@@ -582,10 +594,10 @@ export default function PurchaseManagementPage() {
 
                   <div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-600">총 결제 금액</span>
+                      <span className="text-sm font-bold text-slate-600">{t('purchase.form_total_price')}</span>
                       <span className="text-xl font-black text-primary">₩{(editOrder?.price * editOrder?.quantity || 0).toLocaleString()}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 text-right">단가 ₩{(editOrder?.price || 0).toLocaleString()} × {editOrder?.quantity || 0}개</p>
+                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ₩{(editOrder?.price || 0).toLocaleString()} × {editOrder?.quantity || 0}{t('common.items')}</p>
                   </div>
                 </div>
 
@@ -595,13 +607,13 @@ export default function PurchaseManagementPage() {
                     onClick={() => setIsEditModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    수정 완료
+                    {t('common.save')}
                   </button>
                 </div>
               </form>

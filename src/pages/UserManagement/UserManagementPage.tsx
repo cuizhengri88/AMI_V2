@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, MoreVertical, Edit2, X, GripHorizontal } from 'lucide-react';
 
 const members = [
@@ -42,6 +43,7 @@ const members = [
 ];
 
 export default function UserManagementPage() {
+  const { t } = useTranslation();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
 
@@ -52,7 +54,7 @@ export default function UserManagementPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('회원 정보가 수정되었습니다.');
+    alert(t('user.modal_edit_title') + ' ' + t('common.save'));
     setIsEditModalOpen(false);
   };
 
@@ -64,13 +66,13 @@ export default function UserManagementPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원 관리</h1>
-          <p className="text-slate-500 mt-1">고객 정보를 조회하고 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('user.title')}</h1>
+          <p className="text-slate-500 mt-1">{t('user.description')}</p>
         </div>
         
         <button className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95">
           <UserPlus size={18} />
-          신규 회원 등록
+          {t('user.add_button')}
         </button>
       </div>
 
@@ -80,24 +82,24 @@ export default function UserManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="회원 검색 (이름, ID)..." 
+              placeholder={t('user.search_placeholder')} 
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
-          <div className="text-xs text-slate-400 font-medium">총 {members.length}명의 회원</div>
+          <div className="text-xs text-slate-400 font-medium">{t('user.total_count', { count: members.length })}</div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">회원 ID</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">회원명</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">이메일</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">주소</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">연락처</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">기타 비고</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_id')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_name')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_email')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_address')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_phone')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_remarks')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -140,7 +142,7 @@ export default function UserManagementPage() {
                       className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 mx-auto bg-primary/5 px-2 py-1 rounded transition-colors"
                     >
                       <Edit2 size={14} />
-                      수정
+                      {t('common.edit')}
                     </button>
                   </td>
                 </tr>
@@ -155,13 +157,13 @@ export default function UserManagementPage() {
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title="회원 정보 수정" 
+              title={t('user.modal_edit_title')} 
               onClose={() => setIsEditModalOpen(false)}
               icon={<Edit2 size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">회원명</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_name')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedMember?.name}
@@ -169,7 +171,7 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">이메일</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_email')}</label>
                   <input 
                     type="email" 
                     defaultValue={selectedMember?.email}
@@ -177,7 +179,7 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">연락처</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_phone')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedMember?.phone}
@@ -185,7 +187,7 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">주소</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_address')}</label>
                   <input 
                     type="text" 
                     defaultValue={selectedMember?.address}
@@ -193,7 +195,7 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_remarks')}</label>
                   <textarea 
                     defaultValue={selectedMember?.remarks}
                     rows={3}
@@ -207,13 +209,13 @@ export default function UserManagementPage() {
                     onClick={() => setIsEditModalOpen(false)}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    저장하기
+                    {t('common.save')}
                   </button>
                 </div>
               </form>
