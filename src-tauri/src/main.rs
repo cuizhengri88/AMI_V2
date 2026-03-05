@@ -1,9 +1,19 @@
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio_postgres::{Client, NoTls};
+
+macro_rules! log_sql {
+    ($sql:expr) => {
+        println!("[SQL] {}", $sql);
+    };
+    ($sql:expr, $($param:expr),+) => {
+        println!("[SQL] {} | params: {}", $sql, format!("{:?}", ($($param),+)));
+    };
+}
 
 #[derive(Debug, Deserialize, Clone)]
 struct DbConnectionPayload {
@@ -183,10 +193,186 @@ struct CommonCodeDataResult {
     details: Vec<CommonCodeDetailDto>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RoleQueryPayload {
+    connection: DbConnectionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct RoleMenuPermissionQueryPayload {
+    connection: DbConnectionPayload,
+    role_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RolePayload {
+    role_id: String,
+    role_name: String,
+    role_desc: String,
+    user_count: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertRolePayload {
+    connection: DbConnectionPayload,
+    role: RolePayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteRolePayload {
+    connection: DbConnectionPayload,
+    role_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RoleDto {
+    role_id: String,
+    role_name: String,
+    role_desc: String,
+    user_count: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct RoleDataResult {
+    success: bool,
+    message: String,
+    roles: Vec<RoleDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RoleMenuPermissionPayload {
+    role_id: String,
+    menu_id: i64,
+    can_read: bool,
+    can_write: bool,
+    can_delete: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertRoleMenuPermissionPayload {
+    connection: DbConnectionPayload,
+    permission: RoleMenuPermissionPayload,
+}
+
+#[derive(Debug, Serialize)]
+struct RoleMenuPermissionDto {
+    id: i64,
+    role_id: String,
+    menu_id: i64,
+    menu_name_ko: String,
+    menu_name_en: String,
+    menu_name_zh: String,
+    can_read: bool,
+    can_write: bool,
+    can_delete: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct RoleMenuPermissionDataResult {
+    success: bool,
+    message: String,
+    permissions: Vec<RoleMenuPermissionDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmployeePayload {
+    employee_id: Option<i64>,
+    employee_name: String,
+    employee_code: String,
+    role_id: Option<String>,
+    email: String,
+    phone: Option<String>,
+    hire_date: Option<String>,
+    status: Option<String>,
+    remarks: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmployeeQueryPayload {
+    connection: DbConnectionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertEmployeePayload {
+    connection: DbConnectionPayload,
+    employee: EmployeePayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteEmployeePayload {
+    connection: DbConnectionPayload,
+    employee_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct EmployeeDto {
+    employee_id: i64,
+    employee_name: String,
+    employee_code: String,
+    role_id: Option<String>,
+    role_name: Option<String>,
+    email: String,
+    phone: Option<String>,
+    hire_date: Option<String>,
+    status: Option<String>,
+    remarks: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EmployeeDataResult {
+    success: bool,
+    message: String,
+    employees: Vec<EmployeeDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserPayload {
+    user_id: Option<i64>,
+    name: String,
+    email: String,
+    phone: Option<String>,
+    address: Option<String>,
+    remarks: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserQueryPayload {
+    connection: DbConnectionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertUserPayload {
+    connection: DbConnectionPayload,
+    user: UserPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteUserPayload {
+    connection: DbConnectionPayload,
+    user_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct UserDto {
+    user_id: i64,
+    name: String,
+    email: String,
+    phone: Option<String>,
+    address: Option<String>,
+    remarks: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UserDataResult {
+    success: bool,
+    message: String,
+    users: Vec<UserDto>,
+}
+
 fn get_safe_schema(schema: &str) -> Result<String, String> {
     let trimmed = schema.trim();
     if trimmed.is_empty() {
-        return Err("?ㅽ궎留?媛믪씠 鍮꾩뼱 ?덉뒿?덈떎.".to_string());
+        return Err("스키마 값이 비어 있습니다.".to_string());
     }
     Ok(trimmed.replace('\"', "\"\""))
 }
@@ -203,7 +389,7 @@ async fn connect_client(connection: &DbConnectionPayload) -> Result<Client, Stri
     let (client, connection_task) = config
         .connect(NoTls)
         .await
-        .map_err(|e| format!("DB ?묒냽 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("DB 접속 실패: {e}"))?;
 
     tauri::async_runtime::spawn(async move {
         if let Err(e) = connection_task.await {
@@ -224,7 +410,7 @@ async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
             "#
         ))
         .await
-        .map_err(|e| format!("?ㅽ궎留?以鍮??ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("스키마 준비 실패: {e}"))?;
     Ok(())
 }
 
@@ -254,7 +440,7 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             "#,
         )
         .await
-        .map_err(|e| format!("menu_management ?뚯씠釉??앹꽦 ?ㅽ뙣: {e}"))
+        .map_err(|e| format!("menu_management 테이블 생성 실패: {e}"))
 }
 
 async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
@@ -295,7 +481,7 @@ async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
             "#,
         )
         .await
-        .map_err(|e| format!("怨듯넻肄붾뱶 ?뚯씠釉??앹꽦 ?ㅽ뙣: {e}"))
+        .map_err(|e| format!("공통코드 테이블 생성 실패: {e}"))
 }
 
 async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(), String> {
@@ -315,8 +501,89 @@ async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(
             &[&group_id],
         )
         .await
-        .map_err(|e| format!("洹몃９ ?곸꽭肄붾뱶 ??媛깆떊 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("그룹 상세코드 수 갱신 실패: {e}"))?;
     Ok(())
+}
+
+async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
+    ensure_menu_table(client).await?;
+    client
+        .batch_execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS role_management (
+                role_id VARCHAR(50) PRIMARY KEY,
+                role_name VARCHAR(100) NOT NULL,
+                role_desc TEXT NULL,
+                user_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS role_menu_permission (
+                id BIGSERIAL PRIMARY KEY,
+                role_id VARCHAR(50) NOT NULL REFERENCES role_management(role_id) ON DELETE CASCADE,
+                menu_id BIGINT NOT NULL REFERENCES menu_management(menu_id) ON DELETE CASCADE,
+                can_read BOOLEAN NOT NULL DEFAULT FALSE,
+                can_write BOOLEAN NOT NULL DEFAULT FALSE,
+                can_delete BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (role_id, menu_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_role_menu_permission_role
+            ON role_menu_permission (role_id);
+            "#,
+        )
+        .await
+        .map_err(|e| format!("권한 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_employee_management_table(client: &Client) -> Result<(), String> {
+    ensure_role_management_tables(client).await?;
+    client
+        .batch_execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS employee_management (
+                employee_id BIGSERIAL PRIMARY KEY,
+                employee_name VARCHAR(100) NOT NULL,
+                employee_code VARCHAR(50) NOT NULL UNIQUE,
+                role_id VARCHAR(50) NULL REFERENCES role_management(role_id) ON DELETE SET NULL,
+                email VARCHAR(100) NOT NULL UNIQUE,
+                phone VARCHAR(20) NULL,
+                hire_date DATE NULL,
+                status VARCHAR(20) NOT NULL DEFAULT '재직중',
+                remarks TEXT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_employee_management_role_id
+            ON employee_management (role_id);
+            "#,
+        )
+        .await
+        .map_err(|e| format!("직원 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
+    let sql = r#"
+        CREATE TABLE IF NOT EXISTS user_management (
+            user_id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(100) NOT NULL UNIQUE,
+            phone VARCHAR(20),
+            address VARCHAR(255),
+            remarks TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#;
+    log_sql!(sql);
+    client
+        .batch_execute(sql)
+        .await
+        .map_err(|e| format!("회원 테이블 생성 실패: {e}"))
 }
 
 #[tauri::command]
@@ -326,14 +593,14 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
     let row = client
         .query_one("SELECT current_schema(), version()", &[])
         .await
-        .map_err(|e| format!("DB ?뺤씤 荑쇰━ ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("DB 확인 쿼리 실패: {e}"))?;
 
     let current_schema: String = row.get(0);
     let server_version: String = row.get(1);
 
     Ok(DbConnectionResult {
         success: true,
-        message: "DB ?곌껐 ?깃났".to_string(),
+        message: "DB 연결 성공".to_string(),
         current_schema,
         server_version,
     })
@@ -347,12 +614,12 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
     let transaction = client
         .transaction()
         .await
-        .map_err(|e| format!("?몃옖??뀡 ?쒖옉 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
     transaction
         .batch_execute("TRUNCATE TABLE menu_management")
         .await
-        .map_err(|e| format!("湲곗〈 硫붾돱 ?곗씠??珥덇린???ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("기존 메뉴 데이터 초기화 실패: {e}"))?;
 
     let mut menus = payload.menus;
     menus.sort_by_key(|m| m.parent_id.is_some());
@@ -386,17 +653,17 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                 ],
             )
             .await
-            .map_err(|e| format!("硫붾돱 ?곗씠???낅젰 ?ㅽ뙣(menu_id={}): {e}", menu.id))?;
+            .map_err(|e| format!("메뉴 데이터 입력 실패(menu_id={}): {e}", menu.id))?;
     }
 
     transaction
         .commit()
         .await
-        .map_err(|e| format!("?몃옖??뀡 而ㅻ컠 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("트랜잭션 커밋 실패: {e}"))?;
 
     Ok(MenuSyncResult {
         success: true,
-        message: "menu_management ?뚯씠釉??앹꽦 諛??곗씠??諛섏쁺 ?꾨즺".to_string(),
+        message: "menu_management 테이블 생성 및 데이터 반영 완료".to_string(),
         inserted_count: menus.len(),
     })
 }
@@ -603,12 +870,12 @@ async fn sync_common_code_management_to_db(
     let transaction = client
         .transaction()
         .await
-        .map_err(|e| format!("?몃옖??뀡 ?쒖옉 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
     transaction
         .batch_execute("TRUNCATE TABLE common_code_detail, common_code_group")
         .await
-        .map_err(|e| format!("湲곗〈 怨듯넻肄붾뱶 ?곗씠??珥덇린???ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("기존 공통코드 데이터 초기화 실패: {e}"))?;
 
     let mut detail_count_map: HashMap<&str, i32> = HashMap::new();
     for detail in &payload.details {
@@ -640,7 +907,7 @@ async fn sync_common_code_management_to_db(
                 ],
             )
             .await
-            .map_err(|e| format!("洹몃９肄붾뱶 ?낅젰 ?ㅽ뙣(group_id={}): {e}", group.id))?;
+            .map_err(|e| format!("그룹코드 입력 실패(group_id={}): {e}", group.id))?;
     }
 
     let mut details = payload.details;
@@ -669,7 +936,7 @@ async fn sync_common_code_management_to_db(
             .await
             .map_err(|e| {
                 format!(
-                    "?곸꽭肄붾뱶 ?낅젰 ?ㅽ뙣(group_id={}, code={}): {e}",
+                    "상세코드 입력 실패(group_id={}, code={}): {e}",
                     detail.group_id, detail.code
                 )
             })?;
@@ -678,11 +945,11 @@ async fn sync_common_code_management_to_db(
     transaction
         .commit()
         .await
-        .map_err(|e| format!("?몃옖??뀡 而ㅻ컠 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("트랜잭션 커밋 실패: {e}"))?;
 
     Ok(CommonCodeSyncResult {
         success: true,
-        message: "common_code_group/common_code_detail ?뚯씠釉??앹꽦 諛??곗씠??諛섏쁺 ?꾨즺".to_string(),
+        message: "common_code_group/common_code_detail 테이블 생성 및 데이터 반영 완료".to_string(),
         group_count: groups.len(),
         detail_count: details.len(),
     })
@@ -709,7 +976,7 @@ async fn get_common_code_management_data(
             &[],
         )
         .await
-        .map_err(|e| format!("洹몃９肄붾뱶 議고쉶 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("그룹코드 조회 실패: {e}"))?;
 
     let detail_rows = client
         .query(
@@ -725,7 +992,7 @@ async fn get_common_code_management_data(
             &[],
         )
         .await
-        .map_err(|e| format!("?곸꽭肄붾뱶 議고쉶 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("상세코드 조회 실패: {e}"))?;
 
     let groups = group_rows
         .into_iter()
@@ -751,7 +1018,7 @@ async fn get_common_code_management_data(
 
     Ok(CommonCodeDataResult {
         success: true,
-        message: "怨듯넻肄붾뱶 議고쉶 ?꾨즺".to_string(),
+        message: "공통코드 조회 완료".to_string(),
         groups,
         details,
     })
@@ -774,7 +1041,7 @@ async fn upsert_common_code_group(
     };
 
     if group_id.is_empty() || group_name.is_empty() {
-        return Err("洹몃９ ID? 洹몃９紐낆? ?꾩닔?낅땲??".to_string());
+        return Err("그룹 ID와 그룹명은 필수입니다.".to_string());
     }
 
     client
@@ -796,11 +1063,11 @@ async fn upsert_common_code_group(
             &[&group_id, &group_name, &group_desc, &display_order],
         )
         .await
-        .map_err(|e| format!("洹몃９肄붾뱶 ????ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("그룹코드 저장 실패: {e}"))?;
 
     Ok(MutationResult {
         success: true,
-        message: "洹몃９肄붾뱶 ????꾨즺".to_string(),
+        message: "그룹코드 저장 완료".to_string(),
     })
 }
 
@@ -813,7 +1080,7 @@ async fn delete_common_code_group(
 
     let group_id = payload.group_id.trim().to_uppercase();
     if group_id.is_empty() {
-        return Err("??젣??洹몃９ ID媛 鍮꾩뼱 ?덉뒿?덈떎.".to_string());
+        return Err("삭제할 그룹 ID가 비어 있습니다.".to_string());
     }
 
     let affected = client
@@ -822,15 +1089,15 @@ async fn delete_common_code_group(
             &[&group_id],
         )
         .await
-        .map_err(|e| format!("洹몃９肄붾뱶 ??젣 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("그룹코드 삭제 실패: {e}"))?;
 
     if affected == 0 {
-        return Err("??젣 ???洹몃９肄붾뱶媛 ?놁뒿?덈떎.".to_string());
+        return Err("삭제 대상 그룹코드가 없습니다.".to_string());
     }
 
     Ok(MutationResult {
         success: true,
-        message: "洹몃９肄붾뱶 ??젣 ?꾨즺".to_string(),
+        message: "그룹코드 삭제 완료".to_string(),
     })
 }
 
@@ -852,10 +1119,10 @@ async fn upsert_common_code_detail(
     let use_yn = payload.detail.use_yn.trim().to_uppercase();
 
     if group_id.is_empty() || detail_code.is_empty() || detail_name.is_empty() {
-        return Err("洹몃９ID, ?곸꽭肄붾뱶, ?곸꽭肄붾뱶紐낆? ?꾩닔?낅땲??".to_string());
+        return Err("그룹ID, 상세코드, 상세코드명은 필수입니다.".to_string());
     }
     if use_yn != "Y" && use_yn != "N" {
-        return Err("?ъ슜?щ?(use_yn)??Y ?먮뒗 N留?媛?ν빀?덈떎.".to_string());
+        return Err("사용여부(use_yn)는 Y 또는 N만 가능합니다.".to_string());
     }
 
     let exists = client
@@ -864,9 +1131,9 @@ async fn upsert_common_code_detail(
             &[&group_id],
         )
         .await
-        .map_err(|e| format!("洹몃９肄붾뱶 ?뺤씤 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("그룹코드 확인 실패: {e}"))?;
     if exists.is_none() {
-        return Err("?곸꽭肄붾뱶瑜???ν븷 洹몃９肄붾뱶媛 議댁옱?섏? ?딆뒿?덈떎.".to_string());
+        return Err("상세코드를 저장할 그룹코드가 존재하지 않습니다.".to_string());
     }
 
     client
@@ -889,13 +1156,13 @@ async fn upsert_common_code_detail(
             &[&group_id, &detail_code, &detail_name, &sort_order, &use_yn],
         )
         .await
-        .map_err(|e| format!("?곸꽭肄붾뱶 ????ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("상세코드 저장 실패: {e}"))?;
 
     refresh_group_detail_count(&client, &group_id).await?;
 
     Ok(MutationResult {
         success: true,
-        message: "?곸꽭肄붾뱶 ????꾨즺".to_string(),
+        message: "상세코드 저장 완료".to_string(),
     })
 }
 
@@ -909,7 +1176,7 @@ async fn delete_common_code_detail(
     let group_id = payload.group_id.trim().to_uppercase();
     let detail_code = payload.code.trim().to_uppercase();
     if group_id.is_empty() || detail_code.is_empty() {
-        return Err("??젣??洹몃９ID/?곸꽭肄붾뱶 媛믪씠 鍮꾩뼱 ?덉뒿?덈떎.".to_string());
+        return Err("삭제할 그룹ID/상세코드 값이 비어 있습니다.".to_string());
     }
 
     let affected = client
@@ -918,17 +1185,560 @@ async fn delete_common_code_detail(
             &[&group_id, &detail_code],
         )
         .await
-        .map_err(|e| format!("?곸꽭肄붾뱶 ??젣 ?ㅽ뙣: {e}"))?;
+        .map_err(|e| format!("상세코드 삭제 실패: {e}"))?;
 
     if affected == 0 {
-        return Err("??젣 ????곸꽭肄붾뱶媛 ?놁뒿?덈떎.".to_string());
+        return Err("삭제 대상 상세코드가 없습니다.".to_string());
     }
 
     refresh_group_detail_count(&client, &group_id).await?;
 
     Ok(MutationResult {
         success: true,
-        message: "?곸꽭肄붾뱶 ??젣 ?꾨즺".to_string(),
+        message: "상세코드 삭제 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_role_management_tables(&client).await?;
+
+    let rows = client
+        .query(
+            r#"
+            SELECT role_id, role_name, COALESCE(role_desc, ''), user_count
+              FROM role_management
+             ORDER BY role_id
+            "#,
+            &[],
+        )
+        .await
+        .map_err(|e| format!("권한 데이터 조회 실패: {e}"))?;
+
+    let roles = rows
+        .into_iter()
+        .map(|row| RoleDto {
+            role_id: row.get::<_, String>(0),
+            role_name: row.get::<_, String>(1),
+            role_desc: row.get::<_, String>(2),
+            user_count: row.get::<_, i32>(3),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(RoleDataResult {
+        success: true,
+        message: "권한 조회 완료".to_string(),
+        roles,
+    })
+}
+
+#[tauri::command]
+async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_role_management_tables(&client).await?;
+
+    let role_id = payload.role.role_id.trim().to_uppercase();
+    let role_name = payload.role.role_name.trim().to_string();
+    let role_desc = payload.role.role_desc.trim().to_string();
+    let user_count = if payload.role.user_count < 0 {
+        0
+    } else {
+        payload.role.user_count
+    };
+
+    if role_id.is_empty() || role_name.is_empty() {
+        return Err("역할 ID와 역할명은 필수입니다.".to_string());
+    }
+
+    client
+        .execute(
+            r#"
+            INSERT INTO role_management (role_id, role_name, role_desc, user_count)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (role_id)
+            DO UPDATE SET
+                role_name = EXCLUDED.role_name,
+                role_desc = EXCLUDED.role_desc,
+                user_count = EXCLUDED.user_count,
+                updated_at = NOW()
+            "#,
+            &[&role_id, &role_name, &role_desc, &user_count],
+        )
+        .await
+        .map_err(|e| format!("권한 저장 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: "권한 저장 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_role_management_tables(&client).await?;
+
+    let role_id = payload.role_id.trim().to_uppercase();
+    if role_id.is_empty() {
+        return Err("삭제할 역할 ID가 비어 있습니다.".to_string());
+    }
+
+    let affected = client
+        .execute("DELETE FROM role_management WHERE role_id = $1", &[&role_id])
+        .await
+        .map_err(|e| format!("권한 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 역할이 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "권한 삭제 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_role_menu_permissions(
+    payload: RoleMenuPermissionQueryPayload,
+) -> Result<RoleMenuPermissionDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_role_management_tables(&client).await?;
+
+    let role_id = payload.role_id.trim().to_uppercase();
+    if role_id.is_empty() {
+        return Err("role_id는 필수입니다.".to_string());
+    }
+
+    let role_exists = client
+        .query_opt(
+            "SELECT 1 FROM role_management WHERE role_id = $1",
+            &[&role_id],
+        )
+        .await
+        .map_err(|e| format!("역할 확인 실패: {e}"))?;
+    if role_exists.is_none() {
+        return Err("선택한 역할이 존재하지 않습니다.".to_string());
+    }
+
+    let rows = client
+        .query(
+            r#"
+            SELECT
+                COALESCE(rmp.id, 0)::BIGINT AS id,
+                $1::VARCHAR AS role_id,
+                mm.menu_id,
+                mm.menu_name_ko,
+                mm.menu_name_en,
+                mm.menu_name_zh,
+                COALESCE(rmp.can_read, FALSE) AS can_read,
+                COALESCE(rmp.can_write, FALSE) AS can_write,
+                COALESCE(rmp.can_delete, FALSE) AS can_delete
+              FROM menu_management mm
+         LEFT JOIN role_menu_permission rmp
+                ON rmp.menu_id = mm.menu_id
+               AND rmp.role_id = $1
+             ORDER BY (mm.parent_menu_id IS NOT NULL), COALESCE(mm.parent_menu_id, mm.menu_id), mm.menu_order, mm.menu_id
+            "#,
+            &[&role_id],
+        )
+        .await
+        .map_err(|e| format!("권한별 메뉴 조회 실패: {e}"))?;
+
+    let permissions = rows
+        .into_iter()
+        .map(|row| RoleMenuPermissionDto {
+            id: row.get::<_, i64>(0),
+            role_id: row.get::<_, String>(1),
+            menu_id: row.get::<_, i64>(2),
+            menu_name_ko: row.get::<_, String>(3),
+            menu_name_en: row.get::<_, String>(4),
+            menu_name_zh: row.get::<_, String>(5),
+            can_read: row.get::<_, bool>(6),
+            can_write: row.get::<_, bool>(7),
+            can_delete: row.get::<_, bool>(8),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(RoleMenuPermissionDataResult {
+        success: true,
+        message: "권한별 메뉴 조회 완료".to_string(),
+        permissions,
+    })
+}
+
+#[tauri::command]
+async fn upsert_role_menu_permission(
+    payload: UpsertRoleMenuPermissionPayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_role_management_tables(&client).await?;
+
+    let role_id = payload.permission.role_id.trim().to_uppercase();
+    let menu_id = payload.permission.menu_id;
+    if role_id.is_empty() {
+        return Err("role_id는 필수입니다.".to_string());
+    }
+    if menu_id <= 0 {
+        return Err("menu_id는 1 이상이어야 합니다.".to_string());
+    }
+
+    let role_exists = client
+        .query_opt(
+            "SELECT 1 FROM role_management WHERE role_id = $1",
+            &[&role_id],
+        )
+        .await
+        .map_err(|e| format!("역할 확인 실패: {e}"))?;
+    if role_exists.is_none() {
+        return Err("권한을 저장할 역할이 존재하지 않습니다.".to_string());
+    }
+
+    client
+        .execute(
+            r#"
+            INSERT INTO role_menu_permission (role_id, menu_id, can_read, can_write, can_delete)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (role_id, menu_id)
+            DO UPDATE SET
+                can_read = EXCLUDED.can_read,
+                can_write = EXCLUDED.can_write,
+                can_delete = EXCLUDED.can_delete,
+                updated_at = NOW()
+            "#,
+            &[
+                &role_id,
+                &menu_id,
+                &payload.permission.can_read,
+                &payload.permission.can_write,
+                &payload.permission.can_delete,
+            ],
+        )
+        .await
+        .map_err(|e| format!("권한별 메뉴 저장 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: "권한별 메뉴 저장 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_employee_management_data(
+    payload: EmployeeQueryPayload,
+) -> Result<EmployeeDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_employee_management_table(&client).await?;
+
+    let rows = client
+        .query(
+            r#"
+            SELECT
+                e.employee_id,
+                e.employee_name,
+                e.employee_code,
+                e.role_id,
+                r.role_name,
+                e.email,
+                e.phone,
+                e.hire_date::TEXT,
+                e.status,
+                e.remarks
+              FROM employee_management e
+         LEFT JOIN role_management r ON r.role_id = e.role_id
+             ORDER BY e.employee_id DESC
+            "#,
+            &[],
+        )
+        .await
+        .map_err(|e| format!("직원 데이터 조회 실패: {e}"))?;
+
+    let employees = rows
+        .into_iter()
+        .map(|row| EmployeeDto {
+            employee_id: row.get::<_, i64>(0),
+            employee_name: row.get::<_, String>(1),
+            employee_code: row.get::<_, String>(2),
+            role_id: row.get::<_, Option<String>>(3),
+            role_name: row.get::<_, Option<String>>(4),
+            email: row.get::<_, String>(5),
+            phone: row.get::<_, Option<String>>(6),
+            hire_date: row.get::<_, Option<String>>(7),
+            status: row.get::<_, Option<String>>(8),
+            remarks: row.get::<_, Option<String>>(9),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(EmployeeDataResult {
+        success: true,
+        message: "직원 조회 완료".to_string(),
+        employees,
+    })
+}
+
+#[tauri::command]
+async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_employee_management_table(&client).await?;
+
+    let employee = payload.employee;
+    let employee_name = employee.employee_name.trim().to_string();
+    let employee_code = employee.employee_code.trim().to_uppercase();
+    let email = employee.email.trim().to_lowercase();
+    let role_id = employee
+        .role_id
+        .map(|v| v.trim().to_uppercase())
+        .filter(|v| !v.is_empty());
+    let phone = employee.phone.map(|v| v.trim().to_string());
+    let hire_date = match employee
+        .hire_date
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+    {
+        Some(v) => Some(
+            NaiveDate::parse_from_str(&v, "%Y-%m-%d")
+                .map_err(|_| "입사일 형식은 YYYY-MM-DD 이어야 합니다.".to_string())?,
+        ),
+        None => None,
+    };
+    let status = employee
+        .status
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "재직중".to_string());
+    let remarks = employee.remarks.map(|v| v.trim().to_string());
+
+    if employee_name.is_empty() || employee_code.is_empty() || email.is_empty() {
+        return Err("직원명, 직원코드, 이메일은 필수입니다.".to_string());
+    }
+
+    if let Some(ref rid) = role_id {
+        let role_exists = client
+            .query_opt("SELECT 1 FROM role_management WHERE role_id = $1", &[rid])
+            .await
+            .map_err(|e| format!("역할 확인 실패: {e}"))?;
+        if role_exists.is_none() {
+            return Err("선택한 역할이 존재하지 않습니다.".to_string());
+        }
+    }
+
+    if let Some(id) = employee.employee_id {
+        if id <= 0 {
+            return Err("employee_id는 1 이상이어야 합니다.".to_string());
+        }
+        client
+            .execute(
+                r#"
+                INSERT INTO employee_management (
+                    employee_id, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                ON CONFLICT (employee_id)
+                DO UPDATE SET
+                    employee_name = EXCLUDED.employee_name,
+                    employee_code = EXCLUDED.employee_code,
+                    role_id = EXCLUDED.role_id,
+                    email = EXCLUDED.email,
+                    phone = EXCLUDED.phone,
+                    hire_date = EXCLUDED.hire_date,
+                    status = EXCLUDED.status,
+                    remarks = EXCLUDED.remarks,
+                    updated_at = NOW()
+                "#,
+                &[
+                    &id,
+                    &employee_name,
+                    &employee_code,
+                    &role_id,
+                    &email,
+                    &phone,
+                    &hire_date,
+                    &status,
+                    &remarks,
+                ],
+            )
+            .await
+            .map_err(|e| format!("직원 저장 실패: {e}"))?;
+    } else {
+        client
+            .execute(
+                r#"
+                INSERT INTO employee_management (
+                    employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                "#,
+                &[
+                    &employee_name,
+                    &employee_code,
+                    &role_id,
+                    &email,
+                    &phone,
+                    &hire_date,
+                    &status,
+                    &remarks,
+                ],
+            )
+            .await
+            .map_err(|e| format!("직원 등록 실패: {e}"))?;
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "직원 저장 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn delete_employee_management(
+    payload: DeleteEmployeePayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_employee_management_table(&client).await?;
+
+    if payload.employee_id <= 0 {
+        return Err("삭제할 employee_id가 올바르지 않습니다.".to_string());
+    }
+
+    let affected = client
+        .execute(
+            "DELETE FROM employee_management WHERE employee_id = $1",
+            &[&payload.employee_id],
+        )
+        .await
+        .map_err(|e| format!("직원 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 직원이 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "직원 삭제 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_user_management_table(&client).await?;
+
+    let sql = r#"
+        SELECT user_id::BIGINT, name, email, phone, address, remarks
+          FROM user_management
+         ORDER BY user_id DESC
+    "#;
+    log_sql!(sql);
+    let rows = client
+        .query(sql, &[])
+        .await
+        .map_err(|e| format!("회원 조회 실패: {e}"))?;
+
+    let users = rows
+        .into_iter()
+        .map(|row| UserDto {
+            user_id: row.get::<_, i64>(0),
+            name: row.get::<_, String>(1),
+            email: row.get::<_, String>(2),
+            phone: row.get::<_, Option<String>>(3),
+            address: row.get::<_, Option<String>>(4),
+            remarks: row.get::<_, Option<String>>(5),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(UserDataResult {
+        success: true,
+        message: "회원 조회 완료".to_string(),
+        users,
+    })
+}
+
+#[tauri::command]
+async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_user_management_table(&client).await?;
+
+    let user = payload.user;
+    let name = user.name.trim().to_string();
+    let email = user.email.trim().to_lowercase();
+    let phone = user
+        .phone
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let address = user
+        .address
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let remarks = user
+        .remarks
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    if name.is_empty() || email.is_empty() {
+        return Err("이름, 이메일은 필수입니다.".to_string());
+    }
+
+    if let Some(id) = user.user_id {
+        if id <= 0 {
+            return Err("user_id는 1 이상이어야 합니다.".to_string());
+        }
+        let sql = r#"
+            INSERT INTO user_management (user_id, name, email, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                address = EXCLUDED.address,
+                remarks = EXCLUDED.remarks,
+                updated_at = NOW()
+        "#;
+        log_sql!(sql, id, &name, &email, &phone, &address, &remarks);
+        client
+            .execute(sql, &[&id, &name, &email, &phone, &address, &remarks])
+            .await
+            .map_err(|e| format!("회원 저장 실패: {e}"))?;
+    } else {
+        let sql = r#"
+            INSERT INTO user_management (name, email, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5)
+        "#;
+        log_sql!(sql, &name, &email, &phone, &address, &remarks);
+        client
+            .execute(sql, &[&name, &email, &phone, &address, &remarks])
+            .await
+            .map_err(|e| format!("회원 등록 실패: {e}"))?;
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "회원 저장 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_user_management_table(&client).await?;
+
+    if payload.user_id <= 0 {
+        return Err("삭제할 user_id가 올바르지 않습니다.".to_string());
+    }
+
+    let sql = "DELETE FROM user_management WHERE user_id = $1";
+    log_sql!(sql, payload.user_id);
+    let affected = client
+        .execute(sql, &[&payload.user_id])
+        .await
+        .map_err(|e| format!("회원 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 회원이 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "회원 삭제 완료".to_string(),
     })
 }
 
@@ -945,7 +1755,18 @@ fn main() {
             upsert_common_code_group,
             delete_common_code_group,
             upsert_common_code_detail,
-            delete_common_code_detail
+            delete_common_code_detail,
+            get_role_management_data,
+            upsert_role_management,
+            delete_role_management,
+            get_role_menu_permissions,
+            upsert_role_menu_permission,
+            get_employee_management_data,
+            upsert_employee_management,
+            delete_employee_management,
+            get_user_management_data,
+            upsert_user_management,
+            delete_user_management
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

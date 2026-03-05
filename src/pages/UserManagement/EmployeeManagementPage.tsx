@@ -1,79 +1,132 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
-import { UserPlus, Mail, MapPin, Phone, Shield, Search, MoreVertical, Briefcase, Edit2, X, GripHorizontal } from 'lucide-react';
+import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripHorizontal, Trash2, Loader2, Database, Briefcase, Calendar } from 'lucide-react';
+import { invokeDbCommand } from '../../lib/dbClient';
 
-const employees = [
-  { 
-    id: 'EMP-001', 
-    name: '홍길동', 
-    email: 'gildong.hong@enterprise.com', 
-    address: '서울시 성동구 성수동 123', 
-    phone: '010-1111-2222', 
-    role: '사장',
-    avatar: 'https://picsum.photos/seed/e1/100/100'
-  },
-  { 
-    id: 'EMP-002', 
-    name: '박서준', 
-    email: 'sj.park@enterprise.com', 
-    address: '서울시 마포구 상암동 456', 
-    phone: '010-3333-4444', 
-    role: '매니저',
-    avatar: 'https://picsum.photos/seed/e2/100/100'
-  },
-  { 
-    id: 'EMP-003', 
-    name: '이지은', 
-    email: 'je.lee@enterprise.com', 
-    address: '경기도 고양시 일산동구 789', 
-    phone: '010-5555-6666', 
-    role: '직원',
-    avatar: 'https://picsum.photos/seed/e3/100/100'
-  },
-  { 
-    id: 'EMP-004', 
-    name: '최우식', 
-    email: 'ws.choi@enterprise.com', 
-    address: '서울시 송파구 잠실동 101', 
-    phone: '010-7777-8888', 
-    role: '직원',
-    avatar: 'https://picsum.photos/seed/e4/100/100'
-  },
-  { 
-    id: 'EMP-005', 
-    name: '김다미', 
-    email: 'dm.kim@enterprise.com', 
-    address: '서울시 서대문구 연희동 202', 
-    phone: '010-9999-0000', 
-    role: '알바',
-    avatar: 'https://picsum.photos/seed/e5/100/100'
-  },
-];
+type Employee = {
+  employee_id: number;
+  employee_name: string;
+  employee_code: string;
+  role_id?: string;
+  role_name?: string;
+  email: string;
+  phone?: string;
+  hire_date?: string;
+  status?: string;
+  remarks?: string;
+};
+
+type FormData = {
+  employee_id?: number;
+  employee_name: string;
+  employee_code: string;
+  role_id?: string;
+  email: string;
+  phone?: string;
+  hire_date?: string;
+  status?: string;
+  remarks?: string;
+};
+
+type Role = {
+  role_id: string;
+  role_name: string;
+};
 
 export default function EmployeeManagementPage() {
   const { t } = useTranslation();
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [formData, setFormData] = useState<FormData>({ employee_name: '', employee_code: '', email: '' });
 
-  const handleEditClick = (emp: any) => {
-    setSelectedEmployee(emp);
-    setIsEditModalOpen(true);
+  const loadRoles = async () => {
+    try {
+      const result = await invokeDbCommand<{ success: boolean; roles: Role[] }>('get_role_management_data');
+      setRoles(result.roles || []);
+    } catch (error: any) {
+      console.error('Failed to load roles:', error);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const loadEmployees = async () => {
+    try {
+      setIsLoading(true);
+      const result = await invokeDbCommand<{ success: boolean; employees: Employee[] }>('get_employee_management_data');
+      setEmployees(result.employees || []);
+      setFilteredEmployees(result.employees || []);
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '직원 데이터를 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRoles();
+    loadEmployees();
+  }, []);
+
+  useEffect(() => {
+    const filtered = employees.filter(emp =>
+      emp.employee_name.toLowerCase().includes(searchText.toLowerCase()) ||
+      emp.employee_code.toLowerCase().includes(searchText.toLowerCase()) ||
+      emp.email.toLowerCase().includes(searchText.toLowerCase())
+    );
+    setFilteredEmployees(filtered);
+  }, [searchText, employees]);
+
+  const handleAddClick = () => {
+    setModalMode('add');
+    setFormData({ employee_name: '', employee_code: '', email: '' });
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (employee: Employee) => {
+    setModalMode('edit');
+    setFormData(employee);
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert(t('employee.modal_edit_title') + ' ' + t('common.save'));
-    setIsEditModalOpen(false);
+    if (!formData.employee_name || !formData.employee_code || !formData.email) {
+      alert('직원명, 직원코드, 이메일은 필수입니다.');
+      return;
+    }
+
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('upsert_employee_management', {
+        employee: formData,
+      });
+      await loadEmployees();
+      setIsModalOpen(false);
+      alert(modalMode === 'add' ? '직원이 추가되었습니다.' : '직원이 수정되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '저장에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
   };
 
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case '사장': return t('employee.role_ceo');
-      case '매니저': return t('employee.role_manager');
-      case '직원': return t('employee.role_staff');
-      case '알바': return t('employee.role_part_time');
-      default: return role;
+  const handleDelete = async (employeeId: number) => {
+    if (!window.confirm('정말 이 직원을 삭제하시겠습니까?')) return;
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('delete_employee_management', { employee_id: employeeId });
+      await loadEmployees();
+      alert('직원이 삭제되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '삭제에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
     }
   };
 
@@ -83,16 +136,39 @@ export default function EmployeeManagementPage() {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.4 }}
     >
+      {isLoading && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-semibold text-slate-700">로딩 중...</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('employee.title')}</h1>
-          <p className="text-slate-500 mt-1">{t('employee.description')}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">직원 관리</h1>
+          <p className="text-slate-500 mt-1">직원 정보를 관리합니다</p>
         </div>
         
-        <button className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95">
-          <UserPlus size={18} />
-          {t('employee.add_button')}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={loadEmployees}
+            disabled={isLoading}
+            className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+          >
+            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
+            {isLoading ? '불러오는 중...' : 'DB 새로고침'}
+          </button>
+          <button 
+            onClick={handleAddClick}
+            disabled={isLoading}
+            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+          >
+            <UserPlus size={18} />
+            직원 추가
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 grid-shadow overflow-hidden">
@@ -101,151 +177,213 @@ export default function EmployeeManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder={t('employee.search_placeholder')} 
+              placeholder="직원명, 코드, 이메일 검색"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
-          <div className="text-xs text-slate-400 font-medium">{t('employee.total_count', { count: employees.length })}</div>
+          <div className="text-xs text-slate-400 font-medium">총 {filteredEmployees.length}명</div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+          <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_id')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_name')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_email')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_address')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_phone')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('employee.col_role')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">ID</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">직원명</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">직원코드</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">역할</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">이메일</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">전화</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">입사일</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상태</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-4 px-6 text-sm font-mono font-bold text-slate-500">{emp.id}</td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <img src={emp.avatar} alt={emp.name} className="size-8 rounded-full object-cover" referrerPolicy="no-referrer" />
-                      <span className="text-sm font-bold text-slate-900">{emp.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-slate-400" />
-                      {emp.email}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600 max-w-[200px] truncate">
-                    <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-slate-400 flex-shrink-0" />
-                      {emp.address}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-slate-400" />
-                      {emp.phone}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-2">
-                      <div className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 ${
-                        emp.role === '사장' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                        emp.role === '매니저' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                        emp.role === '알바' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                        'bg-slate-50 text-slate-700 border border-slate-200'
-                      }`}>
-                        <Briefcase size={12} />
-                        {getRoleLabel(emp.role)}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-center">
-                    <button 
-                      onClick={() => handleEditClick(emp)}
-                      className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 mx-auto bg-primary/5 px-2 py-1 rounded transition-colors"
-                    >
-                      <Edit2 size={14} />
-                      {t('common.edit')}
-                    </button>
+              {filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400 text-sm">
+                    직원 데이터가 없습니다.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredEmployees.map((emp) => (
+                  <tr key={emp.employee_id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-sm font-mono font-bold text-slate-500">{emp.employee_id}</td>
+                    <td className="py-4 px-6">
+                      <span className="text-sm font-bold text-slate-900">{emp.employee_name}</span>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">{emp.employee_code}</td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold">
+                        {emp.role_name || '-'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} className="text-slate-400" />
+                        {emp.email}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Phone size={14} className="text-slate-400" />
+                        {emp.phone || '-'}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} className="text-slate-400" />
+                        {emp.hire_date || '-'}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${emp.status === '재직중' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {emp.status || '재직중'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleEditClick(emp)}
+                          disabled={isMutating}
+                          className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 bg-primary/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          <Edit2 size={14} />
+                          수정
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(emp.employee_id)}
+                          disabled={isMutating}
+                          className="text-red-500 hover:text-red-600 font-bold text-xs flex items-center justify-center gap-1 bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                          삭제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Add/Edit Modal */}
       <AnimatePresence>
-        {isEditModalOpen && (
+        {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('employee.modal_edit_title')} 
-              onClose={() => setIsEditModalOpen(false)}
-              icon={<Edit2 size={20} className="text-primary" />}
+              title={modalMode === 'add' ? '새 직원 추가' : '직원 정보 수정'} 
+              onClose={() => setIsModalOpen(false)}
+              icon={<UserPlus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_name')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">직원명 *</label>
                   <input 
                     type="text" 
-                    defaultValue={selectedEmployee?.name}
+                    value={formData.employee_name}
+                    onChange={(e) => setFormData({ ...formData, employee_name: e.target.value })}
+                    placeholder="직원 이름"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_role')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">직원코드 *</label>
+                  <input 
+                    type="text" 
+                    value={formData.employee_code}
+                    onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
+                    placeholder="EMP001"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">이메일 *</label>
+                  <input 
+                    type="email" 
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="이메일 주소"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">역할</label>
                   <select 
-                    defaultValue={selectedEmployee?.role}
+                    value={formData.role_id || ''}
+                    onChange={(e) => setFormData({ ...formData, role_id: e.target.value || undefined })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   >
-                    <option value="사장">{t('employee.role_ceo')}</option>
-                    <option value="매니저">{t('employee.role_manager')}</option>
-                    <option value="직원">{t('employee.role_staff')}</option>
-                    <option value="알바">{t('employee.role_part_time')}</option>
+                    <option value="">역할 선택</option>
+                    {roles.map((role) => (
+                      <option key={role.role_id} value={role.role_id}>
+                        {role.role_name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_email')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">전화번호</label>
                   <input 
-                    type="email" 
-                    defaultValue={selectedEmployee?.email}
+                    type="text" 
+                    value={formData.phone || ''}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="010-1234-5678"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_phone')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">입사일</label>
                   <input 
-                    type="text" 
-                    defaultValue={selectedEmployee?.phone}
+                    type="date" 
+                    value={formData.hire_date || ''}
+                    onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('employee.form_address')}</label>
-                  <input 
-                    type="text" 
-                    defaultValue={selectedEmployee?.address}
+                  <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                  <select 
+                    value={formData.status || '재직중'}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  >
+                    <option value="재직중">재직중</option>
+                    <option value="휴직">휴직</option>
+                    <option value="퇴직">퇴직</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
+                  <textarea 
+                    value={formData.remarks || ''}
+                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                    placeholder="특이사항 입력"
+                    rows={3}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
                 </div>
 
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsEditModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsModalOpen(false)}
+                    disabled={isMutating}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
                   >
-                    {t('common.cancel')}
+                    취소
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                    disabled={isMutating}
+                    className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                   >
-                    {t('common.save')}
+                    {isMutating ? '저장 중...' : '저장'}
                   </button>
                 </div>
               </form>

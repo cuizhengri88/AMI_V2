@@ -1,137 +1,244 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, 
   Plus, 
-  Save, 
   Check, 
   X, 
   Lock, 
-  Eye, 
   Edit3, 
   Trash2,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Database,
+  Loader2,
+  Save,
+  LayoutGrid,
+  List as ListIcon
 } from 'lucide-react';
+import { invokeDbCommand } from '../../lib/dbClient';
 
-const initialRoles = [
-  { id: 'ROLE_OWNER', name: '사장', desc: '시스템의 모든 권한을 가지며 결제 및 정산 정보를 관리합니다.', userCount: 1 },
-  { id: 'ROLE_MANAGER', name: '매니저', desc: '매장 운영 및 직원 관리, 재고 관리 권한을 가집니다.', userCount: 2 },
-  { id: 'ROLE_STAFF', name: '직원', desc: '판매 등록 및 재고 조회 등 일반 업무 권한을 가집니다.', userCount: 5 },
-  { id: 'ROLE_PARTTIME', name: '알바', desc: '제한된 판매 등록 및 조회 권한만 가집니다.', userCount: 3 },
-];
+type Role = {
+  role_id: string;
+  role_name: string;
+  role_desc: string;
+  user_count: number;
+};
 
-const defaultModules = [
-  '대시보드', '매출 통계', '상품 관리', '재고 관리', '구매 관리', '회원 관리', '직원 관리', '시스템 관리'
-];
+type Permission = {
+  id: number;
+  role_id: string;
+  menu_id: number;
+  menu_name_ko: string;
+  menu_name_en: string;
+  menu_name_zh: string;
+  can_read: boolean;
+  can_write: boolean;
+  can_delete: boolean;
+};
 
-const initialPermissions: Record<string, any[]> = {
-  ROLE_OWNER: defaultModules.map(m => ({ module: m, read: true, write: true, delete: true })),
-  ROLE_MANAGER: [
-    { module: '대시보드', read: true, write: true, delete: false },
-    { module: '매출 통계', read: true, write: false, delete: false },
-    { module: '상품 관리', read: true, write: true, delete: true },
-    { module: '재고 관리', read: true, write: true, delete: true },
-    { module: '구매 관리', read: true, write: true, delete: false },
-    { module: '회원 관리', read: true, write: true, delete: false },
-    { module: '직원 관리', read: true, write: false, delete: false },
-    { module: '시스템 관리', read: false, write: false, delete: false },
-  ],
-  ROLE_STAFF: [
-    { module: '대시보드', read: true, write: false, delete: false },
-    { module: '매출 통계', read: false, write: false, delete: false },
-    { module: '상품 관리', read: true, write: false, delete: false },
-    { module: '재고 관리', read: true, write: true, delete: false },
-    { module: '구매 관리', read: false, write: false, delete: false },
-    { module: '회원 관리', read: true, write: false, delete: false },
-    { module: '직원 관리', read: false, write: false, delete: false },
-    { module: '시스템 관리', read: false, write: false, delete: false },
-  ],
-  ROLE_PARTTIME: [
-    { module: '대시보드', read: true, write: false, delete: false },
-    { module: '매출 통계', read: false, write: false, delete: false },
-    { module: '상품 관리', read: true, write: false, delete: false },
-    { module: '재고 관리', read: false, write: false, delete: false },
-    { module: '구매 관리', read: false, write: false, delete: false },
-    { module: '회원 관리', read: false, write: false, delete: false },
-    { module: '직원 관리', read: false, write: false, delete: false },
-    { module: '시스템 관리', read: false, write: false, delete: false },
-  ],
+type MenuNode = {
+  id: number;
+  parent_id: number | null;
+  menu_name_ko: string;
+  children: MenuNode[];
+  permission?: Permission;
+};
+
+type FormData = {
+  role_id: string;
+  role_name: string;
+  role_desc: string;
 };
 
 export default function RoleManagementPage() {
-  const [roles, setRoles] = useState(initialRoles);
-  const [selectedRole, setSelectedRole] = useState('ROLE_OWNER');
-  const [rolePermissions, setRolePermissions] = useState(initialPermissions);
-  
-  // Modal State
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string>('');
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [menuTree, setMenuTree] = useState<MenuNode[]>([]);
+  const [expandedIds, setExpandedIds] = useState<number[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [formData, setFormData] = useState({ id: '', name: '', desc: '' });
+  const [formData, setFormData] = useState<FormData>({ role_id: '', role_name: '', role_desc: '' });
+  const [permissionChanges, setPermissionChanges] = useState<Map<number, Permission>>(new Map());
 
-  const togglePermission = (module: string, type: 'read' | 'write' | 'delete') => {
-    setRolePermissions(prev => ({
-      ...prev,
-      [selectedRole]: prev[selectedRole].map(p => 
-        p.module === module ? { ...p, [type]: !p[type] } : p
-      )
-    }));
+  const loadRoles = async () => {
+    try {
+      setIsLoading(true);
+      const result = await invokeDbCommand<{ success: boolean; roles: Role[] }>('get_role_management_data');
+      setRoles(result.roles || []);
+      if (result.roles && result.roles.length > 0) {
+        setSelectedRole(result.roles[0].role_id);
+      }
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '권한 데이터를 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const loadPermissions = async (roleId: string) => {
+    try {
+      const result = await invokeDbCommand<{ success: boolean; permissions: Permission[] }>('get_role_menu_permissions', {
+        role_id: roleId,
+      });
+      const perms = result.permissions || [];
+      setPermissions(perms);
+      setPermissionChanges(new Map());
+      buildMenuTree(perms);
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '권한별 메뉴를 불러오지 못했습니다.');
+    }
+  };
+
+  const buildMenuTree = (perms: Permission[]) => {
+    const permMap = new Map(perms.map(p => [p.menu_id, p]));
+    const roots: MenuNode[] = [];
+    const nodeMap = new Map<number, MenuNode>();
+
+    perms.forEach(p => {
+      if (!nodeMap.has(p.menu_id)) {
+        nodeMap.set(p.menu_id, {
+          id: p.menu_id,
+          parent_id: null,
+          menu_name_ko: p.menu_name_ko,
+          children: [],
+          permission: p,
+        });
+      }
+    });
+
+    nodeMap.forEach((node, id) => {
+      const perm = permMap.get(id);
+      if (perm?.menu_id === 100 || perm?.menu_id === 200 || perm?.menu_id === 300 || perm?.menu_id === 6) {
+        roots.push(node);
+      }
+    });
+
+    perms.forEach(p => {
+      if ([1, 4, 2, 31, 32, 5, 11, 7, 8, 9, 10].includes(p.menu_id)) {
+        const node = nodeMap.get(p.menu_id);
+        if (node) {
+          const parentId = [1, 4].includes(p.menu_id) ? 100 : [2, 31, 32].includes(p.menu_id) ? 200 : [5, 11].includes(p.menu_id) ? 300 : 6;
+          const parent = nodeMap.get(parentId);
+          if (parent) {
+            parent.children.push(node);
+            node.parent_id = parentId;
+          }
+        }
+      }
+    });
+
+    roots.sort((a, b) => a.id - b.id);
+    roots.forEach(r => r.children.sort((a, b) => a.id - b.id));
+    setMenuTree(roots);
+    setExpandedIds(roots.map(r => r.id));
+  };
+
+  useEffect(() => {
+    loadRoles();
+  }, []);
+
+  useEffect(() => {
+    if (selectedRole) {
+      loadPermissions(selectedRole);
+    }
+  }, [selectedRole]);
 
   const handleOpenAddModal = () => {
     setModalMode('add');
-    setFormData({ id: '', name: '', desc: '' });
+    setFormData({ role_id: '', role_name: '', role_desc: '' });
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = (role: any) => {
+  const handleOpenEditModal = (role: Role) => {
     setModalMode('edit');
-    setFormData({ id: role.id, name: role.name, desc: role.desc });
+    setFormData({ role_id: role.role_id, role_name: role.role_name, role_desc: role.role_desc });
     setIsModalOpen(true);
   };
 
-  const handleSaveRole = () => {
-    if (!formData.id || !formData.name) {
+  const handleSaveRole = async () => {
+    if (!formData.role_id || !formData.role_name) {
       alert('역할 ID와 이름을 입력해주세요.');
       return;
     }
 
-    if (modalMode === 'add') {
-      if (roles.find(r => r.id === formData.id)) {
-        alert('이미 존재하는 역할 ID입니다.');
-        return;
-      }
-      const newRole = { ...formData, userCount: 0 };
-      setRoles([...roles, newRole]);
-      setRolePermissions({
-        ...rolePermissions,
-        [formData.id]: defaultModules.map(m => ({ module: m, read: false, write: false, delete: false }))
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('upsert_role_management', {
+        role: {
+          role_id: formData.role_id.toUpperCase(),
+          role_name: formData.role_name,
+          role_desc: formData.role_desc,
+          user_count: modalMode === 'add' ? 0 : roles.find(r => r.role_id === formData.role_id)?.user_count || 0,
+        },
       });
-      setSelectedRole(formData.id);
-    } else {
-      setRoles(roles.map(r => r.id === formData.id ? { ...r, name: formData.name, desc: formData.desc } : r));
+      await loadRoles();
+      setIsModalOpen(false);
+      alert(modalMode === 'add' ? '역할이 추가되었습니다.' : '역할이 수정되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '역할 저장에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
     }
-    setIsModalOpen(false);
   };
 
-  const handleDeleteRole = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (id === 'ROLE_OWNER') {
-      alert('사장 역할은 삭제할 수 없습니다.');
+  const handleDeleteRole = async (roleId: string) => {
+    if (!window.confirm('정말 이 역할을 삭제하시겠습니까?')) return;
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('delete_role_management', { role_id: roleId });
+      await loadRoles();
+      alert('역할이 삭제되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '역할 삭제에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const getPermission = (menuId: number): Permission | undefined => {
+    const changed = permissionChanges.get(menuId);
+    if (changed) return changed;
+    const original = permissions.find(p => p.menu_id === menuId);
+    return original;
+  };
+
+  const togglePermission = (menuId: number, type: 'can_read' | 'can_write' | 'can_delete') => {
+    const currentPerm = getPermission(menuId);
+    if (!currentPerm) return;
+
+    const updated = { ...currentPerm, [type]: !currentPerm[type] };
+    setPermissionChanges(new Map(permissionChanges.set(menuId, updated)));
+  };
+
+  const handleSavePermissions = async () => {
+    if (permissionChanges.size === 0) {
+      alert('변경된 권한이 없습니다.');
       return;
     }
-    if (window.confirm('정말 이 역할을 삭제하시겠습니까?')) {
-      const newRoles = roles.filter(r => r.id !== id);
-      setRoles(newRoles);
-      if (selectedRole === id) {
-        setSelectedRole(newRoles[0]?.id || '');
+
+    try {
+      setIsMutating(true);
+      for (const perm of permissionChanges.values()) {
+        await invokeDbCommand('upsert_role_menu_permission', { permission: perm });
       }
-      const newPermissions = { ...rolePermissions };
-      delete newPermissions[id];
-      setRolePermissions(newPermissions);
+      await loadPermissions(selectedRole);
+      alert('권한이 저장되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '권한 저장에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
     }
   };
 
-  const currentPermissions = rolePermissions[selectedRole] || [];
+  const toggleExpand = (id: number) => {
+    setExpandedIds(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
+  };
+
+  const isDbBusy = isLoading || isMutating;
 
   return (
     <motion.div 
@@ -139,6 +246,15 @@ export default function RoleManagementPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
+      {isDbBusy && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-semibold text-slate-700">Loading...</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">권한 관리</h1>
@@ -147,18 +263,20 @@ export default function RoleManagementPage() {
         
         <div className="flex gap-2">
           <button 
+            onClick={loadRoles}
+            disabled={isDbBusy}
+            className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+          >
+            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
+            {isLoading ? '불러오는 중...' : 'DB 새로고침'}
+          </button>
+          <button 
             onClick={handleOpenAddModal}
-            className="bg-white border border-slate-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95"
+            disabled={isDbBusy}
+            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             <Plus size={18} />
             역할 추가
-          </button>
-          <button 
-            onClick={() => alert('권한 설정이 저장되었습니다.')}
-            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"
-          >
-            <Save size={18} />
-            변경사항 저장
           </button>
         </div>
       </div>
@@ -176,16 +294,16 @@ export default function RoleManagementPage() {
             <div className="p-2 space-y-1">
               {roles.map((role) => (
                 <button
-                  key={role.id}
-                  onClick={() => setSelectedRole(role.id)}
+                  key={role.role_id}
+                  onClick={() => setSelectedRole(role.role_id)}
                   className={`w-full text-left p-3 rounded-lg transition-all group ${
-                    selectedRole === role.id 
+                    selectedRole === role.role_id 
                       ? 'bg-primary/10 border-primary/20 border text-primary shadow-sm' 
                       : 'hover:bg-slate-50 text-slate-600 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-bold">{role.name}</span>
+                    <span className="text-sm font-bold">{role.role_name}</span>
                     <div className="flex items-center gap-1">
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleOpenEditModal(role); }}
@@ -194,18 +312,18 @@ export default function RoleManagementPage() {
                         <Edit3 size={12} />
                       </button>
                       <button 
-                        onClick={(e) => handleDeleteRole(role.id, e)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteRole(role.role_id); }}
                         className="p-1 hover:bg-white rounded text-slate-400 hover:text-red-500 transition-colors"
                       >
                         <Trash2 size={12} />
                       </button>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full group-hover:bg-white transition-colors">
-                        {role.userCount}명
+                        {role.user_count}명
                       </span>
                     </div>
                   </div>
-                  <div className="text-xs opacity-70 truncate">{role.id}</div>
-                  <div className="mt-2 text-[11px] opacity-60 leading-relaxed">{role.desc}</div>
+                  <div className="text-xs opacity-70 truncate">{role.role_id}</div>
+                  <div className="mt-2 text-[11px] opacity-60 leading-relaxed">{role.role_desc}</div>
                 </button>
               ))}
             </div>
@@ -223,60 +341,52 @@ export default function RoleManagementPage() {
                 </h3>
                 <span className="text-xs text-slate-400 font-medium">| {selectedRole}</span>
               </div>
+              <button
+                onClick={handleSavePermissions}
+                disabled={isMutating || permissionChanges.size === 0}
+                className="bg-primary hover:bg-primary/90 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Save size={14} />
+                저장
+              </button>
             </div>
 
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">모듈/메뉴</th>
-                  <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">조회 (Read)</th>
-                  <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">저장 (Write)</th>
-                  <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">삭제 (Delete)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {currentPermissions.map((perm) => (
-                  <tr key={perm.module} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        <ChevronRight size={14} className="text-slate-300" />
-                        <span className="text-sm font-bold text-slate-700">{perm.module}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <PermissionToggle 
-                        active={perm.read} 
-                        onClick={() => togglePermission(perm.module, 'read')} 
-                      />
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <PermissionToggle 
-                        active={perm.write} 
-                        onClick={() => togglePermission(perm.module, 'write')} 
-                      />
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <PermissionToggle 
-                        active={perm.delete} 
-                        onClick={() => togglePermission(perm.module, 'delete')} 
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            <div className="p-6 bg-slate-50 border-t border-slate-100">
-              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-lg">
-                <AlertTriangle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-bold text-amber-800">주의사항</p>
-                  <p className="text-[11px] text-amber-700 mt-1 leading-relaxed">
-                    권한 변경 시 해당 역할을 가진 모든 사용자의 접근 권한이 즉시 변경됩니다. 
-                    시스템 관리자 권한은 최소한의 인원에게만 부여하는 것을 권장합니다.
-                  </p>
-                </div>
-              </div>
+            <div className="p-4 space-y-1">
+              {menuTree.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-sm">권한 데이터가 없습니다.</div>
+              ) : (
+                menuTree.map(menu => (
+                  <React.Fragment key={menu.id}>
+                    <MenuTreeItem
+                      menu={menu}
+                      expanded={expandedIds.includes(menu.id)}
+                      onToggleExpand={toggleExpand}
+                      onTogglePermission={togglePermission}
+                      getPermission={getPermission}
+                      isMainMenu
+                    />
+                    <AnimatePresence>
+                      {expandedIds.includes(menu.id) && menu.children.map(child => (
+                        <motion.div
+                          key={child.id}
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                        >
+                          <MenuTreeItem
+                            menu={child}
+                            expanded={expandedIds.includes(child.id)}
+                            onToggleExpand={toggleExpand}
+                            onTogglePermission={togglePermission}
+                            getPermission={getPermission}
+                            isSubMenu
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </React.Fragment>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -304,8 +414,8 @@ export default function RoleManagementPage() {
                 <input 
                   type="text" 
                   disabled={modalMode === 'edit'}
-                  value={formData.id}
-                  onChange={e => setFormData({ ...formData, id: e.target.value.toUpperCase() })}
+                  value={formData.role_id}
+                  onChange={e => setFormData({ ...formData, role_id: e.target.value.toUpperCase() })}
                   placeholder="예: ROLE_GUEST"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
                 />
@@ -314,8 +424,8 @@ export default function RoleManagementPage() {
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">역할 이름 (Name)</label>
                 <input 
                   type="text" 
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  value={formData.role_name}
+                  onChange={e => setFormData({ ...formData, role_name: e.target.value })}
                   placeholder="예: 게스트"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
@@ -323,8 +433,8 @@ export default function RoleManagementPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">설명 (Description)</label>
                 <textarea 
-                  value={formData.desc}
-                  onChange={e => setFormData({ ...formData, desc: e.target.value })}
+                  value={formData.role_desc}
+                  onChange={e => setFormData({ ...formData, role_desc: e.target.value })}
                   placeholder="역할에 대한 설명을 입력하세요."
                   rows={3}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
@@ -340,7 +450,8 @@ export default function RoleManagementPage() {
               </button>
               <button 
                 onClick={handleSaveRole}
-                className="flex-1 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors"
+                disabled={isMutating}
+                className="flex-1 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 저장하기
               </button>
@@ -352,38 +463,69 @@ export default function RoleManagementPage() {
   );
 }
 
-function PermissionToggle({ active, onClick }: { active: boolean; onClick: () => void }) {
+function MenuTreeItem({ menu, expanded, onToggleExpand, onTogglePermission, getPermission, isMainMenu, isSubMenu }: any) {
+  const perm = getPermission(menu.id);
+  const hasChildren = menu.children && menu.children.length > 0;
+
+  return (
+    <div className={isSubMenu ? 'pl-8' : ''}>
+      <div className={`flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors ${isSubMenu ? 'bg-slate-50/50' : ''}`}>
+        {hasChildren ? (
+          <button onClick={() => onToggleExpand(menu.id)} className="p-1 hover:bg-slate-200 rounded transition-colors">
+            {expanded ? (
+              <ChevronDown size={16} className="text-slate-600" />
+            ) : (
+              <ChevronRight size={16} className="text-slate-400" />
+            )}
+          </button>
+        ) : (
+          <div className="w-6" />
+        )}
+        
+        <div className="size-8 rounded bg-slate-100 flex items-center justify-center text-primary flex-shrink-0">
+          {isMainMenu ? <LayoutGrid size={16} /> : <ListIcon size={14} />}
+        </div>
+
+        <span className={`text-sm font-bold flex-1 ${isSubMenu ? 'text-slate-700' : 'text-slate-900'}`}>
+          {menu.menu_name_ko}
+        </span>
+
+        {perm && (
+          <div className="flex items-center gap-2">
+            <PermissionCheckbox 
+              active={perm.can_read} 
+              onClick={() => onTogglePermission(menu.id, 'can_read')}
+              title="조회"
+            />
+            <PermissionCheckbox 
+              active={perm.can_write} 
+              onClick={() => onTogglePermission(menu.id, 'can_write')}
+              title="저장"
+            />
+            <PermissionCheckbox 
+              active={perm.can_delete} 
+              onClick={() => onTogglePermission(menu.id, 'can_delete')}
+              title="삭제"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PermissionCheckbox({ active, onClick, title }: { active: boolean; onClick: () => void; title: string }) {
   return (
     <button 
       onClick={onClick}
-      className={`inline-flex items-center justify-center size-8 rounded-lg transition-all ${
+      title={title}
+      className={`inline-flex items-center justify-center size-7 rounded transition-all ${
         active 
           ? 'bg-emerald-100 text-emerald-600 border border-emerald-200 shadow-sm' 
           : 'bg-slate-100 text-slate-300 border border-slate-200'
       }`}
     >
-      {active ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
+      {active ? <Check size={14} strokeWidth={3} /> : <X size={14} strokeWidth={3} />}
     </button>
-  );
-}
-
-function AlertTriangle(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
   );
 }

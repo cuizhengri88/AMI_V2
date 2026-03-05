@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { 
   Database, 
   ShoppingBag,
@@ -15,67 +15,217 @@ import {
   ChevronRight,
   ChevronDown,
   LayoutGrid,
-  Globe
+  Globe,
+  type LucideIcon
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
+import { invokeDbCommand } from '../../lib/dbClient';
 
-const menuItems = [
+type LangKey = 'ko' | 'en' | 'zh';
+
+type MenuNames = {
+  ko: string;
+  en: string;
+  zh: string;
+};
+
+type MenuRow = {
+  id: number;
+  parent_id: number | null;
+  menu_type: string;
+  path: string;
+  order: number;
+  status: string;
+  names: MenuNames;
+};
+
+type SidebarMenuItem = {
+  id: number;
+  path: string;
+  order: number;
+  status: string;
+  names: MenuNames;
+  icon: LucideIcon;
+  children: SidebarMenuItem[];
+};
+
+const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
   { 
     id: 100, 
-    icon: TrendingUp, 
+    icon: TrendingUp,
+    order: 1,
+    status: '사용중',
     names: { ko: '매출 관리', en: 'Sales Management', zh: '销售管理' },
     path: '/sales', 
     children: [
-      { id: 1, icon: TrendingUp, names: { ko: '매출 통계', en: 'Sales Stats', zh: '销售统计' }, path: '/sales-stats' },
-      { id: 4, icon: ShoppingCart, names: { ko: '구매 관리', en: 'Purchase Management', zh: '购买管理' }, path: '/purchases' },
+      { id: 1, icon: TrendingUp, order: 1, status: '사용중', names: { ko: '매출 통계', en: 'Sales Stats', zh: '销售统计' }, path: '/sales-stats', children: [] },
+      { id: 4, icon: ShoppingCart, order: 2, status: '사용중', names: { ko: '구매 관리', en: 'Purchase Management', zh: '购买管理' }, path: '/purchases', children: [] },
     ] 
   },
   { 
     id: 200, 
-    icon: Package, 
+    icon: Package,
+    order: 2,
+    status: '사용중',
     names: { ko: '상품/재고 관리', en: 'Product/Stock Management', zh: '产品/库存管理' },
     path: '/product-stock', 
     children: [
-      { id: 2, icon: ShoppingBag, names: { ko: '상품 관리', en: 'Product Management', zh: '产品管理' }, path: '/products' },
-      { id: 31, icon: Package, names: { ko: '재고 관리', en: 'Stock Management', zh: '库存管理' }, path: '/inventory' },
-      { id: 32, icon: HistoryIcon, names: { ko: '재고 이력', en: 'Stock History', zh: '库存历史' }, path: '/inventory/history' },
+      { id: 2, icon: ShoppingBag, order: 1, status: '사용중', names: { ko: '상품 관리', en: 'Product Management', zh: '产品管理' }, path: '/products', children: [] },
+      { id: 31, icon: Package, order: 2, status: '사용중', names: { ko: '재고 관리', en: 'Stock Management', zh: '库存管理' }, path: '/inventory', children: [] },
+      { id: 32, icon: HistoryIcon, order: 3, status: '사용중', names: { ko: '재고 이력', en: 'Stock History', zh: '库存历史' }, path: '/inventory/history', children: [] },
     ] 
   },
   { 
     id: 300, 
-    icon: Users, 
+    icon: Users,
+    order: 3,
+    status: '사용중',
     names: { ko: '인사 관리', en: 'HR Management', zh: '人事管理' },
     path: '/hr', 
     children: [
-      { id: 5, icon: Users, names: { ko: '사용자 관리', en: 'User Management', zh: '用户管理' }, path: '/users' },
-      { id: 11, icon: Briefcase, names: { ko: '직원 관리', en: 'Employee Management', zh: '员工管理' }, path: '/employees' },
+      { id: 5, icon: Users, order: 1, status: '사용중', names: { ko: '사용자 관리', en: 'User Management', zh: '用户管理' }, path: '/users', children: [] },
+      { id: 11, icon: Briefcase, order: 2, status: '사용중', names: { ko: '직원 관리', en: 'Employee Management', zh: '员工管理' }, path: '/employees', children: [] },
     ] 
   },
   { 
     id: 6, 
-    icon: Settings, 
+    icon: Settings,
+    order: 4,
+    status: '사용중',
     names: { ko: '시스템 관리', en: 'System Management', zh: '系统管理' },
     path: '/system', 
     children: [
-      { id: 7, icon: LayoutGrid, names: { ko: '메뉴 관리', en: 'Menu Management', zh: '菜单管理' }, path: '/system/menu' },
-      { id: 8, icon: Database, names: { ko: '코드 관리', en: 'Code Management', zh: '代码管理' }, path: '/system/code' },
-      { id: 9, icon: Shield, names: { ko: '권한 관리', en: 'Role Management', zh: '权限管理' }, path: '/system/role' },
-      { id: 10, icon: Monitor, names: { ko: '시스템 설정', en: 'System Settings', zh: '系统设置' }, path: '/system/settings' },
+      { id: 7, icon: LayoutGrid, order: 1, status: '사용중', names: { ko: '메뉴 관리', en: 'Menu Management', zh: '菜单管理' }, path: '/system/menu', children: [] },
+      { id: 8, icon: Database, order: 2, status: '사용중', names: { ko: '코드 관리', en: 'Code Management', zh: '代码管理' }, path: '/system/code', children: [] },
+      { id: 9, icon: Shield, order: 3, status: '사용중', names: { ko: '권한 관리', en: 'Role Management', zh: '权限管理' }, path: '/system/role', children: [] },
+      { id: 10, icon: Monitor, order: 4, status: '사용중', names: { ko: '시스템 설정', en: 'System Settings', zh: '系统设置' }, path: '/system/settings', children: [] },
     ] 
   },
 ];
 
+const STATUS_ACTIVE = '사용중';
+
+function normalizeType(value: string): 'MAIN' | 'SUB' {
+  return value?.toUpperCase() === 'SUB' ? 'SUB' : 'MAIN';
+}
+
+function getIconByPath(path: string): LucideIcon {
+  if (path === '/sales-stats' || path.startsWith('/sales')) return TrendingUp;
+  if (path.startsWith('/purchases')) return ShoppingCart;
+  if (path.startsWith('/products')) return ShoppingBag;
+  if (path.startsWith('/inventory/history')) return HistoryIcon;
+  if (path.startsWith('/inventory')) return Package;
+  if (path.startsWith('/users')) return Users;
+  if (path.startsWith('/employees')) return Briefcase;
+  if (path.startsWith('/system/menu')) return LayoutGrid;
+  if (path.startsWith('/system/code')) return Database;
+  if (path.startsWith('/system/role')) return Shield;
+  if (path.startsWith('/system/settings')) return Monitor;
+  if (path.startsWith('/system')) return Settings;
+  return Database;
+}
+
+function toSidebarTree(rows: MenuRow[]): SidebarMenuItem[] {
+  const activeRows = rows.filter((row) => (row.status || '').trim() === STATUS_ACTIVE);
+  const map = new Map<number, SidebarMenuItem>();
+
+  activeRows.forEach((row) => {
+    map.set(row.id, {
+      id: row.id,
+      path: row.path,
+      order: Number(row.order) || 1,
+      status: row.status || STATUS_ACTIVE,
+      names: {
+        ko: row.names?.ko || '',
+        en: row.names?.en || '',
+        zh: row.names?.zh || '',
+      },
+      icon: getIconByPath(row.path || ''),
+      children: [],
+    });
+  });
+
+  const roots: SidebarMenuItem[] = [];
+  activeRows.forEach((row) => {
+    const node = map.get(row.id);
+    if (!node) return;
+    const isSub = normalizeType(row.menu_type) === 'SUB';
+    const parent = row.parent_id ? map.get(row.parent_id) : null;
+    if (isSub && parent) {
+      parent.children.push(node);
+      return;
+    }
+    roots.push(node);
+  });
+
+  roots.sort((a, b) => (a.order - b.order) || (a.id - b.id));
+  roots.forEach((root) => {
+    root.children.sort((a, b) => (a.order - b.order) || (a.id - b.id));
+  });
+  return roots;
+}
+
 export default function Sidebar() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [expandedIds, setExpandedIds] = useState<number[]>([100, 200, 300, 6]); // Default expanded categories
+  const [menuItems, setMenuItems] = useState<SidebarMenuItem[]>(FALLBACK_MENU_ITEMS);
+  const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const location = useLocation();
+
+  const defaultExpandedIds = useMemo(
+    () => menuItems.filter((item) => item.children.length > 0).map((item) => item.id),
+    [menuItems],
+  );
+
+  const loadSidebarMenus = useCallback(async () => {
+    try {
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        menus: MenuRow[];
+      }>('get_menu_management_data');
+
+      const dbMenus = toSidebarTree(result.menus || []);
+      if (dbMenus.length > 0) {
+        setMenuItems(dbMenus);
+      }
+    } catch (error) {
+      console.error('Failed to load sidebar menus from DB:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const safeLoad = async () => {
+      if (!isMounted) return;
+      await loadSidebarMenus();
+    };
+    safeLoad();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadSidebarMenus]);
+
+  useEffect(() => {
+    const handleMenuUpdated = () => {
+      loadSidebarMenus();
+    };
+    window.addEventListener('menu-management-updated', handleMenuUpdated);
+    return () => {
+      window.removeEventListener('menu-management-updated', handleMenuUpdated);
+    };
+  }, [loadSidebarMenus]);
+
+  useEffect(() => {
+    setExpandedIds(defaultExpandedIds);
+  }, [defaultExpandedIds]);
   
-  const getMenuName = (item: any) => {
-    const lang = i18n.language as 'ko' | 'en' | 'zh';
+  const getMenuName = (item: { names: MenuNames }) => {
+    const lang = i18n.language as LangKey;
     return item.names[lang] || item.names['ko'] || 'Untitled';
   };
   

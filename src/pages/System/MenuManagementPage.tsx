@@ -206,7 +206,8 @@ export default function MenuManagementPage() {
         setExpandedIds((prev) => (prev.includes(payload.parent_id!) ? prev : [...prev, payload.parent_id!]));
       }
       setIsModalOpen(false);
-      alert(result.message);
+      window.dispatchEvent(new Event('menu-management-updated'));
+      alert(formData.id ? '메뉴 수정이 완료되었습니다.' : '메뉴 추가가 완료되었습니다.');
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || '메뉴 저장에 실패했습니다.');
     } finally {
@@ -222,6 +223,7 @@ export default function MenuManagementPage() {
         menu_id: menuId,
       });
       await loadMenus();
+      window.dispatchEvent(new Event('menu-management-updated'));
       alert(result.message);
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || '메뉴 삭제에 실패했습니다.');
@@ -236,7 +238,7 @@ export default function MenuManagementPage() {
         <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
             <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">DB 처리 중...</span>
+            <span className="text-sm font-semibold text-slate-700">Loading...</span>
           </div>
         </div>
       )}

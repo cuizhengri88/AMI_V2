@@ -1,61 +1,109 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, MoreVertical, Edit2, X, GripHorizontal } from 'lucide-react';
+import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripHorizontal, Trash2, Loader2, Database } from 'lucide-react';
+import { invokeDbCommand } from '../../lib/dbClient';
 
-const members = [
-  { 
-    id: 'MEM-001', 
-    name: '김철수', 
-    email: 'chulsoo@example.com', 
-    address: '서울시 강남구 테헤란로 123', 
-    phone: '010-1234-5678', 
-    remarks: '우수 고객, 정기 구매자',
-    avatar: 'https://picsum.photos/seed/m1/100/100'
-  },
-  { 
-    id: 'MEM-002', 
-    name: '이영희', 
-    email: 'younghee@example.com', 
-    address: '경기도 성남시 분당구 판교역로 45', 
-    phone: '010-9876-5432', 
-    remarks: '신규 가입, 환불 이력 1건',
-    avatar: 'https://picsum.photos/seed/m2/100/100'
-  },
-  { 
-    id: 'MEM-003', 
-    name: '박민준', 
-    email: 'minjun@example.com', 
-    address: '부산시 해운대구 마린시티 78', 
-    phone: '010-5555-4444', 
-    remarks: 'VIP 고객, 대량 주문 선호',
-    avatar: 'https://picsum.photos/seed/m3/100/100'
-  },
-  { 
-    id: 'MEM-004', 
-    name: '최지우', 
-    email: 'jiwoo@example.com', 
-    address: '대구시 수성구 달구벌대로 99', 
-    phone: '010-1111-2222', 
-    remarks: '이벤트 참여 활발',
-    avatar: 'https://picsum.photos/seed/m4/100/100'
-  },
-];
+type User = {
+  user_id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  remarks?: string;
+};
+
+type FormData = {
+  user_id?: number;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  remarks?: string;
+};
 
 export default function UserManagementPage() {
   const { t } = useTranslation();
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [formData, setFormData] = useState<FormData>({ name: '', email: '' });
 
-  const handleEditClick = (member: any) => {
-    setSelectedMember(member);
-    setIsEditModalOpen(true);
+  const loadUsers = async () => {
+    try {
+      setIsLoading(true);
+      const result = await invokeDbCommand<{ success: boolean; users: User[] }>('get_user_management_data');
+      setUsers(result.users || []);
+      setFilteredUsers(result.users || []);
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '회원 데이터를 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    const filtered = users.filter(user =>
+      user.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchText.toLowerCase())
+    );
+    setFilteredUsers(filtered);
+  }, [searchText, users]);
+
+  const handleAddClick = () => {
+    setModalMode('add');
+    setFormData({ name: '', email: '' });
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (user: User) => {
+    setModalMode('edit');
+    setFormData(user);
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert(t('user.modal_edit_title') + ' ' + t('common.save'));
-    setIsEditModalOpen(false);
+    if (!formData.name || !formData.email) {
+      alert('이름과 이메일은 필수입니다.');
+      return;
+    }
+
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('upsert_user_management', {
+        user: formData,
+      });
+      await loadUsers();
+      setIsModalOpen(false);
+      alert(modalMode === 'add' ? '회원이 추가되었습니다.' : '회원이 수정되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '저장에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleDelete = async (userId: number) => {
+    if (!window.confirm('정말 이 회원을 삭제하시겠습니까?')) return;
+    try {
+      setIsMutating(true);
+      await invokeDbCommand('delete_user_management', { user_id: userId });
+      await loadUsers();
+      alert('회원이 삭제되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '삭제에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   return (
@@ -64,16 +112,39 @@ export default function UserManagementPage() {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.4 }}
     >
+      {isLoading && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-semibold text-slate-700">로딩 중...</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t('user.title')}</h1>
           <p className="text-slate-500 mt-1">{t('user.description')}</p>
         </div>
         
-        <button className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95">
-          <UserPlus size={18} />
-          {t('user.add_button')}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={loadUsers}
+            disabled={isLoading}
+            className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+          >
+            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
+            {isLoading ? '불러오는 중...' : 'DB 새로고침'}
+          </button>
+          <button 
+            onClick={handleAddClick}
+            disabled={isLoading}
+            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+          >
+            <UserPlus size={18} />
+            {t('user.add_button')}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 grid-shadow overflow-hidden">
@@ -82,18 +153,20 @@ export default function UserManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder={t('user.search_placeholder')} 
+              placeholder={t('user.search_placeholder')}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
-          <div className="text-xs text-slate-400 font-medium">{t('user.total_count', { count: members.length })}</div>
+          <div className="text-xs text-slate-400 font-medium">{t('user.total_count', { count: filteredUsers.length })}</div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_id')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">ID</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_name')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_email')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_address')}</th>
@@ -103,101 +176,127 @@ export default function UserManagementPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {members.map((member) => (
-                <tr key={member.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-4 px-6 text-sm font-mono font-bold text-slate-500">{member.id}</td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <img src={member.avatar} alt={member.name} className="size-8 rounded-full object-cover" referrerPolicy="no-referrer" />
-                      <span className="text-sm font-bold text-slate-900">{member.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-slate-400" />
-                      {member.email}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600 max-w-[200px] truncate">
-                    <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-slate-400 flex-shrink-0" />
-                      {member.address}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-slate-400" />
-                      {member.phone}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <FileText size={14} className="text-slate-400" />
-                      {member.remarks}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-center">
-                    <button 
-                      onClick={() => handleEditClick(member)}
-                      className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 mx-auto bg-primary/5 px-2 py-1 rounded transition-colors"
-                    >
-                      <Edit2 size={14} />
-                      {t('common.edit')}
-                    </button>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400 text-sm">
+                    회원 데이터가 없습니다.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredUsers.map((user) => (
+                  <tr key={user.user_id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-sm font-mono font-bold text-slate-500">{user.user_id}</td>
+                    <td className="py-4 px-6">
+                      <span className="text-sm font-bold text-slate-900">{user.name}</span>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} className="text-slate-400" />
+                        {user.email}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600 max-w-[200px] truncate">
+                      <div className="flex items-center gap-2">
+                        <MapPin size={14} className="text-slate-400 flex-shrink-0" />
+                        {user.address || '-'}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Phone size={14} className="text-slate-400" />
+                        {user.phone || '-'}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <FileText size={14} className="text-slate-400" />
+                        {user.remarks || '-'}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleEditClick(user)}
+                          disabled={isMutating}
+                          className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 bg-primary/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          <Edit2 size={14} />
+                          {t('common.edit')}
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(user.user_id)}
+                          disabled={isMutating}
+                          className="text-red-500 hover:text-red-600 font-bold text-xs flex items-center justify-center gap-1 bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                          삭제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Add/Edit Modal */}
       <AnimatePresence>
-        {isEditModalOpen && (
+        {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('user.modal_edit_title')} 
-              onClose={() => setIsEditModalOpen(false)}
-              icon={<Edit2 size={20} className="text-primary" />}
+              title={modalMode === 'add' ? '새 회원 추가' : '회원 정보 수정'} 
+              onClose={() => setIsModalOpen(false)}
+              icon={<UserPlus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_name')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">이름</label>
                   <input 
                     type="text" 
-                    defaultValue={selectedMember?.name}
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="회원 이름"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_email')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">이메일</label>
                   <input 
                     type="email" 
-                    defaultValue={selectedMember?.email}
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="이메일 주소"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_phone')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">전화번호</label>
                   <input 
                     type="text" 
-                    defaultValue={selectedMember?.phone}
+                    value={formData.phone || ''}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="010-1234-5678"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_address')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">주소</label>
                   <input 
                     type="text" 
-                    defaultValue={selectedMember?.address}
+                    value={formData.address || ''}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="주소"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{t('user.form_remarks')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
                   <textarea 
-                    defaultValue={selectedMember?.remarks}
+                    value={formData.remarks || ''}
+                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                    placeholder="특이사항 입력"
                     rows={3}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
@@ -206,16 +305,18 @@ export default function UserManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsEditModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsModalOpen(false)}
+                    disabled={isMutating}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
                   >
                     {t('common.cancel')}
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                    disabled={isMutating}
+                    className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                   >
-                    {t('common.save')}
+                    {isMutating ? '저장 중...' : t('common.save')}
                   </button>
                 </div>
               </form>
