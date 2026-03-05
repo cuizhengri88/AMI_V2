@@ -30,11 +30,24 @@ const sizes = ['XS', 'S', 'M', 'L', 'XL'];
 export default function ProductManagementPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<any>(null);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     alert('신규 상품이 등록되었습니다.');
     setIsNewModalOpen(false);
+  };
+
+  const handleEditClick = (product: any) => {
+    setEditProduct({ ...product });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    alert('상품 정보가 수정되었습니다.');
+    setIsEditModalOpen(false);
   };
 
   return (
@@ -164,7 +177,10 @@ export default function ProductManagementPage() {
                 </td>
                 <td className="py-4 px-6 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors">
+                    <button 
+                      onClick={() => handleEditClick(product)}
+                      className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                    >
                       <Edit2 size={14} />
                     </button>
                     <button className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
@@ -264,6 +280,112 @@ export default function ProductManagementPage() {
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
                     등록하기
+                  </button>
+                </div>
+              </form>
+            </DraggableModal>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Product Modal */}
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <DraggableModal 
+              title="상품 정보 수정" 
+              onClose={() => setIsEditModalOpen(false)}
+              icon={<Edit2 size={20} className="text-primary" />}
+            >
+              <form onSubmit={handleUpdate} className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">상품명</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={editProduct?.name}
+                      onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      placeholder="상품명을 입력하세요"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                    <select 
+                      value={editProduct?.category}
+                      onChange={(e) => setEditProduct({ ...editProduct, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    >
+                      <option>상의</option>
+                      <option>하의</option>
+                      <option>아우터</option>
+                      <option>액세서리</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">사이즈</label>
+                    <select 
+                      value={editProduct?.size}
+                      onChange={(e) => setEditProduct({ ...editProduct, size: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    >
+                      {sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">판매가 (₩)</label>
+                    <div className="relative">
+                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input 
+                        type="number" 
+                        required
+                        value={editProduct?.price}
+                        onChange={(e) => setEditProduct({ ...editProduct, price: parseInt(e.target.value) || 0 })}
+                        className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">재고 수량</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={editProduct?.stock}
+                      onChange={(e) => setEditProduct({ ...editProduct, stock: parseInt(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                    <select 
+                      value={editProduct?.status}
+                      onChange={(e) => setEditProduct({ ...editProduct, status: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    >
+                      <option value="판매중">판매중</option>
+                      <option value="재고부족">재고부족</option>
+                      <option value="품절">품절</option>
+                      <option value="판매중지">판매중지</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                  >
+                    수정 완료
                   </button>
                 </div>
               </form>

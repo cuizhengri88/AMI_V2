@@ -568,6 +568,18 @@ export default function PurchaseManagementPage() {
                     </select>
                   </div>
 
+                  {(editOrder?.status === '환불완료' || editOrder?.status === '환불진행중') && (
+                    <div className="space-y-1 col-span-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">환불 사유</label>
+                      <textarea 
+                        value={editOrder?.refundReason || ''}
+                        onChange={(e) => setEditOrder({ ...editOrder, refundReason: e.target.value })}
+                        placeholder="환불 사유를 입력하세요"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none min-h-[80px] resize-none"
+                      />
+                    </div>
+                  )}
+
                   <div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-slate-600">총 결제 금액</span>
