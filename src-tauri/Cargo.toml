@@ -1,0 +1,19 @@
+[package]
+name = "govdata"
+version = "0.1.0"
+description = "Industrial Asset Management Dashboard"
+authors = ["Enterprise Admin"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5" }
+
+[dependencies]
+tauri = { version = "1.5", features = ["shell-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

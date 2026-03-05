@@ -1,0 +1,24 @@
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/500.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/public-sans/700.css";
+@import "@fontsource/public-sans/800.css";
+@import "@fontsource/public-sans/900.css";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: #1162d4;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-[#f6f7f8] text-slate-900;
+  }
+}
+
+@layer components {
+  .grid-shadow {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  }
+}
