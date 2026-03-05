@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Rust 빌드 임시 파일 (이미지에 보이는 주범)
+src-tauri/target/
