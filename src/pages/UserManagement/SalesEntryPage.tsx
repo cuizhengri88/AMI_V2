@@ -9,7 +9,6 @@ import {
   GripHorizontal,
   X,
   Trash2,
-  MoreVertical,
   AlertCircle,
   Loader2,
 } from 'lucide-react';
@@ -70,6 +69,9 @@ type PaymentDetail = {
   couponServiceId?: number;
 };
 
+type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+type SettlementCancelType = 'PAYMENT' | 'PROCEDURE';
+
 type Settlement = {
   id: number;
   date: string;
@@ -79,8 +81,11 @@ type Settlement = {
   totalAmount: number;
   totalTime: number;
   payments: PaymentDetail[];
-  status: 'PROCESSING' | 'COMPLETED';
+  status: SettlementStatus;
   reservationId?: string;
+  cancelType?: SettlementCancelType;
+  cancelReason?: string;
+  cancelledAt?: string;
 };
 
 type ModalProps = {
@@ -116,6 +121,13 @@ function toReservationStatus(value: string): Reservation['status'] {
   if (normalized.includes('COMPLETE')) return 'COMPLETED';
   if (normalized.includes('RESERV')) return 'RESERVED';
   return 'RESERVED';
+}
+
+function toSettlementStatus(value: string): SettlementStatus {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'CANCELLED') return 'CANCELLED';
+  if (normalized === 'COMPLETED') return 'COMPLETED';
+  return 'PROCESSING';
 }
 
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {
@@ -179,6 +191,10 @@ export default function SalesEntryPage() {
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
   const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Settlement | null>(null);
+  const [cancelType, setCancelType] = useState<SettlementCancelType>('PROCEDURE');
+  const [cancelReason, setCancelReason] = useState('');
 
   const isBusy = isLoading || isMutating;
 
@@ -265,6 +281,9 @@ export default function SalesEntryPage() {
           }>;
           status: string;
           reservation_ref: string | null;
+          cancel_type: string | null;
+          cancel_reason: string | null;
+          cancelled_at: string | null;
         }>;
       }>('get_sales_settlement_data');
 
@@ -340,8 +359,14 @@ export default function SalesEntryPage() {
           amount: payment.amount,
           couponServiceId: payment.coupon_service_id ?? undefined,
         })),
-        status: settlement.status === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING',
+        status: toSettlementStatus(settlement.status),
         reservationId: settlement.reservation_ref || undefined,
+        cancelType:
+          settlement.cancel_type === 'PAYMENT' || settlement.cancel_type === 'PROCEDURE'
+            ? settlement.cancel_type
+            : undefined,
+        cancelReason: settlement.cancel_reason || undefined,
+        cancelledAt: settlement.cancelled_at || undefined,
       }));
 
       // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
@@ -636,6 +661,52 @@ export default function SalesEntryPage() {
     }
   };
 
+  const handleOpenCancelModal = (settlement: Settlement, type: SettlementCancelType) => {
+    if (settlement.status === 'CANCELLED') {
+      alert('이미 취소된 매출입니다.');
+      return;
+    }
+    if (type === 'PAYMENT' && settlement.status !== 'COMPLETED') {
+      alert('결제취소는 결제완료 상태에서만 가능합니다.');
+      return;
+    }
+    setCancelTarget(settlement);
+    setCancelType(type);
+    setCancelReason('');
+    setIsCancelModalOpen(true);
+  };
+
+  const handleCancelSettlement = async () => {
+    if (!cancelTarget) return;
+    const reason = cancelReason.trim();
+    if (!reason) {
+      alert('취소 사유를 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'cancel_sales_settlement',
+        {
+          settlement_id: cancelTarget.id,
+          cancel_type: cancelType,
+          cancel_reason: reason,
+        },
+      );
+
+      await loadData();
+      alert(result.message || '취소 처리 완료');
+      setIsCancelModalOpen(false);
+      setCancelTarget(null);
+      setCancelReason('');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '취소 처리에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -715,12 +786,30 @@ export default function SalesEntryPage() {
                 const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
                 const discount = settlement.status === 'COMPLETED' ? settlement.totalAmount - paidAmount : 0;
                 const discountPercent = settlement.totalAmount > 0 ? Math.round((discount / settlement.totalAmount) * 100) : 0;
+                const statusClass =
+                  settlement.status === 'COMPLETED'
+                    ? 'bg-emerald-100 text-emerald-600'
+                    : settlement.status === 'CANCELLED'
+                      ? 'bg-rose-100 text-rose-600'
+                      : 'bg-blue-100 text-blue-600';
+                const statusLabel =
+                  settlement.status === 'COMPLETED'
+                    ? '결제완료'
+                    : settlement.status === 'CANCELLED'
+                      ? '취소'
+                      : '작업중';
 
                 return (
                   <tr
                     key={settlement.id}
-                    onClick={() => handleOpenModal(settlement)}
-                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                    onClick={() => {
+                      if (settlement.status !== 'CANCELLED') {
+                        handleOpenModal(settlement);
+                      }
+                    }}
+                    className={`hover:bg-slate-50 transition-colors group ${
+                      settlement.status === 'CANCELLED' ? 'cursor-default' : 'cursor-pointer'
+                    }`}
                   >
                     <td className="py-4 px-6 text-xs font-bold text-slate-500">{settlement.date}</td>
                     <td className="py-4 px-6">
@@ -759,17 +848,42 @@ export default function SalesEntryPage() {
                     </td>
                     <td className="py-4 px-6">
                       <span
-                        className={`px-2 py-1 rounded-lg text-[10px] font-black ${
-                          settlement.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'
-                        }`}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}
                       >
-                        {settlement.status === 'COMPLETED' ? '결제완료' : '작업중'}
+                        {statusLabel}
                       </span>
+                      {settlement.cancelReason && (
+                        <p
+                          className="mt-1 text-[10px] text-rose-600 max-w-[180px] truncate"
+                          title={settlement.cancelReason}
+                        >
+                          사유: {settlement.cancelReason}
+                        </p>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-center">
-                      <button className="p-2 text-slate-300 group-hover:text-slate-600 transition-colors">
-                        <MoreVertical size={16} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenCancelModal(settlement, 'PAYMENT');
+                          }}
+                          disabled={settlement.status !== 'COMPLETED' || isBusy}
+                          className="px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          결제취소
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenCancelModal(settlement, 'PROCEDURE');
+                          }}
+                          disabled={settlement.status === 'CANCELLED' || isBusy}
+                          className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          시술취소
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1075,6 +1189,67 @@ export default function SalesEntryPage() {
                     className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
                   >
                     결제 완료 처리
+                  </button>
+                </div>
+              </div>
+            </DraggableModal>
+          </div>
+        )}
+
+        {isCancelModalOpen && cancelTarget && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <DraggableModal
+              title={cancelType === 'PAYMENT' ? '결제취소 처리' : '시술취소 처리'}
+              onClose={() => {
+                if (isMutating) return;
+                setIsCancelModalOpen(false);
+                setCancelTarget(null);
+                setCancelReason('');
+              }}
+              icon={<AlertCircle size={20} className="text-rose-500" />}
+            >
+              <div className="p-6 space-y-4">
+                <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-800">
+                    대상 정산: #{cancelTarget.id} / {cancelTarget.date}
+                  </p>
+                  <p className="mt-1">
+                    취소 유형: {cancelType === 'PAYMENT' ? '결제취소' : '시술취소'}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    취소 사유
+                  </label>
+                  <textarea
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                    placeholder="취소 사유를 입력하세요."
+                    rows={4}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-rose-200 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      if (isMutating) return;
+                      setIsCancelModalOpen(false);
+                      setCancelTarget(null);
+                      setCancelReason('');
+                    }}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                    disabled={isMutating}
+                  >
+                    닫기
+                  </button>
+                  <button
+                    onClick={handleCancelSettlement}
+                    className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all disabled:opacity-60"
+                    disabled={isMutating}
+                  >
+                    취소 확정
                   </button>
                 </div>
               </div>

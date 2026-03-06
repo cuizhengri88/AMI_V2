@@ -6,8 +6,11 @@ CREATE TABLE IF NOT EXISTS sales_settlement_management (
     manager_employee_id BIGINT NOT NULL REFERENCES employee_management(employee_id) ON DELETE RESTRICT,
     total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
     total_time_minutes INTEGER NOT NULL CHECK (total_time_minutes >= 0),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED', 'CANCELLED')),
     reservation_ref VARCHAR(100) NULL,
+    cancel_type VARCHAR(20) NULL CHECK (cancel_type IS NULL OR cancel_type IN ('PAYMENT', 'PROCEDURE')),
+    cancel_reason TEXT NULL,
+    cancelled_at TIMESTAMPTZ NULL,
     settlement_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

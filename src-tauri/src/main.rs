@@ -754,6 +754,15 @@ struct DeleteSalesSettlementPayload {
     settlement_id: i64,
 }
 
+#[derive(Debug, Deserialize)]
+struct CancelSalesSettlementPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    settlement_id: i64,
+    cancel_type: String,
+    cancel_reason: String,
+}
+
 #[derive(Debug, Serialize, Clone)]
 struct SalesSettlementPaymentDto {
     payment_method_code: String,
@@ -773,6 +782,9 @@ struct SalesSettlementDto {
     payments: Vec<SalesSettlementPaymentDto>,
     status: String,
     reservation_ref: Option<String>,
+    cancel_type: Option<String>,
+    cancel_reason: Option<String>,
+    cancelled_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1541,8 +1553,11 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
             manager_employee_id BIGINT NOT NULL REFERENCES employee_management(employee_id) ON DELETE RESTRICT,
             total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
             total_time_minutes INTEGER NOT NULL CHECK (total_time_minutes >= 0),
-            status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED')),
+            status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED', 'CANCELLED')),
             reservation_ref VARCHAR(100) NULL,
+            cancel_type VARCHAR(20) NULL CHECK (cancel_type IS NULL OR cancel_type IN ('PAYMENT', 'PROCEDURE')),
+            cancel_reason TEXT NULL,
+            cancelled_at TIMESTAMPTZ NULL,
             settlement_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1588,6 +1603,29 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
 
         ALTER TABLE sales_settlement_management
         ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS cancel_type VARCHAR(20);
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+        ALTER TABLE sales_settlement_management
+        DROP CONSTRAINT IF EXISTS sales_settlement_management_status_check;
+
+        ALTER TABLE sales_settlement_management
+        ADD CONSTRAINT sales_settlement_management_status_check
+        CHECK (status IN ('PROCESSING', 'COMPLETED', 'CANCELLED'));
+
+        ALTER TABLE sales_settlement_management
+        DROP CONSTRAINT IF EXISTS sales_settlement_management_cancel_type_check;
+
+        ALTER TABLE sales_settlement_management
+        ADD CONSTRAINT sales_settlement_management_cancel_type_check
+        CHECK (cancel_type IS NULL OR cancel_type IN ('PAYMENT', 'PROCEDURE'));
 
         ALTER TABLE sales_settlement_service_line
         ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
@@ -4083,7 +4121,10 @@ async fn get_sales_settlement_data(
                 s.total_amount::BIGINT,
                 s.total_time_minutes::INTEGER,
                 s.status,
-                s.reservation_ref
+                s.reservation_ref,
+                s.cancel_type,
+                s.cancel_reason,
+                TO_CHAR(s.cancelled_at, 'YYYY-MM-DD HH24:MI') AS cancelled_at
               FROM sales_settlement_management s
              WHERE s.store_code = $1
              ORDER BY s.settlement_datetime DESC, s.settlement_id DESC
@@ -4180,6 +4221,9 @@ async fn get_sales_settlement_data(
                 total_time_minutes: row.get::<_, i32>(5),
                 status: row.get::<_, String>(6),
                 reservation_ref: row.get::<_, Option<String>>(7),
+                cancel_type: row.get::<_, Option<String>>(8),
+                cancel_reason: row.get::<_, Option<String>>(9),
+                cancelled_at: row.get::<_, Option<String>>(10),
                 service_ids,
                 payments,
             }
@@ -4468,6 +4512,9 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
                        total_time_minutes = $6,
                        status = $7,
                        reservation_ref = $8,
+                       cancel_type = NULL,
+                       cancel_reason = NULL,
+                       cancelled_at = NULL,
                        updated_at = NOW()
                  WHERE settlement_id = $1
                    AND store_code = $2
@@ -4515,8 +4562,11 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
                 total_amount,
                 total_time_minutes,
                 status,
-                reservation_ref
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+                reservation_ref,
+                cancel_type,
+                cancel_reason,
+                cancelled_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
             RETURNING settlement_id::BIGINT
             "#,
             &[
@@ -4635,6 +4685,149 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
 }
 
 #[tauri::command]
+async fn cancel_sales_settlement(
+    payload: CancelSalesSettlementPayload,
+) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_sales_settlement_management_tables(&client).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    if payload.settlement_id <= 0 {
+        return Err("취소할 settlement_id가 올바르지 않습니다.".to_string());
+    }
+
+    let cancel_type = payload.cancel_type.trim().to_uppercase();
+    if cancel_type != "PAYMENT" && cancel_type != "PROCEDURE" {
+        return Err("cancel_type은 PAYMENT 또는 PROCEDURE 이어야 합니다.".to_string());
+    }
+
+    let cancel_reason = payload.cancel_reason.trim().to_string();
+    if cancel_reason.is_empty() {
+        return Err("취소 사유는 필수입니다.".to_string());
+    }
+
+    let settlement_row = client
+        .query_opt(
+            r#"
+            SELECT status, reservation_ref
+              FROM sales_settlement_management
+             WHERE settlement_id = $1
+               AND store_code = $2
+            "#,
+            &[&payload.settlement_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("취소 대상 정산 조회 실패: {e}"))?;
+
+    let Some(settlement_row) = settlement_row else {
+        return Err("취소 대상 정산 데이터가 없습니다.".to_string());
+    };
+
+    let current_status = settlement_row.get::<_, String>(0).trim().to_uppercase();
+    if current_status == "CANCELLED" {
+        return Err("이미 취소된 매출입니다.".to_string());
+    }
+    if cancel_type == "PAYMENT" && current_status != "COMPLETED" {
+        return Err("결제취소는 결제완료 상태에서만 가능합니다.".to_string());
+    }
+
+    let reservation_ref = settlement_row
+        .get::<_, Option<String>>(1)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let linked_reservation_id = if let Some(reservation_ref_value) = reservation_ref.as_ref() {
+        let parsed_reservation_id = reservation_ref_value
+            .parse::<i64>()
+            .map_err(|_| "reservation_ref는 예약 ID(숫자)여야 합니다.".to_string())?;
+        if parsed_reservation_id <= 0 {
+            return Err("reservation_ref는 1 이상의 예약 ID여야 합니다.".to_string());
+        }
+
+        let reservation_exists = client
+            .query_opt(
+                r#"
+                SELECT 1
+                  FROM reservation_calendar_management
+                 WHERE reservation_id = $1
+                   AND store_code = $2
+                "#,
+                &[&parsed_reservation_id, &store_code],
+            )
+            .await
+            .map_err(|e| format!("취소 연동 예약 조회 실패: {e}"))?;
+
+        if reservation_exists.is_none() {
+            return Err("연동된 예약 데이터가 존재하지 않습니다.".to_string());
+        }
+
+        Some(parsed_reservation_id)
+    } else {
+        None
+    };
+
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("취소 처리 트랜잭션 시작 실패: {e}"))?;
+
+    let affected = tx
+        .execute(
+            r#"
+            UPDATE sales_settlement_management
+               SET status = 'CANCELLED',
+                   cancel_type = $3,
+                   cancel_reason = $4,
+                   cancelled_at = NOW(),
+                   updated_at = NOW()
+             WHERE settlement_id = $1
+               AND store_code = $2
+            "#,
+            &[&payload.settlement_id, &store_code, &cancel_type, &cancel_reason],
+        )
+        .await
+        .map_err(|e| format!("정산 취소 처리 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("취소 대상 정산 데이터가 없습니다.".to_string());
+    }
+
+    if let Some(reservation_id) = linked_reservation_id {
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE reservation_calendar_management
+                   SET status_code = 'CANCELLED',
+                       updated_at = NOW()
+                 WHERE reservation_id = $1
+                   AND store_code = $2
+                "#,
+                &[&reservation_id, &store_code],
+            )
+            .await
+            .map_err(|e| format!("예약 취소 상태 동기화 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("예약 상태를 갱신할 대상 예약이 없습니다.".to_string());
+        }
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("취소 처리 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: if cancel_type == "PAYMENT" {
+            "결제취소 완료".to_string()
+        } else {
+            "시술취소 완료".to_string()
+        },
+    })
+}
+
+#[tauri::command]
 async fn delete_sales_settlement(
     payload: DeleteSalesSettlementPayload,
 ) -> Result<MutationResult, String> {
@@ -4698,6 +4891,7 @@ fn main() {
             use_member_point,
             get_sales_settlement_data,
             upsert_sales_settlement,
+            cancel_sales_settlement,
             delete_sales_settlement,
             get_user_management_data,
             upsert_user_management,
