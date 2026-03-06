@@ -1,9 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { DB_CONNECTION } from '../../config/dbConfig';
-import { invokeDbConnectionTest } from '../../lib/dbClient';
+import { invokeDbCommand, invokeDbConnectionTest } from '../../lib/dbClient';
+import {
+  DEFAULT_SYSTEM_TYPE_CODE,
+  normalizeSystemTypeCode,
+  SYSTEM_TYPE_GROUP_ID,
+  SYSTEM_TYPE_STORAGE_KEY,
+} from '../../constants/systemType';
+import {
+  DEFAULT_STORE_CODE,
+  normalizeStoreCode,
+  STORE_CODE_GROUP_ID,
+  STORE_CODE_STORAGE_KEY,
+} from '../../constants/store';
 import { 
-  Settings, 
   Monitor, 
   Database, 
   Download, 
@@ -17,6 +28,26 @@ import {
   Type as TypeIcon,
   Image as ImageIcon
 } from 'lucide-react';
+
+type CodeDetailRow = {
+  group: string;
+  code: string;
+  name: string;
+  order: number;
+  use_yn: 'Y' | 'N';
+};
+
+type SystemTypeOption = {
+  code: string;
+  name: string;
+  order: number;
+};
+
+type StoreOption = {
+  code: string;
+  name: string;
+  order: number;
+};
 
 export default function SystemSettingsPage() {
   const [windowSize, setWindowSize] = useState('1920x1080');
@@ -32,6 +63,73 @@ export default function SystemSettingsPage() {
   // Brand Settings
   const [programName, setProgramName] = useState(localStorage.getItem('programName') || 'GovData');
   const [logoUrl, setLogoUrl] = useState(localStorage.getItem('logoUrl') || '');
+  const [systemTypeOptions, setSystemTypeOptions] = useState<SystemTypeOption[]>([]);
+  const [selectedSystemType, setSelectedSystemType] = useState(
+    normalizeSystemTypeCode(localStorage.getItem(SYSTEM_TYPE_STORAGE_KEY)),
+  );
+  const [storeOptions, setStoreOptions] = useState<StoreOption[]>([]);
+  const [selectedStoreCode, setSelectedStoreCode] = useState(
+    normalizeStoreCode(localStorage.getItem(STORE_CODE_STORAGE_KEY)),
+  );
+
+  const loadSystemTypeOptions = async () => {
+    try {
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        details: CodeDetailRow[];
+      }>('get_common_code_management_data');
+
+      const options = (result.details || [])
+        .filter((detail) => detail.group === SYSTEM_TYPE_GROUP_ID && detail.use_yn === 'Y')
+        .map((detail) => ({
+          code: detail.code,
+          name: detail.name,
+          order: detail.order,
+        }))
+        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+
+      setSystemTypeOptions(options);
+
+      if (options.length > 0) {
+        const normalized = normalizeSystemTypeCode(selectedSystemType);
+        if (!options.some((item) => item.code === normalized)) {
+          setSelectedSystemType(options[0].code);
+        }
+      }
+
+      const loadedStores = (result.details || [])
+        .filter((detail) => detail.group === STORE_CODE_GROUP_ID && detail.use_yn === 'Y')
+        .map((detail) => ({
+          code: detail.code,
+          name: detail.name,
+          order: detail.order,
+        }))
+        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+
+      setStoreOptions(loadedStores);
+
+      if (loadedStores.length > 0) {
+        const normalizedStore = normalizeStoreCode(selectedStoreCode);
+        if (!loadedStores.some((item) => item.code === normalizedStore)) {
+          const hairStore = loadedStores.find((item) => item.code === DEFAULT_STORE_CODE);
+          setSelectedStoreCode(hairStore?.code || loadedStores[0].code);
+        }
+      } else {
+        setSelectedStoreCode(DEFAULT_STORE_CODE);
+      }
+    } catch (error) {
+      console.error('Failed to load SYSTEM_TYPE common codes:', error);
+      setSystemTypeOptions([]);
+      setStoreOptions([]);
+      setSelectedStoreCode(DEFAULT_STORE_CODE);
+    }
+  };
+
+  useEffect(() => {
+    loadSystemTypeOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleBackup = () => {
     alert('데이터 백업이 시작되었습니다. (backup_20240305.sql)');
@@ -44,6 +142,10 @@ export default function SystemSettingsPage() {
   const handleSave = () => {
     localStorage.setItem('programName', programName);
     localStorage.setItem('logoUrl', logoUrl);
+    localStorage.setItem(SYSTEM_TYPE_STORAGE_KEY, normalizeSystemTypeCode(selectedSystemType));
+    localStorage.setItem(STORE_CODE_STORAGE_KEY, normalizeStoreCode(selectedStoreCode));
+    window.dispatchEvent(new Event('system-type-updated'));
+    window.dispatchEvent(new Event('store-code-updated'));
     alert('설정이 저장되었습니다. 페이지를 새로고침하면 적용됩니다.');
     window.location.reload();
   };
@@ -140,6 +242,44 @@ export default function SystemSettingsPage() {
                 </div>
                 <span className="text-lg font-bold tracking-tight text-slate-900">{programName}</span>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">현재 점포 (STR_CD)</label>
+              <select
+                value={selectedStoreCode}
+                onChange={(e) => setSelectedStoreCode(normalizeStoreCode(e.target.value))}
+                className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+              >
+                {storeOptions.length === 0 && <option value={DEFAULT_STORE_CODE}>HAIR_001</option>}
+                {storeOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.name} ({option.code})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400">
+                모든 데이터 저장/조회는 선택한 점포코드 기준으로 처리됩니다.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">현재 사용 시스템 타입 (SYSTEM_TYPE)</label>
+              <select
+                value={selectedSystemType}
+                onChange={(e) => setSelectedSystemType(normalizeSystemTypeCode(e.target.value))}
+                className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+              >
+                {systemTypeOptions.length === 0 && <option value={DEFAULT_SYSTEM_TYPE_CODE}>공통(ALL)</option>}
+                {systemTypeOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.name} ({option.code})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400">
+                저장 후 사이드바 메뉴가 선택한 시스템 타입 기준으로 필터링됩니다.
+              </p>
             </div>
           </div>
         </section>

@@ -11,6 +11,7 @@ SET search_path TO czr_ami;
 -- 권한(역할) 테이블
 CREATE TABLE IF NOT EXISTS role_management (
     role_id VARCHAR(50) PRIMARY KEY,
+    store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
     role_name VARCHAR(100) NOT NULL,
     role_desc TEXT,
     user_count INTEGER NOT NULL DEFAULT 0,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS role_menu_permission (
     id BIGSERIAL PRIMARY KEY,
     role_id VARCHAR(50) NOT NULL REFERENCES role_management(role_id) ON DELETE CASCADE,
     menu_id BIGINT NOT NULL REFERENCES menu_management(menu_id) ON DELETE CASCADE,
+    store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
     can_read BOOLEAN NOT NULL DEFAULT FALSE,
     can_write BOOLEAN NOT NULL DEFAULT FALSE,
     can_delete BOOLEAN NOT NULL DEFAULT FALSE,
@@ -34,6 +36,7 @@ CREATE TABLE IF NOT EXISTS role_menu_permission (
 -- 2) SELECT - 역할 목록
 SELECT
     role_id,
+    store_code,
     role_name,
     role_desc,
     user_count,
@@ -46,6 +49,7 @@ ORDER BY created_at;
 SELECT
     rmp.id,
     rmp.role_id,
+    rmp.store_code,
     rmp.menu_id,
     mm.menu_name_ko,
     mm.menu_name_en,
@@ -59,20 +63,22 @@ WHERE rmp.role_id = $1
 ORDER BY mm.menu_order;
 
 -- 4) UPSERT - 역할
-INSERT INTO role_management (role_id, role_name, role_desc, user_count)
-VALUES ($1, $2, $3, $4)
+INSERT INTO role_management (role_id, store_code, role_name, role_desc, user_count)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (role_id)
 DO UPDATE SET
+    store_code = EXCLUDED.store_code,
     role_name = EXCLUDED.role_name,
     role_desc = EXCLUDED.role_desc,
     user_count = EXCLUDED.user_count,
     updated_at = NOW();
 
 -- 5) UPSERT - 메뉴 권한
-INSERT INTO role_menu_permission (role_id, menu_id, can_read, can_write, can_delete)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO role_menu_permission (role_id, menu_id, store_code, can_read, can_write, can_delete)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (role_id, menu_id)
 DO UPDATE SET
+    store_code = EXCLUDED.store_code,
     can_read = EXCLUDED.can_read,
     can_write = EXCLUDED.can_write,
     can_delete = EXCLUDED.can_delete,

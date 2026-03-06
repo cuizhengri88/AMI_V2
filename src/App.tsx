@@ -12,6 +12,10 @@ import MenuManagementPage from './pages/System/MenuManagementPage';
 import CommonCodePage from './pages/System/CommonCodePage';
 import RoleManagementPage from './pages/System/RoleManagementPage';
 import SystemSettingsPage from './pages/System/SystemSettingsPage';
+import ServiceCatalogPage from './pages/System/ServiceCatalogPage';
+import PointRechargePage from './pages/UserManagement/PointRechargePage';
+import ReservationCalendarPage from './pages/UserManagement/ReservationCalendarPage';
+import SalesEntryPage from './pages/UserManagement/SalesEntryPage';
 
 export default function App() {
   return (
@@ -28,8 +32,12 @@ export default function App() {
           <Route path="/employees" element={<EmployeeManagementPage />} />
           <Route path="/system/menu" element={<MenuManagementPage />} />
           <Route path="/system/code" element={<CommonCodePage />} />
+          <Route path="/system/service-catalog" element={<ServiceCatalogPage />} />
           <Route path="/system/role" element={<RoleManagementPage />} />
           <Route path="/system/settings" element={<SystemSettingsPage />} />
+          <Route path="/users/points" element={<PointRechargePage />} />
+          <Route path="/users/reservations" element={<ReservationCalendarPage />} />
+          <Route path="/users/sales" element={<SalesEntryPage />} />
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/sales-stats" replace />} />
         </Route>

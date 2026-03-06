@@ -11,6 +11,10 @@ import {
   Settings,
   Shield,
   Monitor,
+  Scissors,
+  Wallet,
+  CalendarDays,
+  Receipt,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -22,6 +26,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { invokeDbCommand } from '../../lib/dbClient';
+import { normalizeSystemTypeCode, SYSTEM_TYPE_STORAGE_KEY } from '../../constants/systemType';
 
 type LangKey = 'ko' | 'en' | 'zh';
 
@@ -36,6 +41,7 @@ type MenuRow = {
   parent_id: number | null;
   menu_type: string;
   path: string;
+  system_type_code: string;
   order: number;
   status: string;
   names: MenuNames;
@@ -87,6 +93,9 @@ const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
     children: [
       { id: 5, icon: Users, order: 1, status: '사용중', names: { ko: '사용자 관리', en: 'User Management', zh: '用户管理' }, path: '/users', children: [] },
       { id: 11, icon: Briefcase, order: 2, status: '사용중', names: { ko: '직원 관리', en: 'Employee Management', zh: '员工管理' }, path: '/employees', children: [] },
+      { id: 12, icon: Wallet, order: 3, status: '사용중', names: { ko: '회원 포인트 관리', en: 'Point Recharge', zh: '会员积分充值' }, path: '/users/points', children: [] },
+      { id: 13, icon: CalendarDays, order: 4, status: '사용중', names: { ko: '예약 캘린더', en: 'Reservation Calendar', zh: '预约日历' }, path: '/users/reservations', children: [] },
+      { id: 14, icon: Receipt, order: 5, status: '사용중', names: { ko: '매출 등록', en: 'Sales Entry', zh: '销售登记' }, path: '/users/sales', children: [] },
     ] 
   },
   { 
@@ -99,8 +108,9 @@ const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
     children: [
       { id: 7, icon: LayoutGrid, order: 1, status: '사용중', names: { ko: '메뉴 관리', en: 'Menu Management', zh: '菜单管理' }, path: '/system/menu', children: [] },
       { id: 8, icon: Database, order: 2, status: '사용중', names: { ko: '코드 관리', en: 'Code Management', zh: '代码管理' }, path: '/system/code', children: [] },
-      { id: 9, icon: Shield, order: 3, status: '사용중', names: { ko: '권한 관리', en: 'Role Management', zh: '权限管理' }, path: '/system/role', children: [] },
-      { id: 10, icon: Monitor, order: 4, status: '사용중', names: { ko: '시스템 설정', en: 'System Settings', zh: '系统设置' }, path: '/system/settings', children: [] },
+      { id: 15, icon: Scissors, order: 3, status: '사용중', names: { ko: '시술 항목 관리', en: 'Service Catalog', zh: '服务项目管理' }, path: '/system/service-catalog', children: [] },
+      { id: 9, icon: Shield, order: 4, status: '사용중', names: { ko: '권한 관리', en: 'Role Management', zh: '权限管理' }, path: '/system/role', children: [] },
+      { id: 10, icon: Monitor, order: 5, status: '사용중', names: { ko: '시스템 설정', en: 'System Settings', zh: '系统设置' }, path: '/system/settings', children: [] },
     ] 
   },
 ];
@@ -117,9 +127,13 @@ function getIconByPath(path: string): LucideIcon {
   if (path.startsWith('/products')) return ShoppingBag;
   if (path.startsWith('/inventory/history')) return HistoryIcon;
   if (path.startsWith('/inventory')) return Package;
+  if (path.startsWith('/users/points')) return Wallet;
+  if (path.startsWith('/users/reservations')) return CalendarDays;
+  if (path.startsWith('/users/sales')) return Receipt;
   if (path.startsWith('/users')) return Users;
   if (path.startsWith('/employees')) return Briefcase;
   if (path.startsWith('/system/menu')) return LayoutGrid;
+  if (path.startsWith('/system/service-catalog')) return Scissors;
   if (path.startsWith('/system/code')) return Database;
   if (path.startsWith('/system/role')) return Shield;
   if (path.startsWith('/system/settings')) return Monitor;
@@ -170,7 +184,7 @@ function toSidebarTree(rows: MenuRow[]): SidebarMenuItem[] {
 export default function Sidebar() {
   const { i18n } = useTranslation();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [menuItems, setMenuItems] = useState<SidebarMenuItem[]>(FALLBACK_MENU_ITEMS);
+  const [menuItems, setMenuItems] = useState<SidebarMenuItem[]>([]);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const location = useLocation();
@@ -182,18 +196,20 @@ export default function Sidebar() {
 
   const loadSidebarMenus = useCallback(async () => {
     try {
+      const selectedSystemType = normalizeSystemTypeCode(localStorage.getItem(SYSTEM_TYPE_STORAGE_KEY));
       const result = await invokeDbCommand<{
         success: boolean;
         message: string;
         menus: MenuRow[];
-      }>('get_menu_management_data');
+      }>('get_menu_management_data', {
+        system_type_code: selectedSystemType,
+      });
 
       const dbMenus = toSidebarTree(result.menus || []);
-      if (dbMenus.length > 0) {
-        setMenuItems(dbMenus);
-      }
+      setMenuItems(dbMenus);
     } catch (error) {
       console.error('Failed to load sidebar menus from DB:', error);
+      setMenuItems(FALLBACK_MENU_ITEMS);
     }
   }, []);
 
@@ -214,9 +230,19 @@ export default function Sidebar() {
     const handleMenuUpdated = () => {
       loadSidebarMenus();
     };
+    const handleSystemTypeUpdated = () => {
+      loadSidebarMenus();
+    };
+    const handleStoreCodeUpdated = () => {
+      loadSidebarMenus();
+    };
     window.addEventListener('menu-management-updated', handleMenuUpdated);
+    window.addEventListener('system-type-updated', handleSystemTypeUpdated);
+    window.addEventListener('store-code-updated', handleStoreCodeUpdated);
     return () => {
       window.removeEventListener('menu-management-updated', handleMenuUpdated);
+      window.removeEventListener('system-type-updated', handleSystemTypeUpdated);
+      window.removeEventListener('store-code-updated', handleStoreCodeUpdated);
     };
   }, [loadSidebarMenus]);
 

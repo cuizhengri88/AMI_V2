@@ -3,6 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { invokeDbCommand } from '../../lib/dbClient';
 import {
+  DEFAULT_SYSTEM_TYPE_CODE,
+  normalizeSystemTypeCode,
+  SYSTEM_TYPE_GROUP_ID,
+  SYSTEM_TYPE_STORAGE_KEY,
+} from '../../constants/systemType';
+import {
   Database,
   Plus,
   Edit2,
@@ -29,6 +35,7 @@ type MenuRow = {
   parent_id: number | null;
   menu_type: string;
   path: string;
+  system_type_code: string;
   order: number;
   status: string;
   names: MenuNames;
@@ -39,6 +46,7 @@ type MenuNode = {
   parent_id: number | null;
   menu_type: MenuType;
   path: string;
+  system_type_code: string;
   order: number;
   status: string;
   names: MenuNames;
@@ -51,8 +59,23 @@ type MenuForm = {
   parentId: string;
   names: MenuNames;
   path: string;
+  systemTypeCode: string;
   order: number;
   status: string;
+};
+
+type CodeDetailRow = {
+  group: string;
+  code: string;
+  name: string;
+  order: number;
+  use_yn: 'Y' | 'N';
+};
+
+type SystemTypeOption = {
+  code: string;
+  name: string;
+  order: number;
 };
 
 const EMPTY_FORM: MenuForm = {
@@ -61,6 +84,7 @@ const EMPTY_FORM: MenuForm = {
   parentId: '',
   names: { ko: '', en: '', zh: '' },
   path: '',
+  systemTypeCode: DEFAULT_SYSTEM_TYPE_CODE,
   order: 1,
   status: '사용중',
 };
@@ -78,6 +102,7 @@ function buildTree(rows: MenuRow[]): MenuNode[] {
       parent_id: row.parent_id,
       menu_type: normalizeType(row.menu_type),
       path: row.path,
+      system_type_code: normalizeSystemTypeCode(row.system_type_code),
       order: Number(row.order) || 1,
       status: row.status || '사용중',
       names: {
@@ -115,8 +140,27 @@ export default function MenuManagementPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<MenuForm>(EMPTY_FORM);
+  const [systemTypeOptions, setSystemTypeOptions] = useState<SystemTypeOption[]>([]);
 
   const mainMenus = useMemo(() => menuData.filter((m) => m.menu_type === 'MAIN'), [menuData]);
+  const selectableMainMenus = useMemo(
+    () =>
+      mainMenus.filter((menu) => {
+        const menuSystemType = normalizeSystemTypeCode(menu.system_type_code);
+        const formSystemType = normalizeSystemTypeCode(formData.systemTypeCode);
+        return menuSystemType === DEFAULT_SYSTEM_TYPE_CODE || menuSystemType === formSystemType;
+      }),
+    [formData.systemTypeCode, mainMenus],
+  );
+  const systemTypeNameMap = useMemo(
+    () => new Map(systemTypeOptions.map((item) => [item.code, item.name] as const)),
+    [systemTypeOptions],
+  );
+  const getSystemTypeName = (code: string) => {
+    const normalized = normalizeSystemTypeCode(code);
+    if (normalized === DEFAULT_SYSTEM_TYPE_CODE) return '공통';
+    return systemTypeNameMap.get(normalized) || normalized;
+  };
 
   const getMenuName = (menu: { names: MenuNames }) => {
     const lang = (i18n.language || 'ko') as LangKey;
@@ -125,6 +169,28 @@ export default function MenuManagementPage() {
 
   const toggleExpand = (id: number) => {
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const loadSystemTypeOptions = async () => {
+    try {
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        details: CodeDetailRow[];
+      }>('get_common_code_management_data');
+      const options = (result.details || [])
+        .filter((detail) => detail.group === SYSTEM_TYPE_GROUP_ID && detail.use_yn === 'Y')
+        .map((detail) => ({
+          code: detail.code,
+          name: detail.name,
+          order: detail.order,
+        }))
+        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+      setSystemTypeOptions(options);
+    } catch (error) {
+      console.error('Failed to load SYSTEM_TYPE common codes:', error);
+      setSystemTypeOptions([]);
+    }
   };
 
   const loadMenus = async () => {
@@ -148,10 +214,18 @@ export default function MenuManagementPage() {
 
   useEffect(() => {
     loadMenus();
+    loadSystemTypeOptions();
   }, []);
 
   const openCreateModal = () => {
-    setFormData(EMPTY_FORM);
+    const currentSystemType = normalizeSystemTypeCode(localStorage.getItem(SYSTEM_TYPE_STORAGE_KEY));
+    const resolvedSystemType = systemTypeOptions.some((item) => item.code === currentSystemType)
+      ? currentSystemType
+      : (systemTypeOptions[0]?.code || DEFAULT_SYSTEM_TYPE_CODE);
+    setFormData({
+      ...EMPTY_FORM,
+      systemTypeCode: resolvedSystemType,
+    });
     setIsModalOpen(true);
   };
 
@@ -162,6 +236,7 @@ export default function MenuManagementPage() {
       parentId: menu.parent_id ? String(menu.parent_id) : '',
       names: { ...menu.names },
       path: menu.path,
+      systemTypeCode: normalizeSystemTypeCode(menu.system_type_code),
       order: menu.order,
       status: menu.status || '사용중',
     });
@@ -171,6 +246,10 @@ export default function MenuManagementPage() {
   const handleSaveMenu = async () => {
     if (!formData.names.ko.trim() || !formData.names.en.trim() || !formData.names.zh.trim()) {
       alert('한국어/영어/중국어 메뉴명을 모두 입력해주세요.');
+      return;
+    }
+    if (!formData.systemTypeCode.trim()) {
+      alert('SYSTEM_TYPE 코드를 선택해주세요.');
       return;
     }
     if (!formData.path.trim()) {
@@ -189,6 +268,7 @@ export default function MenuManagementPage() {
         parent_id: formData.type === 'SUB' ? Number(formData.parentId) : null,
         menu_type: formData.type,
         path: formData.path.trim(),
+        system_type_code: normalizeSystemTypeCode(formData.systemTypeCode),
         order: Number(formData.order) || 1,
         status: formData.status || '사용중',
         names: {
@@ -274,6 +354,7 @@ export default function MenuManagementPage() {
           <thead>
             <tr className="bg-slate-900 text-slate-200">
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider w-1/3">메뉴명</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">시스템 타입</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">경로</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">정렬</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">상태</th>
@@ -283,7 +364,7 @@ export default function MenuManagementPage() {
           <tbody className="divide-y divide-slate-100">
             {menuData.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-400 text-sm">
+                <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
                   등록된 메뉴가 없습니다.
                 </td>
               </tr>
@@ -309,6 +390,11 @@ export default function MenuManagementPage() {
                         </div>
                         <span className="text-sm font-bold text-slate-900">{getMenuName(menu)}</span>
                       </div>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {getSystemTypeName(menu.system_type_code)}
+                      </span>
                     </td>
                     <td className="py-4 px-6 text-sm font-mono text-slate-500">{menu.path}</td>
                     <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">{menu.order}</td>
@@ -352,6 +438,11 @@ export default function MenuManagementPage() {
                               </div>
                               <span className="text-sm font-medium text-slate-700">{getMenuName(child)}</span>
                             </div>
+                          </td>
+                          <td className="py-3 px-6 text-center">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              {getSystemTypeName(child.system_type_code)}
+                            </span>
                           </td>
                           <td className="py-3 px-6 text-xs font-mono text-slate-400">{child.path}</td>
                           <td className="py-3 px-6 text-xs text-center font-medium text-slate-500">{child.order}</td>
@@ -435,7 +526,7 @@ export default function MenuManagementPage() {
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">상위 메뉴를 선택하세요</option>
-                    {mainMenus.map((m) => (
+                    {selectableMainMenus.map((m) => (
                       <option key={m.id} value={m.id}>
                         {getMenuName(m)}
                       </option>
@@ -482,6 +573,40 @@ export default function MenuManagementPage() {
                     className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SYSTEM_TYPE</label>
+                <select
+                  value={formData.systemTypeCode}
+                  onChange={(e) =>
+                    setFormData((prev) => {
+                      const nextSystemTypeCode = normalizeSystemTypeCode(e.target.value);
+                      const selectedParent = mainMenus.find((menu) => String(menu.id) === prev.parentId);
+                      const selectedParentSystemType = selectedParent
+                        ? normalizeSystemTypeCode(selectedParent.system_type_code)
+                        : '';
+                      const isParentCompatible =
+                        !selectedParent ||
+                        selectedParentSystemType === DEFAULT_SYSTEM_TYPE_CODE ||
+                        selectedParentSystemType === nextSystemTypeCode;
+
+                      return {
+                        ...prev,
+                        systemTypeCode: nextSystemTypeCode,
+                        parentId: prev.type === 'SUB' && !isParentCompatible ? '' : prev.parentId,
+                      };
+                    })
+                  }
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value={DEFAULT_SYSTEM_TYPE_CODE}>공통(ALL)</option>
+                  {systemTypeOptions.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.name} ({option.code})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

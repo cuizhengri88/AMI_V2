@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS employee_management;
 
 CREATE TABLE employee_management (
   employee_id BIGSERIAL PRIMARY KEY,
+  store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
   employee_name VARCHAR(100) NOT NULL,
   employee_code VARCHAR(50) UNIQUE NOT NULL,
   role_id VARCHAR(50) NULL REFERENCES role_management(role_id) ON DELETE SET NULL,

@@ -1,6 +1,7 @@
 -- User Management Table
 CREATE TABLE IF NOT EXISTS czr_ami.user_management (
   user_id SERIAL PRIMARY KEY,
+  store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
   phone VARCHAR(20),

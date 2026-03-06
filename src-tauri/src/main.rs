@@ -6,6 +6,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio_postgres::{Client, NoTls};
 
+const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";
+const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";
+const DEFAULT_STORE_CODE: &str = "HAIR_001";
+const STORE_CODE_GROUP_ID: &str = "STR_CD";
+
 macro_rules! log_sql {
     ($sql:expr) => {
         println!("[SQL] {}", $sql);
@@ -46,6 +51,7 @@ struct MenuRowPayload {
     parent_id: Option<i64>,
     menu_type: String,
     path: String,
+    system_type_code: Option<String>,
     order: i32,
     status: String,
     names: MenuNamesPayload,
@@ -54,6 +60,7 @@ struct MenuRowPayload {
 #[derive(Debug, Deserialize)]
 struct SyncMenuPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     menus: Vec<MenuRowPayload>,
 }
 
@@ -67,17 +74,21 @@ struct MenuSyncResult {
 #[derive(Debug, Deserialize)]
 struct MenuQueryPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
+    system_type_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpsertMenuPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     menu: MenuRowPayload,
 }
 
 #[derive(Debug, Deserialize)]
 struct DeleteMenuPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     menu_id: i64,
 }
 
@@ -87,6 +98,7 @@ struct MenuDto {
     parent_id: Option<i64>,
     menu_type: String,
     path: String,
+    system_type_code: String,
     order: i32,
     status: String,
     names: MenuNamesPayload,
@@ -196,11 +208,13 @@ struct CommonCodeDataResult {
 #[derive(Debug, Deserialize)]
 struct RoleQueryPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RoleMenuPermissionQueryPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     role_id: String,
 }
 
@@ -215,12 +229,14 @@ struct RolePayload {
 #[derive(Debug, Deserialize)]
 struct UpsertRolePayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     role: RolePayload,
 }
 
 #[derive(Debug, Deserialize)]
 struct DeleteRolePayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     role_id: String,
 }
 
@@ -251,6 +267,7 @@ struct RoleMenuPermissionPayload {
 #[derive(Debug, Deserialize)]
 struct UpsertRoleMenuPermissionPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     permission: RoleMenuPermissionPayload,
 }
 
@@ -290,17 +307,20 @@ struct EmployeePayload {
 #[derive(Debug, Deserialize)]
 struct EmployeeQueryPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpsertEmployeePayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     employee: EmployeePayload,
 }
 
 #[derive(Debug, Deserialize)]
 struct DeleteEmployeePayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     employee_id: i64,
 }
 
@@ -338,17 +358,20 @@ struct UserPayload {
 #[derive(Debug, Deserialize)]
 struct UserQueryPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpsertUserPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     user: UserPayload,
 }
 
 #[derive(Debug, Deserialize)]
 struct DeleteUserPayload {
     connection: DbConnectionPayload,
+    store_code: Option<String>,
     user_id: i64,
 }
 
@@ -367,6 +390,56 @@ struct UserDataResult {
     success: bool,
     message: String,
     users: Vec<UserDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServiceCatalogItemPayload {
+    service_id: Option<i64>,
+    category_code: String,
+    service_name: String,
+    unit_price: i64,
+    duration_minutes: i32,
+    use_yn: String,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServiceCatalogQueryPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertServiceCatalogPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    item: ServiceCatalogItemPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteServiceCatalogPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    service_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct ServiceCatalogItemDto {
+    service_id: i64,
+    category_code: String,
+    category_name: String,
+    service_name: String,
+    unit_price: i64,
+    duration_minutes: i32,
+    use_yn: String,
+    note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ServiceCatalogDataResult {
+    success: bool,
+    message: String,
+    items: Vec<ServiceCatalogItemDto>,
 }
 
 fn get_safe_schema(schema: &str) -> Result<String, String> {
@@ -420,6 +493,101 @@ async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client,
     Ok(client)
 }
 
+fn normalize_system_type_code(value: Option<&str>) -> String {
+    let normalized = value.unwrap_or("").trim().to_uppercase();
+    if normalized.is_empty() {
+        DEFAULT_SYSTEM_TYPE_CODE.to_string()
+    } else {
+        normalized
+    }
+}
+
+fn normalize_optional_system_type_code(value: Option<&str>) -> Option<String> {
+    let normalized = value.unwrap_or("").trim().to_uppercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_store_code(value: Option<&str>) -> String {
+    let normalized = value.unwrap_or("").trim().to_uppercase();
+    if normalized.is_empty() {
+        DEFAULT_STORE_CODE.to_string()
+    } else {
+        normalized
+    }
+}
+
+async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
+    if code == DEFAULT_STORE_CODE {
+        return Ok(());
+    }
+
+    ensure_common_code_tables(client).await?;
+
+    let exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM common_code_detail
+             WHERE group_code_id = $1
+               AND detail_code = $2
+               AND use_yn = 'Y'
+            "#,
+            &[&STORE_CODE_GROUP_ID, &code],
+        )
+        .await
+        .map_err(|e| format!("STR_CD 코드 검증 실패: {e}"))?
+        .is_some();
+
+    if !exists {
+        return Err(format!(
+            "STR_CD 그룹에 사용 가능한 점포코드가 없습니다: {code}"
+        ));
+    }
+
+    Ok(())
+}
+
+async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<String, String> {
+    let store_code = normalize_store_code(value);
+    validate_store_code(client, &store_code).await?;
+    Ok(store_code)
+}
+
+async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), String> {
+    if code == DEFAULT_SYSTEM_TYPE_CODE {
+        return Ok(());
+    }
+
+    ensure_common_code_tables(client).await?;
+
+    let exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM common_code_detail
+             WHERE group_code_id = $1
+               AND detail_code = $2
+               AND use_yn = 'Y'
+            "#,
+            &[&SYSTEM_TYPE_GROUP_ID, &code],
+        )
+        .await
+        .map_err(|e| format!("SYSTEM_TYPE 코드 검증 실패: {e}"))?
+        .is_some();
+
+    if !exists {
+        return Err(format!(
+            "SYSTEM_TYPE 그룹에 사용 가능한 코드가 없습니다: {code}"
+        ));
+    }
+
+    Ok(())
+}
+
 async fn ensure_menu_table(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
@@ -432,11 +600,53 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
                 menu_name_ko TEXT NOT NULL,
                 menu_name_en TEXT NOT NULL,
                 menu_name_zh TEXT NOT NULL,
+                system_type_code VARCHAR(100) NOT NULL DEFAULT 'ALL',
+                store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
                 menu_order INTEGER NOT NULL DEFAULT 1,
                 menu_status VARCHAR(20) NOT NULL DEFAULT '사용중',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
+            );
+
+            ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS system_type_code VARCHAR(100);
+
+            UPDATE menu_management
+               SET system_type_code = 'ALL'
+             WHERE system_type_code IS NULL
+                OR BTRIM(system_type_code) = '';
+
+            ALTER TABLE menu_management
+            ALTER COLUMN system_type_code SET DEFAULT 'ALL';
+
+            ALTER TABLE menu_management
+            ALTER COLUMN system_type_code SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_menu_management_system_type
+            ON menu_management (system_type_code);
+
+            ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+            UPDATE menu_management
+               SET store_code = 'HAIR_001'
+             WHERE store_code IS NULL
+                OR BTRIM(store_code) = '';
+
+            ALTER TABLE menu_management
+            ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+            ALTER TABLE menu_management
+            ALTER COLUMN store_code SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_menu_management_store
+            ON menu_management (store_code);
+
+            ALTER TABLE menu_management
+            DROP CONSTRAINT IF EXISTS menu_management_menu_path_key;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_menu_management_store_path
+            ON menu_management (store_code, menu_path);
             "#,
         )
         .await
@@ -512,6 +722,7 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
             r#"
             CREATE TABLE IF NOT EXISTS role_management (
                 role_id VARCHAR(50) PRIMARY KEY,
+                store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
                 role_name VARCHAR(100) NOT NULL,
                 role_desc TEXT NULL,
                 user_count INTEGER NOT NULL DEFAULT 0,
@@ -523,6 +734,7 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
                 id BIGSERIAL PRIMARY KEY,
                 role_id VARCHAR(50) NOT NULL REFERENCES role_management(role_id) ON DELETE CASCADE,
                 menu_id BIGINT NOT NULL REFERENCES menu_management(menu_id) ON DELETE CASCADE,
+                store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
                 can_read BOOLEAN NOT NULL DEFAULT FALSE,
                 can_write BOOLEAN NOT NULL DEFAULT FALSE,
                 can_delete BOOLEAN NOT NULL DEFAULT FALSE,
@@ -533,6 +745,40 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS idx_role_menu_permission_role
             ON role_menu_permission (role_id);
+
+            ALTER TABLE role_management
+            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+            UPDATE role_management
+               SET store_code = 'HAIR_001'
+             WHERE store_code IS NULL
+                OR BTRIM(store_code) = '';
+
+            ALTER TABLE role_management
+            ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+            ALTER TABLE role_management
+            ALTER COLUMN store_code SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_role_management_store
+            ON role_management (store_code);
+
+            ALTER TABLE role_menu_permission
+            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+            UPDATE role_menu_permission
+               SET store_code = 'HAIR_001'
+             WHERE store_code IS NULL
+                OR BTRIM(store_code) = '';
+
+            ALTER TABLE role_menu_permission
+            ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+            ALTER TABLE role_menu_permission
+            ALTER COLUMN store_code SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_role_menu_permission_store
+            ON role_menu_permission (store_code);
             "#,
         )
         .await
@@ -546,6 +792,7 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
             r#"
             CREATE TABLE IF NOT EXISTS employee_management (
                 employee_id BIGSERIAL PRIMARY KEY,
+                store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
                 employee_name VARCHAR(100) NOT NULL,
                 employee_code VARCHAR(50) NOT NULL UNIQUE,
                 role_id VARCHAR(50) NULL REFERENCES role_management(role_id) ON DELETE SET NULL,
@@ -560,6 +807,23 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
 
             CREATE INDEX IF NOT EXISTS idx_employee_management_role_id
             ON employee_management (role_id);
+
+            ALTER TABLE employee_management
+            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+            UPDATE employee_management
+               SET store_code = 'HAIR_001'
+             WHERE store_code IS NULL
+                OR BTRIM(store_code) = '';
+
+            ALTER TABLE employee_management
+            ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+            ALTER TABLE employee_management
+            ALTER COLUMN store_code SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_employee_management_store
+            ON employee_management (store_code);
             "#,
         )
         .await
@@ -570,6 +834,7 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
     let sql = r#"
         CREATE TABLE IF NOT EXISTS user_management (
             user_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
             name VARCHAR(100) NOT NULL,
             email VARCHAR(100) NOT NULL UNIQUE,
             phone VARCHAR(20),
@@ -577,13 +842,76 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
             remarks TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
+        );
+
+        ALTER TABLE user_management
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE user_management
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE user_management
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE user_management
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_user_management_store
+        ON user_management (store_code)
     "#;
     log_sql!(sql);
     client
         .batch_execute(sql)
         .await
         .map_err(|e| format!("회원 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), String> {
+    ensure_common_code_tables(client).await?;
+    let sql = r#"
+        CREATE TABLE IF NOT EXISTS service_catalog_management (
+            service_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            category_code VARCHAR(100) NOT NULL,
+            service_name VARCHAR(200) NOT NULL,
+            unit_price BIGINT NOT NULL CHECK (unit_price >= 0),
+            duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+            use_yn CHAR(1) NOT NULL DEFAULT 'Y' CHECK (use_yn IN ('Y', 'N')),
+            note TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_service_catalog_management_category
+        ON service_catalog_management (category_code);
+
+        CREATE INDEX IF NOT EXISTS idx_service_catalog_management_use_yn
+        ON service_catalog_management (use_yn);
+
+        ALTER TABLE service_catalog_management
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE service_catalog_management
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE service_catalog_management
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE service_catalog_management
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_service_catalog_management_store
+        ON service_catalog_management (store_code);
+    "#;
+    log_sql!(sql);
+    client
+        .batch_execute(sql)
+        .await
+        .map_err(|e| format!("시술 항목 테이블 생성 실패: {e}"))
 }
 
 #[tauri::command]
@@ -610,6 +938,7 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
 async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let transaction = client
         .transaction()
@@ -617,7 +946,7 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
         .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
     transaction
-        .batch_execute("TRUNCATE TABLE menu_management")
+        .execute("DELETE FROM menu_management WHERE store_code = $1", &[&store_code])
         .await
         .map_err(|e| format!("기존 메뉴 데이터 초기화 실패: {e}"))?;
 
@@ -625,6 +954,7 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
     menus.sort_by_key(|m| m.parent_id.is_some());
 
     for menu in &menus {
+        let system_type_code = normalize_system_type_code(menu.system_type_code.as_deref());
         transaction
             .execute(
                 r#"
@@ -636,9 +966,11 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                     menu_name_ko,
                     menu_name_en,
                     menu_name_zh,
+                    system_type_code,
+                    store_code,
                     menu_order,
                     menu_status
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 "#,
                 &[
                     &menu.id,
@@ -648,6 +980,8 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                     &menu.names.ko,
                     &menu.names.en,
                     &menu.names.zh,
+                    &system_type_code,
+                    &store_code,
                     &menu.order,
                     &menu.status,
                 ],
@@ -672,26 +1006,77 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
 async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
-    let rows = client
-        .query(
-            r#"
-            SELECT menu_id,
-                   parent_menu_id,
-                   menu_type,
-                   menu_path,
-                   menu_name_ko,
-                   menu_name_en,
-                   menu_name_zh,
-                   menu_order,
-                   menu_status
-              FROM menu_management
-             ORDER BY (parent_menu_id IS NOT NULL), COALESCE(parent_menu_id, menu_id), menu_order, menu_id
-            "#,
-            &[],
-        )
-        .await
-        .map_err(|e| format!("menu data query failed: {e}"))?;
+    let selected_system_type = normalize_optional_system_type_code(payload.system_type_code.as_deref());
+    let rows = if let Some(system_type_code) = selected_system_type {
+        if system_type_code == DEFAULT_SYSTEM_TYPE_CODE {
+            client
+                .query(
+                    r#"
+                    SELECT menu_id,
+                           parent_menu_id,
+                           menu_type,
+                           menu_path,
+                           menu_name_ko,
+                           menu_name_en,
+                           menu_name_zh,
+                           system_type_code,
+                           menu_order,
+                           menu_status
+                      FROM menu_management
+                     WHERE store_code = $1
+                     ORDER BY (parent_menu_id IS NOT NULL), COALESCE(parent_menu_id, menu_id), menu_order, menu_id
+                    "#,
+                    &[&store_code],
+                )
+                .await
+        } else {
+            client
+                .query(
+                    r#"
+                    SELECT menu_id,
+                           parent_menu_id,
+                           menu_type,
+                           menu_path,
+                           menu_name_ko,
+                           menu_name_en,
+                           menu_name_zh,
+                           system_type_code,
+                           menu_order,
+                           menu_status
+                      FROM menu_management
+                     WHERE store_code = $1
+                       AND (system_type_code = $2 OR system_type_code = $3)
+                     ORDER BY (parent_menu_id IS NOT NULL), COALESCE(parent_menu_id, menu_id), menu_order, menu_id
+                    "#,
+                    &[&store_code, &system_type_code, &DEFAULT_SYSTEM_TYPE_CODE],
+                )
+                .await
+        }
+    } else {
+        client
+            .query(
+                r#"
+                SELECT menu_id,
+                       parent_menu_id,
+                       menu_type,
+                       menu_path,
+                       menu_name_ko,
+                       menu_name_en,
+                       menu_name_zh,
+                       system_type_code,
+                       menu_order,
+                       menu_status
+                  FROM menu_management
+                 WHERE store_code = $1
+                 ORDER BY (parent_menu_id IS NOT NULL), COALESCE(parent_menu_id, menu_id), menu_order, menu_id
+                "#,
+                &[&store_code],
+            )
+            .await
+    }
+    .map_err(|e| format!("menu data query failed: {e}"))?;
 
     let menus = rows
         .into_iter()
@@ -705,8 +1090,9 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                 en: row.get::<_, String>(5),
                 zh: row.get::<_, String>(6),
             },
-            order: row.get::<_, i32>(7),
-            status: row.get::<_, String>(8),
+            system_type_code: row.get::<_, String>(7),
+            order: row.get::<_, i32>(8),
+            status: row.get::<_, String>(9),
         })
         .collect::<Vec<_>>();
 
@@ -721,6 +1107,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
 async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let menu = payload.menu;
     let menu_type = menu.menu_type.trim().to_uppercase();
@@ -739,6 +1126,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
     if ko.is_empty() || en.is_empty() || zh.is_empty() {
         return Err("menu_name_ko/menu_name_en/menu_name_zh are required".to_string());
     }
+    let system_type_code = normalize_system_type_code(menu.system_type_code.as_deref());
+    validate_system_type_code(&client, &system_type_code).await?;
 
     let status = {
         let s = menu.status.trim();
@@ -768,8 +1157,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
 
         let parent_row = client
             .query_opt(
-                "SELECT menu_type FROM menu_management WHERE menu_id = $1",
-                &[&pid],
+                "SELECT menu_type, system_type_code FROM menu_management WHERE menu_id = $1 AND store_code = $2",
+                &[&pid, &store_code],
             )
             .await
             .map_err(|e| format!("parent menu validation failed: {e}"))?;
@@ -777,8 +1166,18 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
         match parent_row {
             Some(row) => {
                 let parent_type: String = row.get(0);
+                let parent_system_type: String = row.get(1);
                 if parent_type.to_uppercase() != "MAIN" {
                     return Err("SUB menu parent must be MAIN type".to_string());
+                }
+                let normalized_parent_system_type = parent_system_type.trim().to_uppercase();
+                if normalized_parent_system_type != DEFAULT_SYSTEM_TYPE_CODE
+                    && normalized_parent_system_type != system_type_code
+                {
+                    return Err(
+                        "SUB menu system_type_code must match parent menu or parent must be ALL"
+                            .to_string(),
+                    );
                 }
             }
             None => return Err("parent menu does not exist".to_string()),
@@ -797,9 +1196,11 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 menu_name_ko,
                 menu_name_en,
                 menu_name_zh,
+                system_type_code,
+                store_code,
                 menu_order,
                 menu_status
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             ON CONFLICT (menu_id)
             DO UPDATE SET
                 parent_menu_id = EXCLUDED.parent_menu_id,
@@ -808,6 +1209,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 menu_name_ko = EXCLUDED.menu_name_ko,
                 menu_name_en = EXCLUDED.menu_name_en,
                 menu_name_zh = EXCLUDED.menu_name_zh,
+                system_type_code = EXCLUDED.system_type_code,
+                store_code = EXCLUDED.store_code,
                 menu_order = EXCLUDED.menu_order,
                 menu_status = EXCLUDED.menu_status,
                 updated_at = NOW()
@@ -820,6 +1223,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 &ko,
                 &en,
                 &zh,
+                &system_type_code,
+                &store_code,
                 &order,
                 &status,
             ],
@@ -837,6 +1242,7 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
 async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     if payload.menu_id <= 0 {
         return Err("valid menu_id is required".to_string());
@@ -844,8 +1250,8 @@ async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationRe
 
     let affected = client
         .execute(
-            "DELETE FROM menu_management WHERE menu_id = $1",
-            &[&payload.menu_id],
+            "DELETE FROM menu_management WHERE menu_id = $1 AND store_code = $2",
+            &[&payload.menu_id, &store_code],
         )
         .await
         .map_err(|e| format!("menu delete failed: {e}"))?;
@@ -1203,15 +1609,17 @@ async fn delete_common_code_detail(
 async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let rows = client
         .query(
             r#"
             SELECT role_id, role_name, COALESCE(role_desc, ''), user_count
               FROM role_management
+             WHERE store_code = $1
              ORDER BY role_id
             "#,
-            &[],
+            &[&store_code],
         )
         .await
         .map_err(|e| format!("권한 데이터 조회 실패: {e}"))?;
@@ -1237,6 +1645,7 @@ async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataR
 async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let role_id = payload.role.role_id.trim().to_uppercase();
     let role_name = payload.role.role_name.trim().to_string();
@@ -1254,16 +1663,17 @@ async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationRe
     client
         .execute(
             r#"
-            INSERT INTO role_management (role_id, role_name, role_desc, user_count)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO role_management (role_id, store_code, role_name, role_desc, user_count)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (role_id)
             DO UPDATE SET
+                store_code = EXCLUDED.store_code,
                 role_name = EXCLUDED.role_name,
                 role_desc = EXCLUDED.role_desc,
                 user_count = EXCLUDED.user_count,
                 updated_at = NOW()
             "#,
-            &[&role_id, &role_name, &role_desc, &user_count],
+            &[&role_id, &store_code, &role_name, &role_desc, &user_count],
         )
         .await
         .map_err(|e| format!("권한 저장 실패: {e}"))?;
@@ -1278,6 +1688,7 @@ async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationRe
 async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let role_id = payload.role_id.trim().to_uppercase();
     if role_id.is_empty() {
@@ -1285,7 +1696,10 @@ async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationRe
     }
 
     let affected = client
-        .execute("DELETE FROM role_management WHERE role_id = $1", &[&role_id])
+        .execute(
+            "DELETE FROM role_management WHERE role_id = $1 AND store_code = $2",
+            &[&role_id, &store_code],
+        )
         .await
         .map_err(|e| format!("권한 삭제 실패: {e}"))?;
 
@@ -1305,6 +1719,7 @@ async fn get_role_menu_permissions(
 ) -> Result<RoleMenuPermissionDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let role_id = payload.role_id.trim().to_uppercase();
     if role_id.is_empty() {
@@ -1313,8 +1728,8 @@ async fn get_role_menu_permissions(
 
     let role_exists = client
         .query_opt(
-            "SELECT 1 FROM role_management WHERE role_id = $1",
-            &[&role_id],
+            "SELECT 1 FROM role_management WHERE role_id = $1 AND store_code = $2",
+            &[&role_id, &store_code],
         )
         .await
         .map_err(|e| format!("역할 확인 실패: {e}"))?;
@@ -1339,9 +1754,11 @@ async fn get_role_menu_permissions(
          LEFT JOIN role_menu_permission rmp
                 ON rmp.menu_id = mm.menu_id
                AND rmp.role_id = $1
+               AND rmp.store_code = $2
+             WHERE mm.store_code = $2
              ORDER BY (mm.parent_menu_id IS NOT NULL), COALESCE(mm.parent_menu_id, mm.menu_id), mm.menu_order, mm.menu_id
             "#,
-            &[&role_id],
+            &[&role_id, &store_code],
         )
         .await
         .map_err(|e| format!("권한별 메뉴 조회 실패: {e}"))?;
@@ -1374,6 +1791,7 @@ async fn upsert_role_menu_permission(
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let role_id = payload.permission.role_id.trim().to_uppercase();
     let menu_id = payload.permission.menu_id;
@@ -1386,8 +1804,8 @@ async fn upsert_role_menu_permission(
 
     let role_exists = client
         .query_opt(
-            "SELECT 1 FROM role_management WHERE role_id = $1",
-            &[&role_id],
+            "SELECT 1 FROM role_management WHERE role_id = $1 AND store_code = $2",
+            &[&role_id, &store_code],
         )
         .await
         .map_err(|e| format!("역할 확인 실패: {e}"))?;
@@ -1395,13 +1813,25 @@ async fn upsert_role_menu_permission(
         return Err("권한을 저장할 역할이 존재하지 않습니다.".to_string());
     }
 
+    let menu_exists = client
+        .query_opt(
+            "SELECT 1 FROM menu_management WHERE menu_id = $1 AND store_code = $2",
+            &[&menu_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("메뉴 확인 실패: {e}"))?;
+    if menu_exists.is_none() {
+        return Err("선택한 점포코드 기준으로 메뉴가 존재하지 않습니다.".to_string());
+    }
+
     client
         .execute(
             r#"
-            INSERT INTO role_menu_permission (role_id, menu_id, can_read, can_write, can_delete)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO role_menu_permission (role_id, menu_id, store_code, can_read, can_write, can_delete)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (role_id, menu_id)
             DO UPDATE SET
+                store_code = EXCLUDED.store_code,
                 can_read = EXCLUDED.can_read,
                 can_write = EXCLUDED.can_write,
                 can_delete = EXCLUDED.can_delete,
@@ -1410,6 +1840,7 @@ async fn upsert_role_menu_permission(
             &[
                 &role_id,
                 &menu_id,
+                &store_code,
                 &payload.permission.can_read,
                 &payload.permission.can_write,
                 &payload.permission.can_delete,
@@ -1430,6 +1861,7 @@ async fn get_employee_management_data(
 ) -> Result<EmployeeDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_employee_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let rows = client
         .query(
@@ -1446,10 +1878,11 @@ async fn get_employee_management_data(
                 e.status,
                 e.remarks
               FROM employee_management e
-         LEFT JOIN role_management r ON r.role_id = e.role_id
+         LEFT JOIN role_management r ON r.role_id = e.role_id AND r.store_code = $1
+             WHERE e.store_code = $1
              ORDER BY e.employee_id DESC
             "#,
-            &[],
+            &[&store_code],
         )
         .await
         .map_err(|e| format!("직원 데이터 조회 실패: {e}"))?;
@@ -1481,6 +1914,7 @@ async fn get_employee_management_data(
 async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_employee_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let employee = payload.employee;
     let employee_name = employee.employee_name.trim().to_string();
@@ -1515,7 +1949,10 @@ async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<Mu
 
     if let Some(ref rid) = role_id {
         let role_exists = client
-            .query_opt("SELECT 1 FROM role_management WHERE role_id = $1", &[rid])
+            .query_opt(
+                "SELECT 1 FROM role_management WHERE role_id = $1 AND store_code = $2",
+                &[rid, &store_code],
+            )
             .await
             .map_err(|e| format!("역할 확인 실패: {e}"))?;
         if role_exists.is_none() {
@@ -1531,10 +1968,11 @@ async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<Mu
             .execute(
                 r#"
                 INSERT INTO employee_management (
-                    employee_id, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    employee_id, store_code, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 ON CONFLICT (employee_id)
                 DO UPDATE SET
+                    store_code = EXCLUDED.store_code,
                     employee_name = EXCLUDED.employee_name,
                     employee_code = EXCLUDED.employee_code,
                     role_id = EXCLUDED.role_id,
@@ -1547,6 +1985,7 @@ async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<Mu
                 "#,
                 &[
                     &id,
+                    &store_code,
                     &employee_name,
                     &employee_code,
                     &role_id,
@@ -1564,10 +2003,11 @@ async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<Mu
             .execute(
                 r#"
                 INSERT INTO employee_management (
-                    employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                    store_code, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                 "#,
                 &[
+                    &store_code,
                     &employee_name,
                     &employee_code,
                     &role_id,
@@ -1594,6 +2034,7 @@ async fn delete_employee_management(
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_employee_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     if payload.employee_id <= 0 {
         return Err("삭제할 employee_id가 올바르지 않습니다.".to_string());
@@ -1601,8 +2042,8 @@ async fn delete_employee_management(
 
     let affected = client
         .execute(
-            "DELETE FROM employee_management WHERE employee_id = $1",
-            &[&payload.employee_id],
+            "DELETE FROM employee_management WHERE employee_id = $1 AND store_code = $2",
+            &[&payload.employee_id, &store_code],
         )
         .await
         .map_err(|e| format!("직원 삭제 실패: {e}"))?;
@@ -1618,18 +2059,250 @@ async fn delete_employee_management(
 }
 
 #[tauri::command]
+async fn get_service_catalog_data(
+    payload: ServiceCatalogQueryPayload,
+) -> Result<ServiceCatalogDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_service_catalog_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let sql = r#"
+        SELECT
+            s.service_id::BIGINT,
+            s.category_code,
+            COALESCE(c.detail_name, s.category_code) AS category_name,
+            s.service_name,
+            s.unit_price::BIGINT,
+            s.duration_minutes,
+            s.use_yn,
+            s.note
+          FROM service_catalog_management s
+     LEFT JOIN common_code_detail c
+            ON c.group_code_id = 'T_CATEGORY'
+           AND c.detail_code = s.category_code
+         WHERE s.store_code = $1
+         ORDER BY s.service_id DESC
+    "#;
+    log_sql!(sql);
+    let rows = client
+        .query(sql, &[&store_code])
+        .await
+        .map_err(|e| format!("시술 항목 조회 실패: {e}"))?;
+
+    let items = rows
+        .into_iter()
+        .map(|row| ServiceCatalogItemDto {
+            service_id: row.get::<_, i64>(0),
+            category_code: row.get::<_, String>(1),
+            category_name: row.get::<_, String>(2),
+            service_name: row.get::<_, String>(3),
+            unit_price: row.get::<_, i64>(4),
+            duration_minutes: row.get::<_, i32>(5),
+            use_yn: row.get::<_, String>(6),
+            note: row.get::<_, Option<String>>(7),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ServiceCatalogDataResult {
+        success: true,
+        message: "시술 항목 조회 완료".to_string(),
+        items,
+    })
+}
+
+#[tauri::command]
+async fn upsert_service_catalog_item(
+    payload: UpsertServiceCatalogPayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_service_catalog_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let item = payload.item;
+    let category_code = item.category_code.trim().to_uppercase();
+    let service_name = item.service_name.trim().to_string();
+    let unit_price = item.unit_price;
+    let duration_minutes = item.duration_minutes;
+    let use_yn = item.use_yn.trim().to_uppercase();
+    let note = item
+        .note
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    if category_code.is_empty() || service_name.is_empty() {
+        return Err("카테고리와 시술명은 필수입니다.".to_string());
+    }
+    if unit_price <= 0 {
+        return Err("단가는 0보다 커야 합니다.".to_string());
+    }
+    if duration_minutes <= 0 {
+        return Err("소요시간은 0보다 커야 합니다.".to_string());
+    }
+    if use_yn != "Y" && use_yn != "N" {
+        return Err("사용여부(use_yn)는 Y 또는 N만 가능합니다.".to_string());
+    }
+
+    let category_exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM common_code_detail
+             WHERE group_code_id = 'T_CATEGORY'
+               AND detail_code = $1
+               AND use_yn = 'Y'
+            "#,
+            &[&category_code],
+        )
+        .await
+        .map_err(|e| format!("카테고리 코드 확인 실패: {e}"))?;
+
+    if category_exists.is_none() {
+        return Err("T_CATEGORY 공통코드에 존재하는 사용중 카테고리만 선택할 수 있습니다.".to_string());
+    }
+
+    if let Some(service_id) = item.service_id {
+        if service_id <= 0 {
+            return Err("service_id는 1 이상이어야 합니다.".to_string());
+        }
+
+        let sql = r#"
+            INSERT INTO service_catalog_management (
+                service_id,
+                store_code,
+                category_code,
+                service_name,
+                unit_price,
+                duration_minutes,
+                use_yn,
+                note
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (service_id)
+            DO UPDATE SET
+                store_code = EXCLUDED.store_code,
+                category_code = EXCLUDED.category_code,
+                service_name = EXCLUDED.service_name,
+                unit_price = EXCLUDED.unit_price,
+                duration_minutes = EXCLUDED.duration_minutes,
+                use_yn = EXCLUDED.use_yn,
+                note = EXCLUDED.note,
+                updated_at = NOW()
+        "#;
+        log_sql!(
+            sql,
+            service_id,
+            &store_code,
+            &category_code,
+            &service_name,
+            unit_price,
+            duration_minutes,
+            &use_yn,
+            &note
+        );
+        client
+            .execute(
+                sql,
+                &[
+                    &service_id,
+                    &store_code,
+                    &category_code,
+                    &service_name,
+                    &unit_price,
+                    &duration_minutes,
+                    &use_yn,
+                    &note,
+                ],
+            )
+            .await
+            .map_err(|e| format!("시술 항목 저장 실패: {e}"))?;
+    } else {
+        let sql = r#"
+            INSERT INTO service_catalog_management (
+                store_code,
+                category_code,
+                service_name,
+                unit_price,
+                duration_minutes,
+                use_yn,
+                note
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#;
+        log_sql!(
+            sql,
+            &store_code,
+            &category_code,
+            &service_name,
+            unit_price,
+            duration_minutes,
+            &use_yn,
+            &note
+        );
+        client
+            .execute(
+                sql,
+                &[
+                    &store_code,
+                    &category_code,
+                    &service_name,
+                    &unit_price,
+                    &duration_minutes,
+                    &use_yn,
+                    &note,
+                ],
+            )
+            .await
+            .map_err(|e| format!("시술 항목 등록 실패: {e}"))?;
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "시술 항목 저장 완료".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn delete_service_catalog_item(
+    payload: DeleteServiceCatalogPayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_service_catalog_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    if payload.service_id <= 0 {
+        return Err("삭제할 service_id가 올바르지 않습니다.".to_string());
+    }
+
+    let sql = "DELETE FROM service_catalog_management WHERE service_id = $1 AND store_code = $2";
+    log_sql!(sql, payload.service_id, &store_code);
+    let affected = client
+        .execute(sql, &[&payload.service_id, &store_code])
+        .await
+        .map_err(|e| format!("시술 항목 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 시술 항목이 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "시술 항목 삭제 완료".to_string(),
+    })
+}
+
+#[tauri::command]
 async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let sql = r#"
         SELECT user_id::BIGINT, name, email, phone, address, remarks
           FROM user_management
+         WHERE store_code = $1
          ORDER BY user_id DESC
     "#;
     log_sql!(sql);
     let rows = client
-        .query(sql, &[])
+        .query(sql, &[&store_code])
         .await
         .map_err(|e| format!("회원 조회 실패: {e}"))?;
 
@@ -1656,6 +2329,7 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
 async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let user = payload.user;
     let name = user.name.trim().to_string();
@@ -1682,10 +2356,11 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
             return Err("user_id는 1 이상이어야 합니다.".to_string());
         }
         let sql = r#"
-            INSERT INTO user_management (user_id, name, email, phone, address, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO user_management (user_id, store_code, name, email, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (user_id)
             DO UPDATE SET
+                store_code = EXCLUDED.store_code,
                 name = EXCLUDED.name,
                 email = EXCLUDED.email,
                 phone = EXCLUDED.phone,
@@ -1693,19 +2368,19 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
                 remarks = EXCLUDED.remarks,
                 updated_at = NOW()
         "#;
-        log_sql!(sql, id, &name, &email, &phone, &address, &remarks);
+        log_sql!(sql, id, &store_code, &name, &email, &phone, &address, &remarks);
         client
-            .execute(sql, &[&id, &name, &email, &phone, &address, &remarks])
+            .execute(sql, &[&id, &store_code, &name, &email, &phone, &address, &remarks])
             .await
             .map_err(|e| format!("회원 저장 실패: {e}"))?;
     } else {
         let sql = r#"
-            INSERT INTO user_management (name, email, phone, address, remarks)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO user_management (store_code, name, email, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6)
         "#;
-        log_sql!(sql, &name, &email, &phone, &address, &remarks);
+        log_sql!(sql, &store_code, &name, &email, &phone, &address, &remarks);
         client
-            .execute(sql, &[&name, &email, &phone, &address, &remarks])
+            .execute(sql, &[&store_code, &name, &email, &phone, &address, &remarks])
             .await
             .map_err(|e| format!("회원 등록 실패: {e}"))?;
     }
@@ -1720,15 +2395,16 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
 async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     if payload.user_id <= 0 {
         return Err("삭제할 user_id가 올바르지 않습니다.".to_string());
     }
 
-    let sql = "DELETE FROM user_management WHERE user_id = $1";
-    log_sql!(sql, payload.user_id);
+    let sql = "DELETE FROM user_management WHERE user_id = $1 AND store_code = $2";
+    log_sql!(sql, payload.user_id, &store_code);
     let affected = client
-        .execute(sql, &[&payload.user_id])
+        .execute(sql, &[&payload.user_id, &store_code])
         .await
         .map_err(|e| format!("회원 삭제 실패: {e}"))?;
 
@@ -1764,6 +2440,9 @@ fn main() {
             get_employee_management_data,
             upsert_employee_management,
             delete_employee_management,
+            get_service_catalog_data,
+            upsert_service_catalog_item,
+            delete_service_catalog_item,
             get_user_management_data,
             upsert_user_management,
             delete_user_management

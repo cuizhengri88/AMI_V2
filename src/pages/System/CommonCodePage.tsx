@@ -13,6 +13,7 @@ import {
   Type as TypeIcon,
   AlignLeft,
   Loader2,
+  Scissors,
 } from 'lucide-react';
 
 type CodeGroup = {
@@ -44,6 +45,14 @@ type CodeForm = {
   order: number;
   useYn: 'Y' | 'N';
 };
+
+const SALON_CATEGORY_GROUP_ID = 'SALON_SERVICE_CATEGORY';
+
+const SALON_CATEGORY_CODES: Array<{ code: string; name: string; order: number }> = [
+  { code: 'CUT', name: '커트', order: 1 },
+  { code: 'PERM', name: '파마', order: 2 },
+  { code: 'COLOR', name: '염색', order: 3 },
+];
 
 export default function CommonCodePage() {
   const [codeGroups, setCodeGroups] = useState<CodeGroup[]>([]);
@@ -100,6 +109,43 @@ export default function CommonCodePage() {
       alert(typeof error === 'string' ? error : error?.message || '공통코드 데이터를 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const setupSalonDefaultCodes = async () => {
+    if (!window.confirm('미용실 기본 카테고리(커트/파마/염색)를 생성 또는 업데이트하시겠습니까?')) return;
+
+    try {
+      setIsMutating(true);
+
+      await invokeDbCommand<{ success: boolean; message: string }>('upsert_common_code_group', {
+        group: {
+          id: SALON_CATEGORY_GROUP_ID,
+          name: '미용실 카테고리',
+          desc: '미용실 기본 시술 카테고리(커트/파마/염색)',
+          display_order: 1,
+        },
+      });
+
+      for (const item of SALON_CATEGORY_CODES) {
+        await invokeDbCommand<{ success: boolean; message: string }>('upsert_common_code_detail', {
+          detail: {
+            group_id: SALON_CATEGORY_GROUP_ID,
+            code: item.code,
+            name: item.name,
+            sort_order: item.order,
+            use_yn: 'Y',
+          },
+        });
+      }
+
+      await loadCommonCodeData();
+      setSelectedGroup(SALON_CATEGORY_GROUP_ID);
+      alert('미용실 기본 카테고리 코드가 반영되었습니다.');
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '미용실 기본 카테고리 생성에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
     }
   };
 
@@ -221,18 +267,28 @@ export default function CommonCodePage() {
           <p className="text-slate-500 mt-1">시스템에서 공통으로 사용하는 그룹코드/상세코드를 관리합니다.</p>
         </div>
 
-        <button
-          disabled={isMutating}
-          onClick={() => {
-            setModalMode('create');
-            setCurrentGroup({ id: '', name: '', desc: '', displayOrder: codeGroups.length + 1 });
-            setIsGroupModalOpen(true);
-          }}
-          className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
-        >
-          <Plus size={18} />
-          코드 그룹 추가
-        </button>
+        <div className="flex gap-2">
+          <button
+            disabled={isMutating}
+            onClick={setupSalonDefaultCodes}
+            className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-slate-800/10 disabled:opacity-60"
+          >
+            <Scissors size={18} />
+            미용실 기본 코드 생성
+          </button>
+          <button
+            disabled={isMutating}
+            onClick={() => {
+              setModalMode('create');
+              setCurrentGroup({ id: '', name: '', desc: '', displayOrder: codeGroups.length + 1 });
+              setIsGroupModalOpen(true);
+            }}
+            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
+          >
+            <Plus size={18} />
+            코드 그룹 추가
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

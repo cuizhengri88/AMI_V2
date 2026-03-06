@@ -25,7 +25,7 @@ fn role_seeds() -> Vec<RoleSeed> {
 }
 
 fn permission_seeds() -> Vec<PermissionSeed> {
-    let menu_ids: Vec<i64> = vec![100, 1, 4, 200, 2, 31, 32, 300, 5, 11, 6, 7, 8, 9, 10];
+    let menu_ids: Vec<i64> = vec![100, 1, 4, 200, 2, 31, 32, 300, 5, 11, 12, 13, 14, 6, 7, 8, 15, 9, 10];
     let mut perms = Vec::new();
 
     // ROLE_OWNER: 모든 권한
@@ -37,8 +37,8 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let manager_perms = [
         (100, true, true, false), (1, true, false, false), (4, true, true, false),
         (200, true, true, true), (2, true, true, true), (31, true, true, true), (32, true, true, false),
-        (300, true, true, false), (5, true, true, false), (11, true, false, false),
-        (6, false, false, false), (7, false, false, false), (8, false, false, false), (9, false, false, false), (10, false, false, false),
+        (300, true, true, false), (5, true, true, false), (11, true, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false),
+        (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in manager_perms {
         perms.push(PermissionSeed { role_id: "ROLE_MANAGER", menu_id: mid, can_read: r, can_write: w, can_delete: d });
@@ -48,8 +48,8 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let staff_perms = [
         (100, true, false, false), (1, false, false, false), (4, false, false, false),
         (200, true, true, false), (2, true, false, false), (31, true, true, false), (32, true, false, false),
-        (300, true, false, false), (5, true, false, false), (11, false, false, false),
-        (6, false, false, false), (7, false, false, false), (8, false, false, false), (9, false, false, false), (10, false, false, false),
+        (300, true, false, false), (5, true, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false),
+        (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in staff_perms {
         perms.push(PermissionSeed { role_id: "ROLE_STAFF", menu_id: mid, can_read: r, can_write: w, can_delete: d });
@@ -59,8 +59,8 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let parttime_perms = [
         (100, true, false, false), (1, false, false, false), (4, false, false, false),
         (200, true, false, false), (2, true, false, false), (31, false, false, false), (32, false, false, false),
-        (300, false, false, false), (5, false, false, false), (11, false, false, false),
-        (6, false, false, false), (7, false, false, false), (8, false, false, false), (9, false, false, false), (10, false, false, false),
+        (300, false, false, false), (5, false, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false),
+        (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in parttime_perms {
         perms.push(PermissionSeed { role_id: "ROLE_PARTTIME", menu_id: mid, can_read: r, can_write: w, can_delete: d });
@@ -92,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         CREATE TABLE IF NOT EXISTS role_management (
             role_id VARCHAR(50) PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
             role_name VARCHAR(100) NOT NULL,
             role_desc TEXT,
             user_count INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             id BIGSERIAL PRIMARY KEY,
             role_id VARCHAR(50) NOT NULL REFERENCES role_management(role_id) ON DELETE CASCADE,
             menu_id BIGINT NOT NULL REFERENCES menu_management(menu_id) ON DELETE CASCADE,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
             can_read BOOLEAN NOT NULL DEFAULT FALSE,
             can_write BOOLEAN NOT NULL DEFAULT FALSE,
             can_delete BOOLEAN NOT NULL DEFAULT FALSE,
@@ -110,6 +112,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE(role_id, menu_id)
         );
+
+        ALTER TABLE role_management
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE role_management
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE role_management
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE role_management
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE role_menu_permission
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE role_menu_permission
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE role_menu_permission
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE role_menu_permission
+        ALTER COLUMN store_code SET NOT NULL;
     "#).await?;
 
     let tx = client.transaction().await?;
@@ -119,15 +149,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for role in role_seeds() {
         tx.execute(
-            "INSERT INTO role_management (role_id, role_name, role_desc, user_count) VALUES ($1, $2, $3, $4)",
-            &[&role.id, &role.name, &role.desc, &role.user_count],
+            "INSERT INTO role_management (role_id, store_code, role_name, role_desc, user_count) VALUES ($1, $2, $3, $4, $5)",
+            &[&role.id, &"HAIR_001", &role.name, &role.desc, &role.user_count],
         ).await?;
     }
 
     for perm in permission_seeds() {
         tx.execute(
-            "INSERT INTO role_menu_permission (role_id, menu_id, can_read, can_write, can_delete) VALUES ($1, $2, $3, $4, $5)",
-            &[&perm.role_id, &perm.menu_id, &perm.can_read, &perm.can_write, &perm.can_delete],
+            "INSERT INTO role_menu_permission (role_id, menu_id, store_code, can_read, can_write, can_delete) VALUES ($1, $2, $3, $4, $5, $6)",
+            &[&perm.role_id, &perm.menu_id, &"HAIR_001", &perm.can_read, &perm.can_write, &perm.can_delete],
         ).await?;
     }
 
