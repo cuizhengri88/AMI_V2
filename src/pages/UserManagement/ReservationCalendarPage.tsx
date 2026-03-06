@@ -64,6 +64,29 @@ type ReservationForm = {
   services: ReservationService[];
 };
 
+// 백엔드에서 내려주는 예약 시술 라인 원본 타입
+type ReservationServiceRow = {
+  line_id: number;
+  service_id: number;
+  category_code: string;
+  category_name: string;
+  service_name: string;
+  unit_price: number;
+  duration_minutes: number;
+};
+
+// 백엔드에서 내려주는 예약 헤더 원본 타입
+type ReservationRow = {
+  reservation_id: number;
+  reservation_date: string;
+  start_time: string;
+  customer_name: string;
+  designer_name: string;
+  status: string;
+  note: string | null;
+  services: ReservationServiceRow[];
+};
+
 type StatusTone = {
   badge: string;
   chip: string;
@@ -94,77 +117,8 @@ const FALLBACK_STATUS_LABEL_MAP: Record<string, string> = {
   CANCELLED: '예약취소',
 };
 
-const INITIAL_RESERVATIONS: ReservationRecord[] = [
-  {
-    id: 1,
-    reservationDate: todayIso(),
-    startTime: '10:30',
-    customerName: '김서연',
-    designerName: '지우 디자이너',
-    status: 'RESERVED',
-    note: '첫 방문',
-    services: [
-      {
-        lineId: 1001,
-        serviceId: 1,
-        categoryCode: 'CUT',
-        categoryName: '커트',
-        serviceName: '여성 커트',
-        unitPrice: 30000,
-        durationMinutes: 50,
-      },
-      {
-        lineId: 1002,
-        serviceId: 2,
-        categoryCode: 'COLOR',
-        categoryName: '염색',
-        serviceName: '뿌리 염색',
-        unitPrice: 70000,
-        durationMinutes: 80,
-      },
-    ],
-  },
-  {
-    id: 2,
-    reservationDate: todayIso(),
-    startTime: '14:00',
-    customerName: '박민지',
-    designerName: '리안 디자이너',
-    status: 'COMPLETED',
-    note: '',
-    services: [
-      {
-        lineId: 1003,
-        serviceId: 3,
-        categoryCode: 'PERM',
-        categoryName: '파마',
-        serviceName: '디지털 펌',
-        unitPrice: 120000,
-        durationMinutes: 120,
-      },
-    ],
-  },
-  {
-    id: 3,
-    reservationDate: shiftDate(todayIso(), 1),
-    startTime: '11:00',
-    customerName: '최하윤',
-    designerName: '민아 디자이너',
-    status: 'CANCELLED',
-    note: '고객 일정 변경',
-    services: [
-      {
-        lineId: 1004,
-        serviceId: 4,
-        categoryCode: 'CUT',
-        categoryName: '커트',
-        serviceName: '남성 커트',
-        unitPrice: 25000,
-        durationMinutes: 40,
-      },
-    ],
-  },
-];
+// 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
+const INITIAL_RESERVATIONS: ReservationRecord[] = [];
 
 function toIsoDate(date: Date) {
   const yyyy = date.getFullYear();
@@ -264,6 +218,52 @@ function sortReservations(items: ReservationRecord[]) {
   });
 }
 
+// DB 응답(row) 구조를 화면에서 쓰는 예약 구조로 변환한다.
+function mapReservationRowToRecord(row: ReservationRow): ReservationRecord {
+  return {
+    id: row.reservation_id,
+    reservationDate: row.reservation_date,
+    startTime: row.start_time,
+    customerName: row.customer_name,
+    designerName: row.designer_name,
+    status: row.status,
+    note: row.note || '',
+    services: (row.services || []).map((service) => ({
+      lineId: service.line_id,
+      serviceId: service.service_id,
+      categoryCode: service.category_code,
+      categoryName: service.category_name,
+      serviceName: service.service_name,
+      unitPrice: service.unit_price,
+      durationMinutes: service.duration_minutes,
+    })),
+  };
+}
+
+// 새로 추가하는 시술의 임시 lineId가 기존 DB lineId와 겹치지 않도록 보정한다.
+function getNextLineIdSeed(items: ReservationRecord[]) {
+  const maxLineId = items.reduce((max, reservation) => {
+    const currentMax = reservation.services.reduce(
+      (lineMax, service) => Math.max(lineMax, service.lineId),
+      0,
+    );
+    return Math.max(max, currentMax);
+  }, 0);
+
+  return Math.max(maxLineId + 1, 2000);
+}
+
+// 이름 목록은 중복/공백 제거 후 한글 정렬로 맞춰 셀렉트 품질을 일정하게 유지한다.
+function toUniqueSortedNames(items: string[]) {
+  return Array.from(
+    new Set(
+      items
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
 function createEmptyForm(
   date: string,
   status: string,
@@ -287,6 +287,8 @@ export default function ReservationCalendarPage() {
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  const [memberNames, setMemberNames] = useState<string[]>([]);
+  const [designerNames, setDesignerNames] = useState<string[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
@@ -294,6 +296,7 @@ export default function ReservationCalendarPage() {
   });
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [viewMode, setViewMode] = useState<ReservationViewMode>('calendar');
   const modalDragControls = useDragControls();
 
@@ -309,6 +312,8 @@ export default function ReservationCalendarPage() {
       '',
     ),
   );
+
+  const isDbBusy = isLoading || isMutating;
 
   const statusMap = useMemo(
     () => new Map(statusOptions.map((status) => [status.code, status])),
@@ -370,113 +375,168 @@ export default function ReservationCalendarPage() {
     [form.services],
   );
 
-  useEffect(() => {
-    const loadLookupData = async () => {
-      try {
-        setIsLoading(true);
+  // 공통코드/시술목록 조회: 예약 폼에서 쓰는 선택값을 준비한다.
+  const loadLookupData = async () => {
+    const [commonResult, serviceResult, memberResult, employeeResult] = await Promise.all([
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        details: Array<{
+          group: string;
+          code: string;
+          name: string;
+          order: number;
+          use_yn: 'Y' | 'N';
+        }>;
+      }>('get_common_code_management_data'),
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        items: Array<{
+          service_id: number;
+          category_code: string;
+          category_name: string;
+          service_name: string;
+          unit_price: number;
+          duration_minutes: number;
+          use_yn: 'Y' | 'N';
+          note: string | null;
+        }>;
+      }>('get_service_catalog_data'),
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        users: Array<{
+          user_id: number;
+          name: string;
+        }>;
+      }>('get_user_management_data'),
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        employees: Array<{
+          employee_id: number;
+          employee_name: string;
+        }>;
+      }>('get_employee_management_data'),
+    ]);
 
-        const [commonResult, serviceResult] = await Promise.all([
-          invokeDbCommand<{
-            success: boolean;
-            message: string;
-            details: Array<{
-              group: string;
-              code: string;
-              name: string;
-              order: number;
-              use_yn: 'Y' | 'N';
-            }>;
-          }>('get_common_code_management_data'),
-          invokeDbCommand<{
-            success: boolean;
-            message: string;
-            items: Array<{
-              service_id: number;
-              category_code: string;
-              category_name: string;
-              service_name: string;
-              unit_price: number;
-              duration_minutes: number;
-              use_yn: 'Y' | 'N';
-              note: string | null;
-            }>;
-          }>('get_service_catalog_data'),
-        ]);
+    const details = commonResult.details || [];
+    const loadedStatuses = details
+      .filter((detail) => detail.group === STATUS_GROUP_ID && detail.use_yn === 'Y')
+      .sort(
+        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
+      )
+      .map((detail) => ({
+        code: detail.code,
+        label: detail.name,
+        order: detail.order,
+      }));
 
-        const details = commonResult.details || [];
-        const loadedStatuses = details
-          .filter((detail) => detail.group === STATUS_GROUP_ID && detail.use_yn === 'Y')
-          .sort(
-            (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
-          )
-          .map((detail) => ({
-            code: detail.code,
-            label: detail.name,
-            order: detail.order,
-          }));
+    const loadedServices = (serviceResult.items || [])
+      .filter((item) => item.use_yn === 'Y')
+      .map((item) => ({
+        id: item.service_id,
+        categoryCode: item.category_code,
+        categoryName: item.category_name || item.category_code,
+        serviceName: item.service_name,
+        unitPrice: item.unit_price,
+        durationMinutes: item.duration_minutes,
+      }))
+      .sort((a, b) => {
+        const categoryCompare = a.categoryCode.localeCompare(b.categoryCode);
+        if (categoryCompare !== 0) return categoryCompare;
+        return a.serviceName.localeCompare(b.serviceName);
+      });
 
-        const loadedServices = (serviceResult.items || [])
-          .filter((item) => item.use_yn === 'Y')
-          .map((item) => ({
-            id: item.service_id,
-            categoryCode: item.category_code,
-            categoryName: item.category_name || item.category_code,
-            serviceName: item.service_name,
-            unitPrice: item.unit_price,
-            durationMinutes: item.duration_minutes,
-          }))
-          .sort((a, b) => {
-            const categoryCompare = a.categoryCode.localeCompare(b.categoryCode);
-            if (categoryCompare !== 0) return categoryCompare;
-            return a.serviceName.localeCompare(b.serviceName);
+    const loadedCategories = details
+      .filter((detail) => detail.group === CATEGORY_GROUP_ID && detail.use_yn === 'Y')
+      .sort(
+        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
+      )
+      .map((detail) => ({
+        code: detail.code,
+        label: detail.name,
+        order: detail.order,
+      }));
+
+    const serviceDerivedCategories = Array.from(
+      loadedServices.reduce((map, item) => {
+        if (!map.has(item.categoryCode)) {
+          map.set(item.categoryCode, {
+            code: item.categoryCode,
+            label: item.categoryName,
+            order: map.size + 1,
           });
+        }
+        return map;
+      }, new Map<string, CodeOption>()),
+    ).map(([, value]) => value);
 
-        const loadedCategories = details
-          .filter((detail) => detail.group === CATEGORY_GROUP_ID && detail.use_yn === 'Y')
-          .sort(
-            (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
-          )
-          .map((detail) => ({
-            code: detail.code,
-            label: detail.name,
-            order: detail.order,
-          }));
+    const nextStatuses =
+      loadedStatuses.length > 0 ? loadedStatuses : FALLBACK_STATUSES;
+    const nextCategories =
+      loadedCategories.length > 0
+        ? loadedCategories
+        : serviceDerivedCategories.length > 0
+          ? serviceDerivedCategories
+          : FALLBACK_CATEGORIES;
 
-        const serviceDerivedCategories = Array.from(
-          loadedServices.reduce((map, item) => {
-            if (!map.has(item.categoryCode)) {
-              map.set(item.categoryCode, {
-                code: item.categoryCode,
-                label: item.categoryName,
-                order: map.size + 1,
-              });
-            }
-            return map;
-          }, new Map<string, CodeOption>()),
-        ).map(([, value]) => value);
+    // 고객/디자이너는 각각 회원/직원 테이블의 이름 목록을 선택 소스로 사용한다.
+    const nextMemberNames = toUniqueSortedNames(
+      (memberResult.users || []).map((user) => user.name || ''),
+    );
+    const nextDesignerNames = toUniqueSortedNames(
+      (employeeResult.employees || []).map((employee) => employee.employee_name || ''),
+    );
 
-        const nextStatuses =
-          loadedStatuses.length > 0 ? loadedStatuses : FALLBACK_STATUSES;
-        const nextCategories =
-          loadedCategories.length > 0
-            ? loadedCategories
-            : serviceDerivedCategories.length > 0
-              ? serviceDerivedCategories
-              : FALLBACK_CATEGORIES;
+    setStatusOptions(nextStatuses);
+    setCategories(nextCategories);
+    setServiceItems(loadedServices);
+    setMemberNames(nextMemberNames);
+    setDesignerNames(nextDesignerNames);
+  };
 
-        setStatusOptions(nextStatuses);
-        setCategories(nextCategories);
-        setServiceItems(loadedServices);
-      } catch (error) {
-        console.error('Failed to load reservation lookups:', error);
-        setStatusOptions(FALLBACK_STATUSES);
-        setCategories(FALLBACK_CATEGORIES);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // 예약 목록 조회: 헤더 + 시술라인을 화면에서 쓰는 구조로 변환한다.
+  const loadReservations = async () => {
+    const result = await invokeDbCommand<{
+      success: boolean;
+      message: string;
+      reservations: ReservationRow[];
+    }>('get_reservation_calendar_data');
 
-    loadLookupData();
+    const mappedReservations = sortReservations(
+      (result.reservations || []).map((row) => mapReservationRowToRecord(row)),
+    );
+    setReservations(mappedReservations);
+    setNextLineId(getNextLineIdSeed(mappedReservations));
+  };
+
+  // 초기 진입 시 조회성 데이터는 한 번에 불러와 화면 깜빡임을 줄인다.
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+      await Promise.all([loadLookupData(), loadReservations()]);
+    } catch (error) {
+      console.error('Failed to load reservation page data:', error);
+      setStatusOptions(FALLBACK_STATUSES);
+      setCategories(FALLBACK_CATEGORIES);
+      setMemberNames([]);
+      setDesignerNames([]);
+      setReservations([]);
+      alert(
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message || '예약 데이터를 불러오지 못했습니다.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -529,16 +589,21 @@ export default function ReservationCalendarPage() {
       categories[0]?.code || serviceItems[0]?.categoryCode || FALLBACK_CATEGORIES[0].code;
     const defaultServiceId =
       serviceItems.find((service) => service.categoryCode === defaultCategory)?.id;
+    const defaultDesignerName = designerNames[0] || '';
 
     setModalMode('create');
     setEditingId(null);
     setForm(
-      createEmptyForm(
-        date,
-        defaultStatus,
-        defaultCategory,
-        defaultServiceId ? String(defaultServiceId) : '',
-      ),
+      {
+        ...createEmptyForm(
+          date,
+          defaultStatus,
+          defaultCategory,
+          defaultServiceId ? String(defaultServiceId) : '',
+        ),
+        // 디자이너는 직원 목록에서 선택하는 구조라 첫 번째 직원을 기본값으로 둔다.
+        designerName: defaultDesignerName,
+      },
     );
     setIsModalOpen(true);
   };
@@ -612,7 +677,8 @@ export default function ReservationCalendarPage() {
     }));
   };
 
-  const saveReservation = (event: React.FormEvent) => {
+  // 예약 등록/수정: 헤더 + 시술 service_id 목록을 함께 DB에 저장한다.
+  const saveReservation = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!form.reservationDate || !form.startTime) {
@@ -632,39 +698,60 @@ export default function ReservationCalendarPage() {
       return;
     }
 
-    setReservations((prev) => {
-      const normalized: ReservationRecord = {
-        id: editingId ?? 0,
-        reservationDate: form.reservationDate,
-        startTime: form.startTime,
-        customerName: form.customerName.trim(),
-        designerName: form.designerName.trim(),
-        status: form.status,
-        note: form.note.trim(),
-        services: form.services.map((service) => ({ ...service })),
-      };
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'upsert_reservation_calendar_item',
+        {
+          item: {
+            reservation_id: modalMode === 'edit' ? editingId : undefined,
+            reservation_date: form.reservationDate,
+            start_time: form.startTime,
+            customer_name: form.customerName.trim(),
+            designer_name: form.designerName.trim(),
+            status: form.status,
+            note: form.note.trim() || null,
+            service_ids: form.services.map((service) => service.serviceId),
+          },
+        },
+      );
 
-      if (modalMode === 'edit' && editingId !== null) {
-        return sortReservations(
-          prev.map((reservation) =>
-            reservation.id === editingId
-              ? { ...normalized, id: editingId }
-              : reservation,
-          ),
-        );
-      }
-
-      const nextId = prev.length > 0 ? Math.max(...prev.map((item) => item.id)) + 1 : 1;
-      return sortReservations([{ ...normalized, id: nextId }, ...prev]);
-    });
-
-    setSelectedDate(form.reservationDate);
-    closeModal();
+      await loadReservations();
+      setSelectedDate(form.reservationDate);
+      closeModal();
+      alert(result.message || (modalMode === 'edit' ? '예약 수정이 완료되었습니다.' : '예약 등록이 완료되었습니다.'));
+    } catch (error) {
+      alert(
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message || '예약 저장에 실패했습니다.',
+      );
+    } finally {
+      setIsMutating(false);
+    }
   };
 
-  const deleteReservation = (reservationId: number) => {
+  // 예약 삭제: 헤더를 삭제하면 시술 라인도 CASCADE로 함께 정리된다.
+  const deleteReservation = async (reservationId: number) => {
     if (!window.confirm('선택한 예약을 삭제하시겠습니까?')) return;
-    setReservations((prev) => prev.filter((reservation) => reservation.id !== reservationId));
+
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'delete_reservation_calendar_item',
+        { reservation_id: reservationId },
+      );
+      await loadReservations();
+      alert(result.message || '예약이 삭제되었습니다.');
+    } catch (error) {
+      alert(
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message || '예약 삭제에 실패했습니다.',
+      );
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   const moveMonth = (diff: number) => {
@@ -675,11 +762,13 @@ export default function ReservationCalendarPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-      {isLoading && (
+      {isDbBusy && (
         <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
             <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">로딩중...</span>
+            <span className="text-sm font-semibold text-slate-700">
+              {isMutating ? '저장중...' : '로딩중...'}
+            </span>
           </div>
         </div>
       )}
@@ -707,7 +796,8 @@ export default function ReservationCalendarPage() {
         </div>
         <button
           onClick={() => openCreateModal(selectedDate)}
-          className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors"
+          disabled={isDbBusy}
+          className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-60"
         >
           <PlusCircle size={16} />
           예약 등록
@@ -798,6 +888,7 @@ export default function ReservationCalendarPage() {
                             event.stopPropagation();
                             openEditModal(reservation);
                           }}
+                          disabled={isDbBusy}
                           className={`w-full text-left rounded px-1.5 py-1 text-[10px] font-semibold truncate ${tone.chip}`}
                         >
                           {reservation.startTime} {reservation.customerName}
@@ -824,7 +915,8 @@ export default function ReservationCalendarPage() {
             </div>
             <button
               onClick={() => openCreateModal(selectedDate)}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary/90"
+              disabled={isDbBusy}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary/90 disabled:opacity-60"
             >
               선택일 등록
             </button>
@@ -879,6 +971,7 @@ export default function ReservationCalendarPage() {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => openEditModal(reservation)}
+                              disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
                               title="수정"
                             >
@@ -886,6 +979,7 @@ export default function ReservationCalendarPage() {
                             </button>
                             <button
                               onClick={() => deleteReservation(reservation.id)}
+                              disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                               title="삭제"
                             >
@@ -988,6 +1082,7 @@ export default function ReservationCalendarPage() {
                               <div className="flex items-center justify-center gap-2">
                                 <button
                                   onClick={() => openEditModal(reservation)}
+                                  disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
                                   title="수정"
                                 >
@@ -995,6 +1090,7 @@ export default function ReservationCalendarPage() {
                                 </button>
                                 <button
                                   onClick={() => deleteReservation(reservation.id)}
+                                  disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                   title="삭제"
                                 >
@@ -1046,6 +1142,7 @@ export default function ReservationCalendarPage() {
                 <GripHorizontal size={16} className="text-slate-300" />
                 <button
                   onClick={closeModal}
+                  disabled={isDbBusy}
                   className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                   aria-label="close-modal"
                 >
@@ -1098,19 +1195,40 @@ export default function ReservationCalendarPage() {
                   <input
                     value={form.customerName}
                     onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
-                    placeholder="예: 김서연"
+                    list="reservation-customer-options"
+                    placeholder="회원 선택 또는 직접 입력"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
+                  {/* 고객명은 회원 목록 추천 + 직접 입력을 동시에 허용하기 위해 datalist를 사용한다. */}
+                  <datalist id="reservation-customer-options">
+                    {memberNames.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">디자이너</label>
-                  <input
+                  <select
                     value={form.designerName}
                     onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))}
-                    placeholder="예: 지우 디자이너"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
+                  >
+                    <option value="">
+                      {designerNames.length > 0 ? '디자이너를 선택해 주세요' : '직원 테이블에 디자이너가 없습니다'}
+                    </option>
+                    {designerNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                    {/* 기존 예약 수정 시, 현재 직원 목록에 없는 이름도 값 유지를 위해 임시 옵션으로 노출한다. */}
+                    {form.designerName && !designerNames.includes(form.designerName) && (
+                      <option value={form.designerName}>
+                        {form.designerName} (기존값)
+                      </option>
+                    )}
+                  </select>
                 </div>
 
                 <div className="space-y-1 md:col-span-2 lg:col-span-1">
@@ -1189,7 +1307,7 @@ export default function ReservationCalendarPage() {
                     <button
                       type="button"
                       onClick={addSelectedService}
-                      disabled={!selectedService}
+                      disabled={!selectedService || isDbBusy}
                       className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
                     >
                       <PlusCircle size={16} />
@@ -1232,6 +1350,7 @@ export default function ReservationCalendarPage() {
                                 <button
                                   type="button"
                                   onClick={() => removeService(service.lineId)}
+                                  disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                 >
                                   <Trash2 size={14} />
@@ -1262,12 +1381,14 @@ export default function ReservationCalendarPage() {
                   <button
                     type="button"
                     onClick={closeModal}
+                    disabled={isDbBusy}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
                   >
                     취소
                   </button>
                   <button
                     type="submit"
+                    disabled={isDbBusy}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
                   >
                     <Clock3 size={15} />

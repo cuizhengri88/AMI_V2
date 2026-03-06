@@ -48,10 +48,12 @@ type Reservation = {
   id: string;
   date: string;
   time: string;
-  memberId: number;
-  managerId: number;
+  customerName: string;
+  designerName: string;
+  memberId?: number;
+  managerId?: number;
   procedureIds: number[];
-  status: 'PENDING' | 'CANCELLED' | 'COMPLETED';
+  status: 'RESERVED' | 'PROCESSING' | 'CANCELLED' | 'COMPLETED';
 };
 
 type PaymentMethodCode = string;
@@ -107,6 +109,15 @@ function todayIso() {
 
 const EMPTY_RESERVATIONS: Reservation[] = [];
 
+function toReservationStatus(value: string): Reservation['status'] {
+  const normalized = value.trim().toUpperCase();
+  if (normalized.includes('CANCEL')) return 'CANCELLED';
+  if (normalized.includes('PROCESS')) return 'PROCESSING';
+  if (normalized.includes('COMPLETE')) return 'COMPLETED';
+  if (normalized.includes('RESERV')) return 'RESERVED';
+  return 'RESERVED';
+}
+
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {
   const dragControls = useDragControls();
 
@@ -147,7 +158,7 @@ export default function SalesEntryPage() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
-  const [todayReservations] = useState<Reservation[]>(EMPTY_RESERVATIONS);
+  const [todayReservations, setTodayReservations] = useState<Reservation[]>(EMPTY_RESERVATIONS);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   // [상태] 로딩/저장 중 UI 제어
@@ -167,6 +178,7 @@ export default function SalesEntryPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('커트');
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
+  const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
 
   const isBusy = isLoading || isMutating;
 
@@ -256,6 +268,22 @@ export default function SalesEntryPage() {
         }>;
       }>('get_sales_settlement_data');
 
+      const reservationResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        reservations: Array<{
+          reservation_id: number;
+          reservation_date: string;
+          start_time: string;
+          customer_name: string;
+          designer_name: string;
+          status: string;
+          services: Array<{
+            service_id: number;
+          }>;
+        }>;
+      }>('get_reservation_calendar_data');
+
       // [매핑] 회원 포인트 조회 결과 -> 화면 모델
       const mappedMembers: Member[] = (memberResult.members || []).map((member) => ({
         id: member.user_id,
@@ -316,11 +344,34 @@ export default function SalesEntryPage() {
         reservationId: settlement.reservation_ref || undefined,
       }));
 
+      // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
+      const mappedReservations: Reservation[] = (reservationResult.reservations || []).map((reservation) => {
+        const customerName = reservation.customer_name?.trim() || '';
+        const designerName = reservation.designer_name?.trim() || '';
+        const matchedMember = mappedMembers.find((member) => member.name.trim() === customerName);
+        const matchedManager = mappedManagers.find((manager) => manager.name.trim() === designerName);
+
+        return {
+          id: String(reservation.reservation_id),
+          date: reservation.reservation_date,
+          time: reservation.start_time,
+          customerName,
+          designerName,
+          memberId: matchedMember?.id,
+          managerId: matchedManager?.id,
+          procedureIds: (reservation.services || [])
+            .map((service) => service.service_id)
+            .filter((serviceId) => Number.isFinite(serviceId) && serviceId > 0),
+          status: toReservationStatus(reservation.status),
+        };
+      });
+
       setMembers(mappedMembers);
       setManagers(mappedManagers);
       setProcedures(mappedProcedures);
       setPaymentMethods(mappedPaymentMethods.length > 0 ? mappedPaymentMethods : FALLBACK_PAYMENT_METHODS);
       setSettlements(mappedSettlements);
+      setTodayReservations(mappedReservations);
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || '매출/정산 데이터를 불러오지 못했습니다.');
     } finally {
@@ -345,6 +396,23 @@ export default function SalesEntryPage() {
     const memberId = Number(selectedMemberId);
     return members.find((member) => member.id === memberId) || null;
   }, [selectedMemberId, members]);
+
+  // [계산] 이미 정산에 연결된 예약 ID 집합
+  const settledReservationIdSet = useMemo(
+    () => new Set(settlements.map((settlement) => settlement.reservationId).filter(Boolean) as string[]),
+    [settlements],
+  );
+
+  // [계산] 예약 불러오기: 선택한 날짜 + 미완료 예약 + 미연동 예약만 노출
+  const importableReservations = useMemo(() => {
+    return todayReservations.filter(
+      (reservation) =>
+        reservation.date === reservationImportDate
+        && reservation.status !== 'CANCELLED'
+        && reservation.status !== 'COMPLETED'
+        && !settledReservationIdSet.has(reservation.id),
+    );
+  }, [todayReservations, reservationImportDate, settledReservationIdSet]);
 
   // [계산] 목록 검색(고객명/전화번호/담당자 + 날짜)
   const filteredSettlements = useMemo(() => {
@@ -401,6 +469,7 @@ export default function SalesEntryPage() {
     if (settlement) {
       setEditingSettlement(settlement);
       setSelectedReservationId(settlement.reservationId || '');
+      setReservationImportDate(settlement.date.slice(0, 10));
       setSelectedMemberId(
         settlement.memberId === 'GUEST' ? 'GUEST' : String(settlement.memberId),
       );
@@ -410,20 +479,50 @@ export default function SalesEntryPage() {
     } else {
       setEditingSettlement(null);
       resetModalForm();
+      setReservationImportDate(filterDate || todayIso());
     }
     setIsModalOpen(true);
   };
 
   // [동작] 예약 데이터 불러오기(선택한 예약값으로 모달 입력 자동 채움)
   const handleImportReservation = (reservationId: string) => {
-    const reservation = todayReservations.find((entry) => entry.id === reservationId);
+    const reservation = importableReservations.find((entry) => entry.id === reservationId);
     if (!reservation) return;
 
+    const validProcedureIds = reservation.procedureIds.filter(
+      (procedureId) => procedures.some((procedure) => procedure.id === procedureId),
+    );
+
     setSelectedReservationId(reservationId);
-    setSelectedMemberId(String(reservation.memberId));
-    setSelectedManagerId(String(reservation.managerId));
-    setSelectedProcs(reservation.procedureIds);
+    setSelectedMemberId(
+      reservation.memberId && reservation.memberId > 0
+        ? String(reservation.memberId)
+        : 'GUEST',
+    );
+    setSelectedManagerId(
+      reservation.managerId && reservation.managerId > 0
+        ? String(reservation.managerId)
+        : '',
+    );
+    setSelectedProcs(validProcedureIds);
+
+    const firstProcedure = procedures.find((procedure) => procedure.id === validProcedureIds[0]);
+    if (firstProcedure) {
+      setSelectedCategory(firstProcedure.categoryName);
+    }
+
+    if (validProcedureIds.length === 0) {
+      alert('선택한 예약의 시술 항목이 현재 시술 목록에 없어 자동 반영되지 않았습니다.');
+    }
   };
+
+  // [동작] 예약 기준 날짜가 바뀌어 현재 선택 예약이 목록에서 사라지면 선택값만 정리한다.
+  useEffect(() => {
+    if (!selectedReservationId) return;
+    if (!importableReservations.some((reservation) => reservation.id === selectedReservationId)) {
+      setSelectedReservationId('');
+    }
+  }, [selectedReservationId, importableReservations]);
 
   // [동작] 잔액만큼 결제수단 라인 1건 자동 추가
   const handleAddPayment = () => {
@@ -555,7 +654,7 @@ export default function SalesEntryPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">시술 및 결제 내역 관리</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">매출 등록</h1>
           <p className="text-slate-500 mt-1">시술 내역 조회 및 결제 정산을 관리합니다.</p>
         </div>
         <button
@@ -700,7 +799,7 @@ export default function SalesEntryPage() {
                   <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
-                        <Calendar size={12} /> 당일 예약 불러오기
+                        <Calendar size={12} /> 예약 불러오기
                       </label>
                       {selectedReservationId && (
                         <button
@@ -716,27 +815,39 @@ export default function SalesEntryPage() {
                         </button>
                       )}
                     </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="date"
+                        value={reservationImportDate}
+                        onChange={(event) => setReservationImportDate(event.target.value)}
+                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <span className="text-[10px] font-bold text-slate-500">
+                        예약 {importableReservations.length}건
+                      </span>
+                    </div>
                     <select
                       value={selectedReservationId}
                       onChange={(event) => handleImportReservation(event.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
                     >
                       <option value="">예약 건을 선택하세요 (선택 시 자동 입력)</option>
-                      {todayReservations
-                        .filter((reservation) => reservation.status === 'PENDING')
-                        .map((reservation) => {
-                          const member = members.find((entry) => entry.id === reservation.memberId);
-                          const procLabel = reservation.procedureIds
-                            .map((id) => procedures.find((entry) => entry.id === id)?.name)
-                            .filter(Boolean)
-                            .join(', ');
+                      {importableReservations.map((reservation) => {
+                        const member = reservation.memberId
+                          ? members.find((entry) => entry.id === reservation.memberId)
+                          : null;
+                        const customerLabel = member?.name || reservation.customerName || '일반 방문객';
+                        const procLabel = reservation.procedureIds
+                          .map((id) => procedures.find((entry) => entry.id === id)?.name)
+                          .filter(Boolean)
+                          .join(', ');
 
-                          return (
-                            <option key={reservation.id} value={reservation.id}>
-                              [{reservation.time}] {member?.name} - {procLabel}
-                            </option>
-                          );
-                        })}
+                        return (
+                          <option key={reservation.id} value={reservation.id}>
+                            [{reservation.time}] {customerLabel} - {procLabel || '시술 미매핑'}
+                          </option>
+                        );
+                      })}
                     </select>
                     {selectedReservationId && <p className="text-[10px] text-primary font-medium">* 예약 정보가 자동으로 입력되었습니다.</p>}
                   </div>

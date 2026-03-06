@@ -1,15 +1,140 @@
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tokio_postgres::{Client, NoTls};
 
 const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";
 const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";
 const DEFAULT_STORE_CODE: &str = "HAIR_001";
 const STORE_CODE_GROUP_ID: &str = "STR_CD";
+const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
+const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
+const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct LocalMigrationCache {
+    checked_keys: HashSet<String>,
+}
+
+static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new();
+static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);
+
+fn migration_cache_file_path() -> PathBuf {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        return PathBuf::from(local_app_data)
+            .join(LOCAL_MIGRATION_CACHE_DIR)
+            .join("migration_cache.json");
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".gov_data_management")
+            .join("migration_cache.json");
+    }
+
+    PathBuf::from("migration_cache.json")
+}
+
+fn load_local_migration_cache() -> LocalMigrationCache {
+    let cache_path = migration_cache_file_path();
+    let Ok(raw_json) = fs::read_to_string(cache_path) else {
+        return LocalMigrationCache::default();
+    };
+
+    serde_json::from_str::<LocalMigrationCache>(&raw_json).unwrap_or_default()
+}
+
+fn local_migration_cache() -> &'static Mutex<LocalMigrationCache> {
+    LOCAL_MIGRATION_CACHE.get_or_init(|| Mutex::new(load_local_migration_cache()))
+}
+
+fn persist_local_migration_cache(cache: &LocalMigrationCache) -> Result<(), String> {
+    let cache_path = migration_cache_file_path();
+
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("로컬 마이그레이션 캐시 폴더 생성 실패: {e}"))?;
+    }
+
+    let serialized = serde_json::to_string_pretty(cache)
+        .map_err(|e| format!("로컬 마이그레이션 캐시 직렬화 실패: {e}"))?;
+
+    fs::write(&cache_path, serialized)
+        .map_err(|e| format!("로컬 마이그레이션 캐시 저장 실패: {e}"))?;
+
+    Ok(())
+}
+
+fn build_reservation_store_code_migration_key(connection: &DbConnectionPayload) -> String {
+    format!(
+        "{}::{}::{}::{}::{}",
+        RESERVATION_STORE_CODE_MIGRATION_ID,
+        connection.host.trim().to_lowercase(),
+        connection.port,
+        connection.database.trim().to_lowercase(),
+        connection.schema.trim().to_lowercase(),
+    )
+}
+
+fn is_local_migration_checked(key: &str) -> bool {
+    match local_migration_cache().lock() {
+        Ok(cache) => cache.checked_keys.contains(key),
+        Err(poisoned) => {
+            let cache = poisoned.into_inner();
+            cache.checked_keys.contains(key)
+        }
+    }
+}
+
+fn mark_local_migration_checked(key: &str) {
+    let mut cache = match local_migration_cache().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if !cache.checked_keys.insert(key.to_string()) {
+        return;
+    }
+
+    if let Err(error) = persist_local_migration_cache(&cache) {
+        eprintln!("{error}");
+    }
+}
+
+fn build_full_db_integrity_check_key(connection: &DbConnectionPayload) -> String {
+    format!(
+        "{}::{}::{}::{}::{}",
+        FULL_DB_INTEGRITY_CHECK_ID,
+        connection.host.trim().to_lowercase(),
+        connection.port,
+        connection.database.trim().to_lowercase(),
+        connection.schema.trim().to_lowercase(),
+    )
+}
+
+fn is_db_integrity_check_mode() -> bool {
+    DB_INTEGRITY_CHECK_MODE.load(Ordering::SeqCst)
+}
+
+struct DbIntegrityCheckGuard;
+
+impl Drop for DbIntegrityCheckGuard {
+    fn drop(&mut self) {
+        DB_INTEGRITY_CHECK_MODE.store(false, Ordering::SeqCst);
+    }
+}
+
+fn enter_db_integrity_check_mode() -> DbIntegrityCheckGuard {
+    DB_INTEGRITY_CHECK_MODE.store(true, Ordering::SeqCst);
+    DbIntegrityCheckGuard
+}
 
 macro_rules! log_sql {
     ($sql:expr) => {
@@ -36,6 +161,11 @@ struct DbConnectionResult {
     message: String,
     current_schema: String,
     server_version: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DbIntegrityCheckPayload {
+    connection: DbConnectionPayload,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -443,6 +573,68 @@ struct ServiceCatalogDataResult {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReservationCalendarItemPayload {
+    reservation_id: Option<i64>,
+    reservation_date: String,
+    start_time: String,
+    customer_name: String,
+    designer_name: String,
+    status: String,
+    note: Option<String>,
+    service_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReservationCalendarQueryPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertReservationCalendarPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    item: ReservationCalendarItemPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteReservationCalendarPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    reservation_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct ReservationCalendarServiceDto {
+    line_id: i64,
+    service_id: i64,
+    category_code: String,
+    category_name: String,
+    service_name: String,
+    unit_price: i64,
+    duration_minutes: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct ReservationCalendarDto {
+    reservation_id: i64,
+    reservation_date: String,
+    start_time: String,
+    customer_name: String,
+    designer_name: String,
+    status: String,
+    note: Option<String>,
+    services: Vec<ReservationCalendarServiceDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReservationCalendarDataResult {
+    success: bool,
+    message: String,
+    reservations: Vec<ReservationCalendarDto>,
+}
+
+#[derive(Debug, Deserialize)]
 struct MemberPointQueryPayload {
     connection: DbConnectionPayload,
     store_code: Option<String>,
@@ -737,6 +929,10 @@ async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), St
 }
 
 async fn ensure_menu_table(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     client
         .batch_execute(
             r#"
@@ -810,6 +1006,10 @@ async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
 }
 
 async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     client
         .batch_execute(
             r#"
@@ -864,6 +1064,10 @@ async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(
 }
 
 async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     ensure_menu_table(client).await?;
     client
         .batch_execute(
@@ -939,6 +1143,10 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
 }
 
 async fn ensure_employee_management_table(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     ensure_role_management_tables(client).await?;
     client
         .batch_execute(
@@ -984,6 +1192,10 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
 }
 
 async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     let sql = r#"
         CREATE TABLE IF NOT EXISTS user_management (
             user_id BIGSERIAL PRIMARY KEY,
@@ -1022,6 +1234,10 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
 }
 
 async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     ensure_common_code_tables(client).await?;
     let sql = r#"
         CREATE TABLE IF NOT EXISTS service_catalog_management (
@@ -1067,7 +1283,122 @@ async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), 
         .map_err(|e| format!("시술 항목 테이블 생성 실패: {e}"))
 }
 
+async fn ensure_reservation_calendar_management_tables(
+    client: &Client,
+    connection: &DbConnectionPayload,
+) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
+    let migration_key = build_reservation_store_code_migration_key(connection);
+    if is_local_migration_checked(&migration_key) {
+        return Ok(());
+    }
+
+    ensure_service_catalog_management_table(client).await?;
+    ensure_common_code_tables(client).await?;
+
+    // 예약 헤더 + 예약 시술 라인을 분리해서 저장한다.
+    // 헤더 삭제 시 라인은 CASCADE로 함께 삭제되도록 FK를 설정한다.
+    let create_sql = r#"
+        CREATE TABLE IF NOT EXISTS reservation_calendar_management (
+            reservation_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            reservation_date DATE NOT NULL,
+            start_time TIME NOT NULL,
+            customer_name VARCHAR(100) NOT NULL,
+            designer_name VARCHAR(100) NOT NULL,
+            status_code VARCHAR(100) NOT NULL,
+            note TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_management_schedule
+        ON reservation_calendar_management (store_code, reservation_date, start_time);
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_management_status
+        ON reservation_calendar_management (status_code);
+
+        CREATE TABLE IF NOT EXISTS reservation_calendar_service_line (
+            line_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            reservation_id BIGINT NOT NULL REFERENCES reservation_calendar_management(reservation_id) ON DELETE CASCADE,
+            line_no INTEGER NOT NULL CHECK (line_no > 0),
+            service_id BIGINT NOT NULL REFERENCES service_catalog_management(service_id) ON DELETE RESTRICT,
+            category_code VARCHAR(100) NOT NULL,
+            category_name VARCHAR(100) NOT NULL,
+            service_name VARCHAR(200) NOT NULL,
+            unit_price BIGINT NOT NULL CHECK (unit_price >= 0),
+            duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (store_code, reservation_id, line_no)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_service_line_store_reservation
+        ON reservation_calendar_service_line (store_code, reservation_id);
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_service_line_service
+        ON reservation_calendar_service_line (service_id);
+    "#;
+    log_sql!(create_sql);
+    client
+        .batch_execute(create_sql)
+        .await
+        .map_err(|e| format!("예약 캘린더 테이블 생성 실패: {e}"))?;
+
+    let patch_sql = r#"
+        ALTER TABLE reservation_calendar_management
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE reservation_calendar_management
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE reservation_calendar_management
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE reservation_calendar_management
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_management_store
+        ON reservation_calendar_management (store_code);
+
+        ALTER TABLE reservation_calendar_service_line
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE reservation_calendar_service_line
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE reservation_calendar_service_line
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE reservation_calendar_service_line
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_reservation_calendar_service_line_store
+        ON reservation_calendar_service_line (store_code);
+    "#;
+    log_sql!(patch_sql);
+    client
+        .batch_execute(patch_sql)
+        .await
+        .map_err(|e| format!("예약 캘린더 store_code 마이그레이션 실패: {e}"))?;
+
+    mark_local_migration_checked(&migration_key);
+    Ok(())
+}
+
 async fn ensure_member_point_management_tables(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     ensure_user_management_table(client).await?;
     ensure_service_catalog_management_table(client).await?;
     ensure_common_code_tables(client).await?;
@@ -1194,6 +1525,10 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
 }
 
 async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     ensure_member_point_management_tables(client).await?;
     ensure_employee_management_table(client).await?;
     ensure_common_code_tables(client).await?;
@@ -1327,6 +1662,31 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
         message: "DB 연결 성공".to_string(),
         current_schema,
         server_version,
+    })
+}
+
+#[tauri::command]
+async fn run_db_integrity_check(payload: DbIntegrityCheckPayload) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    let full_check_key = build_full_db_integrity_check_key(&payload.connection);
+
+    if is_local_migration_checked(&full_check_key) {
+        return Ok(MutationResult {
+            success: true,
+            message: "DB 무결성검사가 이미 완료되어 재검사를 생략했습니다.".to_string(),
+        });
+    }
+
+    // 무결성 검사 커맨드에서만 ensure_*가 실제 DDL/보정 쿼리를 실행하도록 모드를 켠다.
+    let _integrity_mode_guard = enter_db_integrity_check_mode();
+    ensure_sales_settlement_management_tables(&client).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
+
+    mark_local_migration_checked(&full_check_key);
+
+    Ok(MutationResult {
+        success: true,
+        message: "DB 무결성검사 완료".to_string(),
     })
 }
 
@@ -2685,6 +3045,389 @@ async fn delete_service_catalog_item(
 }
 
 #[tauri::command]
+async fn get_reservation_calendar_data(
+    payload: ReservationCalendarQueryPayload,
+) -> Result<ReservationCalendarDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    // 예약 헤더(날짜/시간/고객/상태)를 먼저 조회한다.
+    let reservation_rows = client
+        .query(
+            r#"
+            SELECT
+                r.reservation_id::BIGINT,
+                r.reservation_date::TEXT,
+                TO_CHAR(r.start_time, 'HH24:MI') AS start_time,
+                r.customer_name,
+                r.designer_name,
+                r.status_code,
+                r.note
+              FROM reservation_calendar_management r
+             WHERE r.store_code = $1
+             ORDER BY r.reservation_date ASC, r.start_time ASC, r.reservation_id DESC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("예약 목록 조회 실패: {e}"))?;
+
+    // 예약별 시술 라인은 별도 조회 후 HashMap으로 묶어서 조립한다.
+    let service_line_rows = client
+        .query(
+            r#"
+            SELECT
+                l.line_id::BIGINT,
+                l.reservation_id::BIGINT,
+                l.service_id::BIGINT,
+                l.category_code,
+                l.category_name,
+                l.service_name,
+                l.unit_price::BIGINT,
+                l.duration_minutes::INTEGER
+              FROM reservation_calendar_service_line l
+             WHERE l.store_code = $1
+             ORDER BY l.reservation_id DESC, l.line_no ASC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("예약 시술 라인 조회 실패: {e}"))?;
+
+    let mut service_map = HashMap::<i64, Vec<ReservationCalendarServiceDto>>::new();
+    for row in service_line_rows {
+        let reservation_id = row.get::<_, i64>(1);
+        service_map
+            .entry(reservation_id)
+            .or_default()
+            .push(ReservationCalendarServiceDto {
+                line_id: row.get::<_, i64>(0),
+                service_id: row.get::<_, i64>(2),
+                category_code: row.get::<_, String>(3),
+                category_name: row.get::<_, String>(4),
+                service_name: row.get::<_, String>(5),
+                unit_price: row.get::<_, i64>(6),
+                duration_minutes: row.get::<_, i32>(7),
+            });
+    }
+
+    let reservations = reservation_rows
+        .into_iter()
+        .map(|row| {
+            let reservation_id = row.get::<_, i64>(0);
+            ReservationCalendarDto {
+                reservation_id,
+                reservation_date: row.get::<_, String>(1),
+                start_time: row.get::<_, String>(2),
+                customer_name: row.get::<_, String>(3),
+                designer_name: row.get::<_, String>(4),
+                status: row.get::<_, String>(5),
+                note: row.get::<_, Option<String>>(6),
+                services: service_map.remove(&reservation_id).unwrap_or_default(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ReservationCalendarDataResult {
+        success: true,
+        message: "예약 목록 조회 완료".to_string(),
+        reservations,
+    })
+}
+
+#[tauri::command]
+async fn upsert_reservation_calendar_item(
+    payload: UpsertReservationCalendarPayload,
+) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let item = payload.item;
+    let reservation_date_text = item.reservation_date.trim().to_string();
+    let start_time_text = item.start_time.trim().to_string();
+    let customer_name = item.customer_name.trim().to_string();
+    let designer_name = item.designer_name.trim().to_string();
+    let status_code = item.status.trim().to_uppercase();
+    let note = item
+        .note
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let is_update = item.reservation_id.is_some();
+
+    // 날짜/시간 파싱을 선행해서 프론트가 잘못된 값을 보내도 DB 오류 전에 명확히 차단한다.
+    let reservation_date = NaiveDate::parse_from_str(&reservation_date_text, "%Y-%m-%d")
+        .map_err(|_| "예약일 형식은 YYYY-MM-DD 이어야 합니다.".to_string())?;
+    let start_time = NaiveTime::parse_from_str(&start_time_text, "%H:%M")
+        .map_err(|_| "예약 시간 형식은 HH:MM 이어야 합니다.".to_string())?;
+
+    if customer_name.is_empty() {
+        return Err("고객명은 필수입니다.".to_string());
+    }
+    if designer_name.is_empty() {
+        return Err("디자이너명은 필수입니다.".to_string());
+    }
+    if status_code.is_empty() {
+        return Err("예약 상태는 필수입니다.".to_string());
+    }
+    if item.service_ids.is_empty() {
+        return Err("시술 항목은 1건 이상 필요합니다.".to_string());
+    }
+
+    // RESERVATION_STATUS 공통코드가 있으면 해당 코드만 허용하고,
+    // 아직 코드 세팅 전이면 기본 상태 3종만 허용한다.
+    let status_rows = client
+        .query(
+            r#"
+            SELECT detail_code
+              FROM common_code_detail
+             WHERE group_code_id = 'RESERVATION_STATUS'
+               AND use_yn = 'Y'
+            "#,
+            &[],
+        )
+        .await
+        .map_err(|e| format!("예약 상태코드 확인 실패: {e}"))?;
+
+    if status_rows.is_empty() {
+        let allowed = ["RESERVED", "COMPLETED", "CANCELLED"];
+        if !allowed.contains(&status_code.as_str()) {
+            return Err(
+                "RESERVATION_STATUS 공통코드가 없으므로 RESERVED/COMPLETED/CANCELLED만 사용할 수 있습니다."
+                    .to_string(),
+            );
+        }
+    } else {
+        let status_exists = status_rows.iter().any(|row| {
+            row.get::<_, String>(0)
+                .trim()
+                .eq_ignore_ascii_case(status_code.as_str())
+        });
+        if !status_exists {
+            return Err("선택한 예약 상태코드가 RESERVATION_STATUS 공통코드에 없습니다.".to_string());
+        }
+    }
+
+    // 시술 항목은 중복 제거 리스트로 존재 여부를 검증하되,
+    // 실제 저장 시에는 사용자가 보낸 순서를 line_no로 유지한다.
+    let mut unique_service_ids = Vec::<i64>::new();
+    let mut seen_service_ids = HashSet::<i64>::new();
+    for service_id in &item.service_ids {
+        if *service_id <= 0 {
+            return Err("service_ids에는 1 이상의 값만 사용할 수 있습니다.".to_string());
+        }
+        if seen_service_ids.insert(*service_id) {
+            unique_service_ids.push(*service_id);
+        }
+    }
+
+    let service_rows = client
+        .query(
+            r#"
+            SELECT
+                s.service_id::BIGINT,
+                s.category_code,
+                COALESCE(c.detail_name, s.category_code) AS category_name,
+                s.service_name,
+                s.unit_price::BIGINT,
+                s.duration_minutes::INTEGER
+              FROM service_catalog_management s
+         LEFT JOIN common_code_detail c
+                ON c.group_code_id = 'T_CATEGORY'
+               AND c.detail_code = s.category_code
+             WHERE s.store_code = $1
+               AND s.use_yn = 'Y'
+               AND s.service_id::BIGINT = ANY($2::BIGINT[])
+            "#,
+            &[&store_code, &unique_service_ids],
+        )
+        .await
+        .map_err(|e| format!("예약 시술 항목 확인 실패: {e}"))?;
+
+    let mut service_snapshot_map = HashMap::<i64, (String, String, String, i64, i32)>::new();
+    for row in service_rows {
+        let service_id = row.get::<_, i64>(0);
+        service_snapshot_map.insert(
+            service_id,
+            (
+                row.get::<_, String>(1),
+                row.get::<_, String>(2),
+                row.get::<_, String>(3),
+                row.get::<_, i64>(4),
+                row.get::<_, i32>(5),
+            ),
+        );
+    }
+
+    for service_id in &unique_service_ids {
+        if !service_snapshot_map.contains_key(service_id) {
+            return Err("예약에 포함된 시술 항목 중 존재하지 않거나 사용중이 아닌 항목이 있습니다.".to_string());
+        }
+    }
+
+    // 예약 헤더/라인을 같은 트랜잭션으로 처리해서 데이터 불일치를 방지한다.
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("예약 저장 트랜잭션 시작 실패: {e}"))?;
+
+    let reservation_id = if let Some(reservation_id) = item.reservation_id {
+        if reservation_id <= 0 {
+            return Err("reservation_id는 1 이상이어야 합니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE reservation_calendar_management
+                   SET reservation_date = $3,
+                       start_time = $4,
+                       customer_name = $5,
+                       designer_name = $6,
+                       status_code = $7,
+                       note = $8,
+                       updated_at = NOW()
+                 WHERE reservation_id = $1
+                   AND store_code = $2
+                "#,
+                &[
+                    &reservation_id,
+                    &store_code,
+                    &reservation_date,
+                    &start_time,
+                    &customer_name,
+                    &designer_name,
+                    &status_code,
+                    &note,
+                ],
+            )
+            .await
+            .map_err(|e| format!("예약 수정 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("수정 대상 예약이 없습니다.".to_string());
+        }
+
+        tx.execute(
+            "DELETE FROM reservation_calendar_service_line WHERE reservation_id = $1 AND store_code = $2",
+            &[&reservation_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("기존 예약 시술 라인 삭제 실패: {e}"))?;
+
+        reservation_id
+    } else {
+        tx.query_one(
+            r#"
+            INSERT INTO reservation_calendar_management (
+                store_code,
+                reservation_date,
+                start_time,
+                customer_name,
+                designer_name,
+                status_code,
+                note
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            RETURNING reservation_id::BIGINT
+            "#,
+            &[
+                &store_code,
+                &reservation_date,
+                &start_time,
+                &customer_name,
+                &designer_name,
+                &status_code,
+                &note,
+            ],
+        )
+        .await
+        .map_err(|e| format!("예약 등록 실패: {e}"))?
+        .get::<_, i64>(0)
+    };
+
+    for (index, service_id) in item.service_ids.iter().enumerate() {
+        let Some(snapshot) = service_snapshot_map.get(service_id) else {
+            return Err("예약 저장 중 시술 스냅샷이 유실되었습니다.".to_string());
+        };
+
+        // 프론트에서 선택한 순서를 보존하기 위해 line_no는 전달 순서(index+1)로 기록한다.
+        let line_no = (index + 1) as i32;
+        tx.execute(
+            r#"
+            INSERT INTO reservation_calendar_service_line (
+                store_code,
+                reservation_id,
+                line_no,
+                service_id,
+                category_code,
+                category_name,
+                service_name,
+                unit_price,
+                duration_minutes
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            "#,
+            &[
+                &store_code,
+                &reservation_id,
+                &line_no,
+                service_id,
+                &snapshot.0,
+                &snapshot.1,
+                &snapshot.2,
+                &snapshot.3,
+                &snapshot.4,
+            ],
+        )
+        .await
+        .map_err(|e| format!("예약 시술 라인 저장 실패: {e}"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("예약 저장 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: if is_update {
+            "예약 수정 완료".to_string()
+        } else {
+            "예약 등록 완료".to_string()
+        },
+    })
+}
+
+#[tauri::command]
+async fn delete_reservation_calendar_item(
+    payload: DeleteReservationCalendarPayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    if payload.reservation_id <= 0 {
+        return Err("삭제할 reservation_id가 올바르지 않습니다.".to_string());
+    }
+
+    let affected = client
+        .execute(
+            "DELETE FROM reservation_calendar_management WHERE reservation_id = $1 AND store_code = $2",
+            &[&payload.reservation_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("예약 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 예약이 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "예약 삭제 완료".to_string(),
+    })
+}
+
+#[tauri::command]
 async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
@@ -3454,6 +4197,7 @@ async fn get_sales_settlement_data(
 async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_sales_settlement_management_tables(&client).await?;
+    ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let settlement = payload.settlement;
@@ -3674,6 +4418,37 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
+    // 정산이 예약건에서 시작된 경우 reservation_ref를 예약 PK로 파싱해 존재 여부를 먼저 검증한다.
+    let linked_reservation_id = if let Some(reservation_ref_value) = reservation_ref.as_ref() {
+        let parsed_reservation_id = reservation_ref_value
+            .parse::<i64>()
+            .map_err(|_| "reservation_ref는 예약 ID(숫자)여야 합니다.".to_string())?;
+        if parsed_reservation_id <= 0 {
+            return Err("reservation_ref는 1 이상의 예약 ID여야 합니다.".to_string());
+        }
+
+        let reservation_exists = client
+            .query_opt(
+                r#"
+                SELECT 1
+                  FROM reservation_calendar_management
+                 WHERE reservation_id = $1
+                   AND store_code = $2
+                "#,
+                &[&parsed_reservation_id, &store_code],
+            )
+            .await
+            .map_err(|e| format!("예약 연동 대상 확인 실패: {e}"))?;
+
+        if reservation_exists.is_none() {
+            return Err("연동할 예약 데이터가 존재하지 않습니다.".to_string());
+        }
+
+        Some(parsed_reservation_id)
+    } else {
+        None
+    };
+
     let tx = client
         .transaction()
         .await
@@ -3824,6 +4599,27 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
         .map_err(|e| format!("결제 라인 저장 실패: {e}"))?;
     }
 
+    // 예약 연동 건이면 정산 상태를 예약 상태에도 동기화한다.
+    if let Some(reservation_id) = linked_reservation_id {
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE reservation_calendar_management
+                   SET status_code = $3,
+                       updated_at = NOW()
+                 WHERE reservation_id = $1
+                   AND store_code = $2
+                "#,
+                &[&reservation_id, &store_code, &status],
+            )
+            .await
+            .map_err(|e| format!("예약 상태 동기화 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("예약 상태를 동기화할 대상 예약이 없습니다.".to_string());
+        }
+    }
+
     tx.commit()
         .await
         .map_err(|e| format!("시술 정산 저장 트랜잭션 커밋 실패: {e}"))?;
@@ -3872,6 +4668,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             test_db_connection,
+            run_db_integrity_check,
             sync_menu_management_to_db,
             get_menu_management_data,
             upsert_menu_management,
@@ -3893,6 +4690,9 @@ fn main() {
             get_service_catalog_data,
             upsert_service_catalog_item,
             delete_service_catalog_item,
+            get_reservation_calendar_data,
+            upsert_reservation_calendar_item,
+            delete_reservation_calendar_item,
             get_member_point_management_data,
             recharge_member_point,
             use_member_point,

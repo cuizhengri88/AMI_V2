@@ -59,6 +59,7 @@ export default function SystemSettingsPage() {
   const [dbSchema, setDbSchema] = useState(DB_CONNECTION.schema);
   const [isRemoteDb, setIsRemoteDb] = useState(true);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [isRunningIntegrityCheck, setIsRunningIntegrityCheck] = useState(false);
   
   // Brand Settings
   const [programName, setProgramName] = useState(localStorage.getItem('programName') || 'GovData');
@@ -178,6 +179,35 @@ export default function SystemSettingsPage() {
       alert(message);
     } finally {
       setIsTestingConnection(false);
+    }
+  };
+
+  const handleRunDbIntegrityCheck = async () => {
+    try {
+      setIsRunningIntegrityCheck(true);
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+      }>('run_db_integrity_check', {
+        connection: {
+          host: dbHost.trim(),
+          port: Number(dbPort),
+          database: dbName.trim(),
+          username: dbUser.trim(),
+          password: dbPassword,
+          schema: dbSchema.trim(),
+        },
+      });
+
+      alert(result.message || 'DB 무결성검사가 완료되었습니다.');
+    } catch (error: any) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error?.message || 'DB 무결성검사 중 오류가 발생했습니다.';
+      alert(message);
+    } finally {
+      setIsRunningIntegrityCheck(false);
     }
   };
 
@@ -396,7 +426,15 @@ export default function SystemSettingsPage() {
               </div>
             )}
             
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handleRunDbIntegrityCheck}
+                disabled={isRunningIntegrityCheck}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <ShieldCheck size={16} className={isRunningIntegrityCheck ? 'animate-pulse' : ''} />
+                {isRunningIntegrityCheck ? '무결성검사 중...' : 'DB 무결성검사'}
+              </button>
               <button
                 onClick={handleTestDbConnection}
                 disabled={isTestingConnection}
