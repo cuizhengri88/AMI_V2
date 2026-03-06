@@ -29,9 +29,11 @@ CREATE TABLE IF NOT EXISTS role_menu_permission (
     can_write BOOLEAN NOT NULL DEFAULT FALSE,
     can_delete BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(role_id, menu_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_role_menu_permission_store_role_menu
+ON role_menu_permission (store_code, role_id, menu_id);
 
 -- 2) SELECT - 역할 목록
 SELECT
@@ -76,7 +78,7 @@ DO UPDATE SET
 -- 5) UPSERT - 메뉴 권한
 INSERT INTO role_menu_permission (role_id, menu_id, store_code, can_read, can_write, can_delete)
 VALUES ($1, $2, $3, $4, $5, $6)
-ON CONFLICT (role_id, menu_id)
+ON CONFLICT (store_code, role_id, menu_id)
 DO UPDATE SET
     store_code = EXCLUDED.store_code,
     can_read = EXCLUDED.can_read,

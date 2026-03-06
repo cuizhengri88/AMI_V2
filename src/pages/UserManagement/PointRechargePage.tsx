@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Plus,
@@ -11,72 +11,217 @@ import {
   DollarSign,
   Ticket,
   History,
+  Loader2,
 } from 'lucide-react';
+import { invokeDbCommand } from '../../lib/dbClient';
 
 type Coupon = {
+  serviceId: number;
   name: string;
   count: number;
 };
 
 type Member = {
-  id: string;
+  id: number;
   name: string;
   phone: string;
   balance: number;
   coupons: Coupon[];
 };
 
-const initialMembers: Member[] = [
-  {
-    id: 'M001',
-    name: '김철수',
-    phone: '010-1234-5678',
-    balance: 150000,
-    coupons: [
-      { name: '남성 컷', count: 3 },
-      { name: '두피 스케일링', count: 1 },
-    ],
-  },
-  {
-    id: 'M002',
-    name: '이영희',
-    phone: '010-9876-5432',
-    balance: 50000,
-    coupons: [{ name: '디지털 펌', count: 1 }],
-  },
-  { id: 'M003', name: '박지민', phone: '010-5555-4444', balance: 0, coupons: [] },
-  {
-    id: 'M004',
-    name: '최유리',
-    phone: '010-1111-2222',
-    balance: 300000,
-    coupons: [{ name: '전체 염색', count: 2 }],
-  },
-];
+type ServiceOption = {
+  id: number;
+  name: string;
+  useYn: 'Y' | 'N';
+};
 
-const procedures = ['남성 컷', '여성 컷', '디지털 펌', '전체 염색', '두피 스케일링'];
-const paymentMethods = ['위챗페이', '알리페이', '현금', '쿠폰', '기타'] as const;
+type PaymentMethodOption = {
+  code: string;
+  label: string;
+  order: number;
+};
+
+type HistoryItem = {
+  id: number;
+  userId: number;
+  userName: string;
+  rechargeType: 'BALANCE' | 'COUPON';
+  amount: number | null;
+  serviceName: string | null;
+  couponCount: number | null;
+  paymentMethodName: string;
+  createdAt: string;
+};
 
 type RechargeType = 'balance' | 'coupon';
-type PaymentMethod = (typeof paymentMethods)[number];
+
+const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
+  { code: 'WECHAT_PAY', label: '위챗페이', order: 1 },
+  { code: 'ALIPAY', label: '알리페이', order: 2 },
+  { code: 'CASH', label: '현금', order: 3 },
+];
+
+function formatCurrency(value: number) {
+  return `₩${value.toLocaleString('ko-KR')}`;
+}
 
 export default function MemberRechargePage() {
-  const [members, setMembers] = useState<Member[]>(initialMembers);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodOption[]>(
+    FALLBACK_PAYMENT_METHODS,
+  );
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [rechargeType, setRechargeType] = useState<RechargeType>('balance');
 
   const [amount, setAmount] = useState('');
-  const [couponName, setCouponName] = useState(procedures[0]);
+  const [selectedServiceId, setSelectedServiceId] = useState<number>(0);
   const [couponCount, setCouponCount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(paymentMethods[0]);
+  const [paymentMethodCode, setPaymentMethodCode] = useState(FALLBACK_PAYMENT_METHODS[0].code);
+
+  const isBusy = isLoading || isMutating;
+
+  const loadPointData = async () => {
+    const result = await invokeDbCommand<{
+      success: boolean;
+      message: string;
+      members: Array<{
+        user_id: number;
+        user_name: string;
+        phone: string | null;
+        point_balance: number;
+        coupons: Array<{
+          service_id: number;
+          service_name: string;
+          count: number;
+        }>;
+      }>;
+      histories: Array<{
+        id: number;
+        user_id: number;
+        user_name: string;
+        recharge_type: 'BALANCE' | 'COUPON';
+        amount: number | null;
+        service_name: string | null;
+        coupon_count: number | null;
+        payment_method_name: string;
+        created_at: string;
+      }>;
+    }>('get_member_point_management_data');
+
+    const mappedMembers: Member[] = (result.members || []).map((member) => ({
+      id: member.user_id,
+      name: member.user_name,
+      phone: member.phone || '-',
+      balance: member.point_balance || 0,
+      coupons: (member.coupons || []).map((coupon) => ({
+        serviceId: coupon.service_id,
+        name: coupon.service_name,
+        count: coupon.count,
+      })),
+    }));
+
+    const mappedHistories: HistoryItem[] = (result.histories || []).map((item) => ({
+      id: item.id,
+      userId: item.user_id,
+      userName: item.user_name,
+      rechargeType: item.recharge_type,
+      amount: item.amount,
+      serviceName: item.service_name,
+      couponCount: item.coupon_count,
+      paymentMethodName: item.payment_method_name,
+      createdAt: item.created_at,
+    }));
+
+    setMembers(mappedMembers);
+    setHistoryItems(mappedHistories);
+  };
+
+  const loadReferenceData = async () => {
+    const [serviceResult, commonCodeResult] = await Promise.all([
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        items: Array<{
+          service_id: number;
+          service_name: string;
+          use_yn: 'Y' | 'N';
+        }>;
+      }>('get_service_catalog_data'),
+      invokeDbCommand<{
+        success: boolean;
+        message: string;
+        details: Array<{
+          group: string;
+          code: string;
+          name: string;
+          order: number;
+          use_yn: 'Y' | 'N';
+        }>;
+      }>('get_common_code_management_data'),
+    ]);
+
+    const services = (serviceResult.items || [])
+      .filter((item) => item.use_yn === 'Y')
+      .map((item) => ({
+        id: item.service_id,
+        name: item.service_name,
+        useYn: item.use_yn,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const paymentMethods = (commonCodeResult.details || [])
+      .filter((detail) => detail.group === 'PAYMENT_METHOD' && detail.use_yn === 'Y')
+      .map((detail) => ({
+        code: detail.code,
+        label: detail.name,
+        order: detail.order,
+      }))
+      .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+
+    setServiceOptions(services);
+    setPaymentMethodOptions(paymentMethods.length > 0 ? paymentMethods : FALLBACK_PAYMENT_METHODS);
+  };
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      await Promise.all([loadPointData(), loadReferenceData()]);
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '회원 포인트 데이터를 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (paymentMethodOptions.length > 0 && !paymentMethodOptions.some((item) => item.code === paymentMethodCode)) {
+      setPaymentMethodCode(paymentMethodOptions[0].code);
+    }
+  }, [paymentMethodCode, paymentMethodOptions]);
+
+  useEffect(() => {
+    if (serviceOptions.length > 0 && !serviceOptions.some((service) => service.id === selectedServiceId)) {
+      setSelectedServiceId(serviceOptions[0].id);
+    }
+  }, [selectedServiceId, serviceOptions]);
 
   const resetRechargeForm = () => {
     setAmount('');
-    setCouponName(procedures[0]);
     setCouponCount('');
-    setPaymentMethod(paymentMethods[0]);
+    setSelectedServiceId(serviceOptions[0]?.id || 0);
+    setPaymentMethodCode(paymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code);
   };
 
   const openRechargeModal = (member: Member, type: RechargeType = 'balance') => {
@@ -91,7 +236,7 @@ export default function MemberRechargePage() {
     setSelectedMember(null);
   };
 
-  const handleRecharge = (event: React.FormEvent) => {
+  const handleRecharge = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedMember) return;
 
@@ -102,40 +247,37 @@ export default function MemberRechargePage() {
       alert('충전 금액을 1원 이상 입력해주세요.');
       return;
     }
+    if (rechargeType === 'coupon' && selectedServiceId <= 0) {
+      alert('쿠폰 충전 시 시술을 선택해주세요.');
+      return;
+    }
     if (rechargeType === 'coupon' && parsedCouponCount <= 0) {
       alert('충전 횟수를 1회 이상 입력해주세요.');
       return;
     }
 
-    setMembers((prev) =>
-      prev.map((member) => {
-        if (member.id !== selectedMember.id) return member;
+    try {
+      setIsMutating(true);
+      await invokeDbCommand<{ success: boolean; message: string }>('recharge_member_point', {
+        recharge: {
+          user_id: selectedMember.id,
+          recharge_type: rechargeType === 'balance' ? 'BALANCE' : 'COUPON',
+          amount: rechargeType === 'balance' ? parsedAmount : null,
+          service_id: rechargeType === 'coupon' ? selectedServiceId : null,
+          coupon_count: rechargeType === 'coupon' ? parsedCouponCount : null,
+          payment_method_code: paymentMethodCode,
+          memo: null,
+        },
+      });
 
-        if (rechargeType === 'balance') {
-          return { ...member, balance: member.balance + parsedAmount };
-        }
-
-        const existingCoupon = member.coupons.find((coupon) => coupon.name === couponName);
-        if (existingCoupon) {
-          return {
-            ...member,
-            coupons: member.coupons.map((coupon) =>
-              coupon.name === couponName
-                ? { ...coupon, count: coupon.count + parsedCouponCount }
-                : coupon,
-            ),
-          };
-        }
-
-        return {
-          ...member,
-          coupons: [...member.coupons, { name: couponName, count: parsedCouponCount }],
-        };
-      }),
-    );
-
-    alert(`충전이 완료되었습니다. (${paymentMethod})`);
-    closeRechargeModal();
+      await loadPointData();
+      alert('충전이 완료되었습니다.');
+      closeRechargeModal();
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '충전에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   const filteredMembers = useMemo(
@@ -162,6 +304,15 @@ export default function MemberRechargePage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+      {isBusy && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-semibold text-slate-700">Loading...</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원 충전 및 쿠폰 관리</h1>
@@ -185,7 +336,7 @@ export default function MemberRechargePage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">총 예치금 잔액</p>
-            <p className="text-2xl font-black text-slate-900">₩{totalBalance.toLocaleString()}</p>
+            <p className="text-2xl font-black text-slate-900">{formatCurrency(totalBalance)}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
@@ -232,57 +383,69 @@ export default function MemberRechargePage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredMembers.map((member) => (
-              <tr key={member.id} className="hover:bg-slate-50 transition-colors">
-                <td className="py-4 px-6">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                      <User size={20} />
-                    </div>
-                    <div>
-                      <span className="text-sm font-bold text-slate-900">{member.name}</span>
-                      <p className="text-[10px] text-slate-400 font-mono">{member.id}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 px-6 text-sm text-slate-600 font-mono">{member.phone}</td>
-                <td className="py-4 px-6 text-sm text-right font-bold text-primary">₩{member.balance.toLocaleString()}</td>
-                <td className="py-4 px-6">
-                  <div className="flex flex-wrap gap-1">
-                    {member.coupons.length > 0 ? (
-                      member.coupons.map((coupon) => (
-                        <span
-                          key={`${member.id}-${coupon.name}`}
-                          className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200"
-                        >
-                          {coupon.name}: {coupon.count}회
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-300 italic">보유 쿠폰 없음</span>
-                    )}
-                  </div>
-                </td>
-                <td className="py-4 px-6 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openRechargeModal(member, 'balance')}
-                      className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
-                    >
-                      <Plus size={14} />
-                      충전
-                    </button>
-                    <button
-                      type="button"
-                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
-                    >
-                      <History size={16} />
-                    </button>
-                  </div>
+            {filteredMembers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-10 text-center text-sm text-slate-400">
+                  회원 데이터가 없습니다.
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredMembers.map((member) => (
+                <tr key={member.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-4 px-6">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                        <User size={20} />
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-slate-900">{member.name}</span>
+                        <p className="text-[10px] text-slate-400 font-mono">{`U${member.id}`}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-4 px-6 text-sm text-slate-600 font-mono">{member.phone}</td>
+                  <td className="py-4 px-6 text-sm text-right font-bold text-primary">{formatCurrency(member.balance)}</td>
+                  <td className="py-4 px-6">
+                    <div className="flex flex-wrap gap-1">
+                      {member.coupons.length > 0 ? (
+                        member.coupons.map((coupon) => (
+                          <span
+                            key={`${member.id}-${coupon.serviceId}`}
+                            className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200"
+                          >
+                            {coupon.name}: {coupon.count}회
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-300 italic">보유 쿠폰 없음</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-4 px-6 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openRechargeModal(member, 'balance')}
+                        className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
+                      >
+                        <Plus size={14} />
+                        충전
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const lastHistory = historyItems.find((item) => item.userId === member.id);
+                          alert(lastHistory ? `${lastHistory.userName} 최근 이력: ${lastHistory.createdAt}` : '이력이 없습니다.');
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                      >
+                        <History size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -331,7 +494,6 @@ export default function MemberRechargePage() {
                         <div className="relative">
                           <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
-                            name="amount"
                             type="number"
                             required
                             value={amount}
@@ -342,7 +504,7 @@ export default function MemberRechargePage() {
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
-                        {[100, 500, 1000].map((value) => (
+                        {[10000, 50000, 100000].map((value) => (
                           <button
                             key={value}
                             type="button"
@@ -359,16 +521,19 @@ export default function MemberRechargePage() {
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase">시술 선택</label>
                         <select
-                          name="couponName"
-                          value={couponName}
-                          onChange={(e) => setCouponName(e.target.value)}
+                          value={selectedServiceId}
+                          onChange={(e) => setSelectedServiceId(Number(e.target.value))}
                           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         >
-                          {procedures.map((procedure) => (
-                            <option key={procedure} value={procedure}>
-                              {procedure}
-                            </option>
-                          ))}
+                          {serviceOptions.length === 0 ? (
+                            <option value={0}>시술 항목 없음</option>
+                          ) : (
+                            serviceOptions.map((service) => (
+                              <option key={service.id} value={service.id}>
+                                {service.name}
+                              </option>
+                            ))
+                          )}
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -376,7 +541,6 @@ export default function MemberRechargePage() {
                         <div className="relative">
                           <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
-                            name="couponCount"
                             type="number"
                             required
                             value={couponCount}
@@ -392,18 +556,18 @@ export default function MemberRechargePage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">결제 수단</label>
                     <div className="grid grid-cols-3 gap-2">
-                      {paymentMethods.map((method) => (
+                      {paymentMethodOptions.map((method) => (
                         <button
-                          key={method}
+                          key={method.code}
                           type="button"
-                          onClick={() => setPaymentMethod(method)}
+                          onClick={() => setPaymentMethodCode(method.code)}
                           className={`py-2 border rounded-lg text-[10px] font-bold transition-all ${
-                            paymentMethod === method
+                            paymentMethodCode === method.code
                               ? 'border-primary text-primary bg-primary/5'
                               : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
                           }`}
                         >
-                          {method}
+                          {method.label}
                         </button>
                       ))}
                     </div>
@@ -419,7 +583,8 @@ export default function MemberRechargePage() {
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                      disabled={isMutating}
+                      className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                     >
                       충전하기
                     </button>

@@ -109,8 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             can_write BOOLEAN NOT NULL DEFAULT FALSE,
             can_delete BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE(role_id, menu_id)
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
         ALTER TABLE role_management
@@ -140,6 +139,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         ALTER TABLE role_menu_permission
         ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE role_menu_permission
+        DROP CONSTRAINT IF EXISTS role_menu_permission_role_id_menu_id_key;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_role_menu_permission_store_role_menu
+        ON role_menu_permission (store_code, role_id, menu_id);
     "#).await?;
 
     let tx = client.transaction().await?;

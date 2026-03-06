@@ -1,34 +1,101 @@
-import React, { useMemo, useState } from 'react';
-import { motion } from 'motion/react';
-import { BadgeDollarSign, PlusCircle, Receipt, Scissors, Trash2, UserRound } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import {
+  Scissors,
+  Clock,
+  Search,
+  Plus,
+  Calendar,
+  GripHorizontal,
+  X,
+  Trash2,
+  MoreVertical,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
+import { invokeDbCommand } from '../../lib/dbClient';
 
-type PaymentMethod = 'WECHAT' | 'ALIPAY' | 'CASH';
+type Coupon = {
+  serviceId: number;
+  name: string;
+  count: number;
+};
 
-type SalesRecord = {
+type Member = {
   id: number;
-  visitDate: string;
-  customerName: string;
-  designerName: string;
-  serviceName: string;
-  originalAmount: number;
-  actualAmount: number;
-  paymentMethod: PaymentMethod;
-  note: string;
+  name: string;
+  phone: string;
+  balance: number;
+  coupons: Coupon[];
 };
 
-type SalesForm = {
-  visitDate: string;
-  customerName: string;
-  designerName: string;
-  serviceName: string;
-  originalAmount: string;
-  actualAmount: string;
-  paymentMethod: PaymentMethod;
-  note: string;
+type Manager = {
+  id: number;
+  name: string;
+  role: string;
 };
 
-const DESIGNER_OPTIONS = ['지나 디자이너', '리안 디자이너', '민아 디자이너', '수아 디자이너'];
-const SERVICE_OPTIONS = ['커트', '파마', '염색', '클리닉'];
+type Procedure = {
+  id: number;
+  name: string;
+  categoryCode: string;
+  categoryName: string;
+  price: number;
+  time: number;
+};
+
+type Reservation = {
+  id: string;
+  date: string;
+  time: string;
+  memberId: number;
+  managerId: number;
+  procedureIds: number[];
+  status: 'PENDING' | 'CANCELLED' | 'COMPLETED';
+};
+
+type PaymentMethodCode = string;
+
+type PaymentMethodOption = {
+  code: PaymentMethodCode;
+  name: string;
+  order: number;
+};
+
+type PaymentDetail = {
+  method: PaymentMethodCode;
+  amount: number;
+  couponServiceId?: number;
+};
+
+type Settlement = {
+  id: number;
+  date: string;
+  memberId: number | 'GUEST';
+  managerId: number;
+  procedureIds: number[];
+  totalAmount: number;
+  totalTime: number;
+  payments: PaymentDetail[];
+  status: 'PROCESSING' | 'COMPLETED';
+  reservationId?: string;
+};
+
+type ModalProps = {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  icon: React.ReactNode;
+};
+
+const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
+  { code: 'CASH', name: '현금', order: 1 },
+  { code: 'CARD', name: '카드', order: 2 },
+  { code: 'WECHAT', name: '위챗페이', order: 3 },
+  { code: 'ALIPAY', name: '알리페이', order: 4 },
+  { code: 'PREPAID', name: '충전금 차감', order: 5 },
+  { code: 'COUPON', name: '쿠폰 사용', order: 6 },
+];
 
 function todayIso() {
   const now = new Date();
@@ -38,338 +105,872 @@ function todayIso() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const INITIAL_FORM: SalesForm = {
-  visitDate: todayIso(),
-  customerName: '',
-  designerName: DESIGNER_OPTIONS[0],
-  serviceName: SERVICE_OPTIONS[0],
-  originalAmount: '',
-  actualAmount: '',
-  paymentMethod: 'WECHAT',
-  note: '',
-};
+const EMPTY_RESERVATIONS: Reservation[] = [];
 
-const INITIAL_RECORDS: SalesRecord[] = [
-  {
-    id: 1,
-    visitDate: todayIso(),
-    customerName: '김서연',
-    designerName: '지나 디자이너',
-    serviceName: '커트',
-    originalAmount: 30000,
-    actualAmount: 27000,
-    paymentMethod: 'WECHAT',
-    note: '회원 10% 할인',
-  },
-  {
-    id: 2,
-    visitDate: todayIso(),
-    customerName: '박민지',
-    designerName: '민아 디자이너',
-    serviceName: '염색',
-    originalAmount: 90000,
-    actualAmount: 90000,
-    paymentMethod: 'ALIPAY',
-    note: '',
-  },
-];
+function DraggableModal({ title, children, onClose, icon }: ModalProps) {
+  const dragControls = useDragControls();
 
-function paymentMethodLabel(method: PaymentMethod) {
-  if (method === 'WECHAT') return '위챗';
-  if (method === 'ALIPAY') return '알리페이';
-  return '현금';
-}
-
-function formatCurrency(value: number) {
-  return `${value.toLocaleString('ko-KR')}원`;
+  return (
+    <motion.div
+      drag
+      dragControls={dragControls}
+      dragListener={false}
+      dragMomentum={false}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative"
+    >
+      <div
+        onPointerDown={(event) => dragControls.start(event)}
+        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <GripHorizontal size={18} className="text-slate-300" />
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+            <X size={20} className="text-slate-500" />
+          </button>
+        </div>
+      </div>
+      {children}
+    </motion.div>
+  );
 }
 
 export default function SalesEntryPage() {
-  const [records, setRecords] = useState<SalesRecord[]>(INITIAL_RECORDS);
-  const [form, setForm] = useState<SalesForm>(INITIAL_FORM);
+  // [상태] 기준 데이터(회원/직원/시술/결제수단/정산) 조회 결과
+  const [members, setMembers] = useState<Member[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [procedures, setProcedures] = useState<Procedure[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
+  const [todayReservations] = useState<Reservation[]>(EMPTY_RESERVATIONS);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
 
-  const summary = useMemo(() => {
-    const totalOriginal = records.reduce((sum, record) => sum + record.originalAmount, 0);
-    const totalActual = records.reduce((sum, record) => sum + record.actualAmount, 0);
+  // [상태] 로딩/저장 중 UI 제어
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
 
-    const byMethod: Record<PaymentMethod, number> = { WECHAT: 0, ALIPAY: 0, CASH: 0 };
-    records.forEach((record) => {
-      byMethod[record.paymentMethod] += record.actualAmount;
-    });
+  // [상태] 목록 검색 조건
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDate, setFilterDate] = useState(todayIso());
 
-    return {
-      totalOriginal,
-      totalActual,
-      discountAmount: totalOriginal - totalActual,
-      byMethod,
-    };
-  }, [records]);
+  // [상태] 모달 입력값
+  const [selectedMemberId, setSelectedMemberId] = useState<string | 'GUEST'>('GUEST');
+  const [selectedManagerId, setSelectedManagerId] = useState<string>('');
+  const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('커트');
+  const [payments, setPayments] = useState<PaymentDetail[]>([]);
+  const [selectedReservationId, setSelectedReservationId] = useState<string>('');
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const isBusy = isLoading || isMutating;
 
-    const originalAmount = Number(form.originalAmount);
-    const actualAmount = Number(form.actualAmount);
+  // [계산] 시술 데이터에서 카테고리 목록 생성
+  const categories = useMemo(() => {
+    const labels = Array.from(
+      new Set(procedures.map((procedure) => procedure.categoryName).filter((label) => !!label)),
+    );
+    return labels.length > 0 ? labels : ['커트', '파마', '염색', '기타'];
+  }, [procedures]);
 
-    if (!form.visitDate || !form.customerName.trim() || !form.designerName || !form.serviceName) {
-      alert('매출 등록 필수값(방문일자, 고객, 디자이너, 시술)을 입력해 주세요.');
-      return;
+  // [로직] 화면 진입 시 필요한 모든 기준 데이터/정산 데이터를 DB에서 조회
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const commonCodeResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        details: Array<{
+          group: string;
+          code: string;
+          name: string;
+          order: number;
+          use_yn: 'Y' | 'N';
+        }>;
+      }>('get_common_code_management_data');
+
+      const managerResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        employees: Array<{
+          employee_id: number;
+          employee_name: string;
+          role_name: string | null;
+          role_id: string | null;
+        }>;
+      }>('get_employee_management_data');
+
+      const procedureResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        items: Array<{
+          service_id: number;
+          category_code: string;
+          category_name: string;
+          service_name: string;
+          unit_price: number;
+          duration_minutes: number;
+          use_yn: 'Y' | 'N';
+        }>;
+      }>('get_service_catalog_data');
+
+      const memberResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        members: Array<{
+          user_id: number;
+          user_name: string;
+          phone: string | null;
+          point_balance: number;
+          coupons: Array<{
+            service_id: number;
+            service_name: string;
+            count: number;
+          }>;
+        }>;
+      }>('get_member_point_management_data');
+
+      const settlementResult = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        settlements: Array<{
+          settlement_id: number;
+          settlement_datetime: string;
+          member_user_id: number | null;
+          manager_employee_id: number;
+          service_ids: number[];
+          total_amount: number;
+          total_time_minutes: number;
+          payments: Array<{
+            payment_method_code: string;
+            amount: number;
+            coupon_service_id: number | null;
+          }>;
+          status: string;
+          reservation_ref: string | null;
+        }>;
+      }>('get_sales_settlement_data');
+
+      // [매핑] 회원 포인트 조회 결과 -> 화면 모델
+      const mappedMembers: Member[] = (memberResult.members || []).map((member) => ({
+        id: member.user_id,
+        name: member.user_name,
+        phone: member.phone || '-',
+        balance: member.point_balance || 0,
+        coupons: (member.coupons || []).map((coupon) => ({
+          serviceId: coupon.service_id,
+          name: coupon.service_name,
+          count: coupon.count,
+        })),
+      }));
+
+      // [매핑] 직원 조회 결과 -> 담당자 모델
+      const mappedManagers: Manager[] = (managerResult.employees || []).map((manager) => ({
+        id: manager.employee_id,
+        name: manager.employee_name,
+        role: manager.role_name || manager.role_id || '-',
+      }));
+
+      // [매핑] 시술 조회 결과 -> 시술 선택 모델(사용중만 노출)
+      const mappedProcedures: Procedure[] = (procedureResult.items || [])
+        .filter((procedure) => procedure.use_yn === 'Y')
+        .map((procedure) => ({
+          id: procedure.service_id,
+          name: procedure.service_name,
+          categoryCode: procedure.category_code,
+          categoryName: procedure.category_name || procedure.category_code,
+          price: procedure.unit_price,
+          time: procedure.duration_minutes,
+        }));
+
+      // [매핑] 공통코드 PAYMENT_METHOD -> 결제수단 선택 모델
+      const mappedPaymentMethods: PaymentMethodOption[] = (commonCodeResult.details || [])
+        .filter((detail) => detail.group === 'PAYMENT_METHOD' && detail.use_yn === 'Y')
+        .map((detail) => ({
+          code: detail.code,
+          name: detail.name,
+          order: detail.order,
+        }))
+        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+
+      // [매핑] 정산 조회 결과 -> 목록/수정 모델
+      const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => ({
+        id: settlement.settlement_id,
+        date: settlement.settlement_datetime,
+        memberId: settlement.member_user_id ?? 'GUEST',
+        managerId: settlement.manager_employee_id,
+        procedureIds: settlement.service_ids || [],
+        totalAmount: settlement.total_amount,
+        totalTime: settlement.total_time_minutes,
+        payments: (settlement.payments || []).map((payment) => ({
+          method: payment.payment_method_code,
+          amount: payment.amount,
+          couponServiceId: payment.coupon_service_id ?? undefined,
+        })),
+        status: settlement.status === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING',
+        reservationId: settlement.reservation_ref || undefined,
+      }));
+
+      setMembers(mappedMembers);
+      setManagers(mappedManagers);
+      setProcedures(mappedProcedures);
+      setPaymentMethods(mappedPaymentMethods.length > 0 ? mappedPaymentMethods : FALLBACK_PAYMENT_METHODS);
+      setSettlements(mappedSettlements);
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '매출/정산 데이터를 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
-      alert('원가를 0보다 큰 숫자로 입력해 주세요.');
-      return;
-    }
-
-    if (!Number.isFinite(actualAmount) || actualAmount <= 0) {
-      alert('실결제 금액을 0보다 큰 숫자로 입력해 주세요.');
-      return;
-    }
-
-    const nextId = records.length > 0 ? Math.max(...records.map((record) => record.id)) + 1 : 1;
-    const nextRecord: SalesRecord = {
-      id: nextId,
-      visitDate: form.visitDate,
-      customerName: form.customerName.trim(),
-      designerName: form.designerName,
-      serviceName: form.serviceName,
-      originalAmount,
-      actualAmount,
-      paymentMethod: form.paymentMethod,
-      note: form.note.trim(),
-    };
-
-    setRecords((prev) => [nextRecord, ...prev]);
-    setForm((prev) => ({
-      ...prev,
-      customerName: '',
-      originalAmount: '',
-      actualAmount: '',
-      note: '',
-    }));
   };
 
-  const deleteRecord = (id: number) => {
-    if (!window.confirm('선택한 매출 내역을 삭제하시겠습니까?')) return;
-    setRecords((prev) => prev.filter((record) => record.id !== id));
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (categories.length > 0 && !categories.includes(selectedCategory)) {
+      setSelectedCategory(categories[0]);
+    }
+  }, [categories, selectedCategory]);
+
+  // [계산] 선택된 회원 상세 정보(일반 방문객은 null)
+  const selectedMember = useMemo(() => {
+    if (selectedMemberId === 'GUEST') return null;
+    const memberId = Number(selectedMemberId);
+    return members.find((member) => member.id === memberId) || null;
+  }, [selectedMemberId, members]);
+
+  // [계산] 목록 검색(고객명/전화번호/담당자 + 날짜)
+  const filteredSettlements = useMemo(() => {
+    return settlements.filter((settlement) => {
+      const member =
+        settlement.memberId === 'GUEST'
+          ? { name: '일반 방문객', phone: '' }
+          : members.find((entry) => entry.id === settlement.memberId);
+      const manager = managers.find((entry) => entry.id === settlement.managerId);
+
+      const query = searchTerm.trim().toLowerCase();
+      const matchesSearch =
+        query.length === 0 ||
+        !!member?.name.toLowerCase().includes(query) ||
+        !!member?.phone.includes(searchTerm) ||
+        !!manager?.name.toLowerCase().includes(query);
+
+      const matchesDate = settlement.date.startsWith(filterDate);
+      return matchesSearch && matchesDate;
+    });
+  }, [members, managers, settlements, searchTerm, filterDate]);
+
+  // [계산] 선택한 시술의 총 금액/총 시간
+  const totals = useMemo(() => {
+    return selectedProcs.reduce(
+      (acc, id) => {
+        const procedure = procedures.find((entry) => entry.id === id);
+        if (procedure) {
+          acc.price += procedure.price;
+          acc.time += procedure.time;
+        }
+        return acc;
+      },
+      { price: 0, time: 0 },
+    );
+  }, [selectedProcs]);
+
+  // [계산] 결제 금액 합계/미수(또는 초과) 금액
+  const paidTotal = useMemo(() => payments.reduce((sum, payment) => sum + payment.amount, 0), [payments]);
+  const remainingAmount = totals.price - paidTotal;
+
+  // [동작] 신규 작성 시 모달 입력값 초기화
+  const resetModalForm = () => {
+    setSelectedReservationId('');
+    setSelectedMemberId('GUEST');
+    setSelectedManagerId('');
+    setSelectedProcs([]);
+    setSelectedCategory(categories[0] || '커트');
+    setPayments([]);
+  };
+
+  // [동작] 모달 열기(신규/수정 모드 분기)
+  const handleOpenModal = (settlement?: Settlement) => {
+    if (settlement) {
+      setEditingSettlement(settlement);
+      setSelectedReservationId(settlement.reservationId || '');
+      setSelectedMemberId(
+        settlement.memberId === 'GUEST' ? 'GUEST' : String(settlement.memberId),
+      );
+      setSelectedManagerId(String(settlement.managerId));
+      setSelectedProcs(settlement.procedureIds);
+      setPayments(settlement.payments);
+    } else {
+      setEditingSettlement(null);
+      resetModalForm();
+    }
+    setIsModalOpen(true);
+  };
+
+  // [동작] 예약 데이터 불러오기(선택한 예약값으로 모달 입력 자동 채움)
+  const handleImportReservation = (reservationId: string) => {
+    const reservation = todayReservations.find((entry) => entry.id === reservationId);
+    if (!reservation) return;
+
+    setSelectedReservationId(reservationId);
+    setSelectedMemberId(String(reservation.memberId));
+    setSelectedManagerId(String(reservation.managerId));
+    setSelectedProcs(reservation.procedureIds);
+  };
+
+  // [동작] 잔액만큼 결제수단 라인 1건 자동 추가
+  const handleAddPayment = () => {
+    if (remainingAmount <= 0) return;
+    setPayments((prev) => [
+      ...prev,
+      { method: paymentMethods[0]?.code || 'CARD', amount: remainingAmount },
+    ]);
+  };
+
+  // [동작] 결제 라인 삭제
+  const removePayment = (index: number) => {
+    setPayments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // [동작] 결제 라인 필드 변경(method/amount/couponServiceId)
+  const updatePayment = (
+    index: number,
+    field: keyof PaymentDetail,
+    value: string | number | undefined,
+  ) => {
+    setPayments((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  // [동작] 정산 저장(작업중/결제완료)
+  const handleSaveSettlement = async (status: 'PROCESSING' | 'COMPLETED') => {
+    if (!selectedManagerId) {
+      alert('담당 디자이너를 선택해주세요.');
+      return;
+    }
+    if (selectedProcs.length === 0) {
+      alert('시술 항목을 선택해주세요.');
+      return;
+    }
+
+    if (status === 'COMPLETED' && remainingAmount < 0) {
+      alert('결제 금액이 총액을 초과했습니다. 금액을 확인해주세요.');
+      return;
+    }
+
+    const prepaidTotal = payments
+      .filter((payment) => payment.method === 'PREPAID')
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    if (selectedMember && prepaidTotal > selectedMember.balance) {
+      alert(`충전 잔액이 부족합니다. (보유: ₩${selectedMember.balance.toLocaleString()})`);
+      return;
+    }
+
+    const managerId = Number(selectedManagerId);
+    if (!Number.isFinite(managerId) || managerId <= 0) {
+      alert('담당 디자이너 값이 올바르지 않습니다.');
+      return;
+    }
+
+    const serviceIds = selectedProcs.filter((value) => Number.isFinite(value) && value > 0);
+    if (serviceIds.length === 0) {
+      alert('시술 항목을 선택해주세요.');
+      return;
+    }
+
+    if (payments.some((payment) => payment.method === 'COUPON' && !payment.couponServiceId)) {
+      alert('쿠폰 결제는 쿠폰 시술을 선택해야 합니다.');
+      return;
+    }
+
+    const parsedMemberUserId =
+      selectedMemberId === 'GUEST'
+        ? null
+        : Number.isFinite(Number(selectedMemberId))
+          ? Number(selectedMemberId)
+          : null;
+
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'upsert_sales_settlement',
+        {
+          settlement: {
+            settlement_id: editingSettlement?.id || undefined,
+            member_user_id: parsedMemberUserId,
+            manager_employee_id: managerId,
+            service_ids: serviceIds,
+            payments: payments.map((payment) => ({
+              payment_method_code: payment.method,
+              amount: payment.amount || 0,
+              coupon_service_id:
+                payment.method === 'COUPON'
+                  ? payment.couponServiceId || null
+                  : null,
+            })),
+            status,
+            reservation_ref: selectedReservationId || null,
+          },
+        },
+      );
+
+      await loadData();
+      alert(result.message || '정산 저장이 완료되었습니다.');
+      setIsModalOpen(false);
+      setEditingSettlement(null);
+      resetModalForm();
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || '정산 저장에 실패했습니다.');
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">매출 등록</h1>
-          <p className="text-slate-500 mt-1">방문 고객 시술 매출과 결제수단(위챗/알리페이/현금)을 등록합니다.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-4 grid-shadow">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-2">원가 합계</p>
-          <p className="text-2xl font-black text-slate-900">{formatCurrency(summary.totalOriginal)}</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-4 grid-shadow">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-2">실매출 합계</p>
-          <p className="text-2xl font-black text-slate-900">{formatCurrency(summary.totalActual)}</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-4 grid-shadow">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-2">할인 금액 합계</p>
-          <p className="text-2xl font-black text-slate-900">{formatCurrency(summary.discountAmount)}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <section className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 grid-shadow">
-          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-            <PlusCircle size={16} className="text-primary" />
-            매출 입력
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">방문일자</label>
-              <input
-                type="date"
-                value={form.visitDate}
-                onChange={(event) => setForm((prev) => ({ ...prev, visitDate: event.target.value }))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">고객명</label>
-              <input
-                value={form.customerName}
-                onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
-                placeholder="예) 이지은"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">디자이너</label>
-              <select
-                value={form.designerName}
-                onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                {DESIGNER_OPTIONS.map((designer) => (
-                  <option key={designer} value={designer}>
-                    {designer}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">시술 항목</label>
-              <select
-                value={form.serviceName}
-                onChange={(event) => setForm((prev) => ({ ...prev, serviceName: event.target.value }))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                {SERVICE_OPTIONS.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">원가(원)</label>
-                <input
-                  type="number"
-                  value={form.originalAmount}
-                  onChange={(event) => setForm((prev) => ({ ...prev, originalAmount: event.target.value }))}
-                  placeholder="90000"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">실금액(원)</label>
-                <input
-                  type="number"
-                  value={form.actualAmount}
-                  onChange={(event) => setForm((prev) => ({ ...prev, actualAmount: event.target.value }))}
-                  placeholder="80000"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">결제수단</label>
-              <select
-                value={form.paymentMethod}
-                onChange={(event) => setForm((prev) => ({ ...prev, paymentMethod: event.target.value as PaymentMethod }))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                <option value="WECHAT">위챗</option>
-                <option value="ALIPAY">알리페이</option>
-                <option value="CASH">현금</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
-              <textarea
-                rows={3}
-                value={form.note}
-                onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-                placeholder="할인 사유, 특이사항 등"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
-            >
-              <PlusCircle size={16} />
-              매출 등록
-            </button>
-          </form>
-        </section>
-
-        <section className="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-              <Receipt size={16} className="text-primary" />
-              매출 내역
-            </h2>
-            <div className="text-xs font-semibold text-slate-500">
-              위챗 {formatCurrency(summary.byMethod.WECHAT)} / 알리페이 {formatCurrency(summary.byMethod.ALIPAY)} / 현금{' '}
-              {formatCurrency(summary.byMethod.CASH)}
-            </div>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="h-full flex flex-col space-y-6"
+    >
+      {isBusy && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-semibold text-slate-700">Loading...</span>
           </div>
+        </div>
+      )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left min-w-[1020px]">
-              <thead>
-                <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">방문일자</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">고객</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">디자이너</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">시술</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">원가</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">실금액</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">할인</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">결제수단</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">비고</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">작업</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {records.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
-                      등록된 매출이 없습니다.
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">시술 및 결제 내역 관리</h1>
+          <p className="text-slate-500 mt-1">시술 내역 조회 및 결제 정산을 관리합니다.</p>
+        </div>
+        <button
+          onClick={() => handleOpenModal()}
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+        >
+          <Plus size={20} />
+          신규 시술 등록
+        </button>
+      </div>
+
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+        <div className="flex-1 min-w-[200px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input
+            type="text"
+            placeholder="고객명, 전화번호, 담당자 검색..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <Calendar size={18} className="text-slate-400" />
+          <input
+            type="date"
+            value={filterDate}
+            onChange={(event) => setFilterDate(event.target.value)}
+            className="bg-transparent text-sm font-bold outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-1">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[980px]">
+            <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+              <tr>
+                <th className="py-4 px-6">일시</th>
+                <th className="py-4 px-6">고객명</th>
+                <th className="py-4 px-6">담당자</th>
+                <th className="py-4 px-6">시술 항목</th>
+                <th className="py-4 px-6">금액</th>
+                <th className="py-4 px-6">할인</th>
+                <th className="py-4 px-6">상태</th>
+                <th className="py-4 px-6 text-center">작업</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredSettlements.map((settlement) => {
+                const member = settlement.memberId === 'GUEST' ? { name: '일반 방문객' } : members.find((entry) => entry.id === settlement.memberId);
+                const manager = managers.find((entry) => entry.id === settlement.managerId);
+                const procedureNames = settlement.procedureIds
+                  .map((id) => procedures.find((entry) => entry.id === id)?.name)
+                  .filter(Boolean)
+                  .join(', ');
+
+                const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
+                const discount = settlement.status === 'COMPLETED' ? settlement.totalAmount - paidAmount : 0;
+                const discountPercent = settlement.totalAmount > 0 ? Math.round((discount / settlement.totalAmount) * 100) : 0;
+
+                return (
+                  <tr
+                    key={settlement.id}
+                    onClick={() => handleOpenModal(settlement)}
+                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                  >
+                    <td className="py-4 px-6 text-xs font-bold text-slate-500">{settlement.date}</td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`size-8 rounded-full flex items-center justify-center text-[10px] font-black ${
+                            settlement.memberId === 'GUEST' ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'
+                          }`}
+                        >
+                          {member?.name?.[0] || '?'}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-900">{member?.name}</span>
+                          {settlement.reservationId && (
+                            <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
+                              <Calendar size={8} /> 예약건
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
+                    <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
+                    <td className="py-4 px-6">
+                      <div className="text-sm font-black text-slate-900">₩{paidAmount.toLocaleString()}</div>
+                      {discount > 0 && <div className="text-[10px] text-slate-400 line-through">₩{settlement.totalAmount.toLocaleString()}</div>}
+                    </td>
+                    <td className="py-4 px-6">
+                      {discount > 0 ? (
+                        <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">
+                          {discountPercent}% (₩{discount.toLocaleString()})
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-[10px]">-</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-6">
+                      <span
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black ${
+                          settlement.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'
+                        }`}
+                      >
+                        {settlement.status === 'COMPLETED' ? '결제완료' : '작업중'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <button className="p-2 text-slate-300 group-hover:text-slate-600 transition-colors">
+                        <MoreVertical size={16} />
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  records.map((record) => (
-                    <tr key={record.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-slate-700">{record.visitDate}</td>
-                      <td className="py-3 px-4 text-sm text-slate-700">
-                        <div className="flex items-center gap-2">
-                          <UserRound size={14} className="text-slate-400" />
-                          <span className="font-semibold">{record.customerName}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{record.designerName}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">
-                        <div className="flex items-center gap-2">
-                          <Scissors size={14} className="text-slate-400" />
-                          {record.serviceName}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-right text-slate-600">{formatCurrency(record.originalAmount)}</td>
-                      <td className="py-3 px-4 text-sm text-right font-semibold text-slate-800">
-                        {formatCurrency(record.actualAmount)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-right text-rose-600 font-semibold">
-                        {formatCurrency(record.originalAmount - record.actualAmount)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{paymentMethodLabel(record.paymentMethod)}</td>
-                      <td className="py-3 px-4 text-sm text-slate-500">{record.note || '-'}</td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => deleteRecord(record.id)}
-                          className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                );
+              })}
+              {filteredSettlements.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-20 text-center text-slate-400 font-bold">
+                    조회된 내역이 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-4 grid-shadow">
-        <p className="text-sm text-slate-700 flex items-center gap-2">
-          <BadgeDollarSign size={16} className="text-primary" />
-          원가와 실금액은 건별로 유동적으로 입력 가능하며, 할인은 자동으로 계산됩니다.
-        </p>
-      </div>
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <DraggableModal
+              title={editingSettlement ? '시술 정보 수정' : '신규 시술 등록'}
+              onClose={() => setIsModalOpen(false)}
+              icon={<Scissors size={20} className="text-primary" />}
+            >
+              <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                {!editingSettlement && (
+                  <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
+                        <Calendar size={12} /> 당일 예약 불러오기
+                      </label>
+                      {selectedReservationId && (
+                        <button
+                          onClick={() => {
+                            setSelectedReservationId('');
+                            setSelectedMemberId('GUEST');
+                            setSelectedManagerId('');
+                            setSelectedProcs([]);
+                          }}
+                          className="text-[10px] font-bold text-slate-400 hover:text-red-500"
+                        >
+                          초기화
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={selectedReservationId}
+                      onChange={(event) => handleImportReservation(event.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="">예약 건을 선택하세요 (선택 시 자동 입력)</option>
+                      {todayReservations
+                        .filter((reservation) => reservation.status === 'PENDING')
+                        .map((reservation) => {
+                          const member = members.find((entry) => entry.id === reservation.memberId);
+                          const procLabel = reservation.procedureIds
+                            .map((id) => procedures.find((entry) => entry.id === id)?.name)
+                            .filter(Boolean)
+                            .join(', ');
+
+                          return (
+                            <option key={reservation.id} value={reservation.id}>
+                              [{reservation.time}] {member?.name} - {procLabel}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    {selectedReservationId && <p className="text-[10px] text-primary font-medium">* 예약 정보가 자동으로 입력되었습니다.</p>}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">고객 선택</label>
+                    <select
+                      value={selectedMemberId}
+                      onChange={(event) => setSelectedMemberId(event.target.value as string | 'GUEST')}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="GUEST">일반 방문객</option>
+                      {members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.phone})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">담당 디자이너</label>
+                    <select
+                      value={selectedManagerId}
+                      onChange={(event) => setSelectedManagerId(event.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="">디자이너 선택</option>
+                      {managers.map((manager) => (
+                        <option key={manager.id} value={manager.id}>
+                          {manager.name} ({manager.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">시술 항목 추가</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedCategory}
+                      onChange={(event) => setSelectedCategory(event.target.value)}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
+                    >
+                      {categories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      onChange={(event) => {
+                        if (!event.target.value) return;
+                        const id = parseInt(event.target.value, 10);
+                        if (!Number.isFinite(id) || id <= 0) return;
+                        if (!selectedProcs.includes(id)) {
+                          setSelectedProcs((prev) => [...prev, id]);
+                        }
+                        event.target.value = '';
+                      }}
+                      className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
+                    >
+                      <option value="">시술 선택</option>
+                      {procedures
+                        .filter((procedure) => procedure.categoryName === selectedCategory)
+                        .map((procedure) => (
+                          <option key={procedure.id} value={procedure.id}>
+                            {procedure.name} (₩{procedure.price.toLocaleString()})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedProcs.map((id) => {
+                      const procedure = procedures.find((entry) => entry.id === id);
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-2 px-2 py-1 bg-primary/5 border border-primary/10 rounded-lg text-[10px] font-bold text-primary"
+                        >
+                          {procedure?.name}
+                          <button onClick={() => setSelectedProcs((prev) => prev.filter((entry) => entry !== id))} className="hover:text-red-500">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-900 rounded-2xl text-white space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1 text-slate-400">
+                        <Clock size={14} />
+                        <span className="text-xs font-bold">{totals.time}분</span>
+                      </div>
+                      <div className="text-lg font-black">₩{totals.price.toLocaleString()}</div>
+                    </div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 시술 합계</div>
+                  </div>
+
+                  {remainingAmount > 0 && paidTotal > 0 && (
+                    <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                      <div className="text-[10px] font-black text-red-400 uppercase tracking-widest">할인 적용액</div>
+                      <div className="text-sm font-black text-red-400">
+                        - ₩{remainingAmount.toLocaleString()} ({totals.price > 0 ? Math.round((remainingAmount / totals.price) * 100) : 0}%)
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">결제 수단 등록</label>
+                    <button
+                      onClick={handleAddPayment}
+                      disabled={remainingAmount <= 0}
+                      className="flex items-center gap-1 text-[10px] font-black text-primary disabled:opacity-30"
+                    >
+                      <Plus size={12} /> 추가
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {payments.map((payment, index) => (
+                      <div key={`${payment.method}-${index}`} className="flex gap-2 items-start p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex gap-2">
+                            <select
+                              value={payment.method}
+                              onChange={(event) => updatePayment(index, 'method', event.target.value as PaymentMethodCode)}
+                              className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold outline-none"
+                            >
+                              {paymentMethods.map((method) => {
+                                const isDisabled = (method.code === 'PREPAID' || method.code === 'COUPON') && selectedMemberId === 'GUEST';
+                                return (
+                                  <option key={method.code} value={method.code} disabled={isDisabled}>
+                                    {method.name}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <input
+                              type="number"
+                              value={payment.amount}
+                              onChange={(event) => updatePayment(index, 'amount', parseInt(event.target.value, 10) || 0)}
+                              className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-black outline-none"
+                            />
+                            <button onClick={() => removePayment(index)} className="p-1.5 text-slate-300 hover:text-red-500">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+
+                          {payment.method === 'PREPAID' && selectedMember && (
+                            <div className="flex items-center justify-between px-2 py-1 bg-emerald-50 rounded text-[10px] font-bold text-emerald-700">
+                              <span>현재 잔액: ₩{selectedMember.balance.toLocaleString()}</span>
+                              {selectedMember.balance < payment.amount && (
+                                <span className="text-red-500 flex items-center gap-0.5">
+                                  <AlertCircle size={10} /> 잔액 부족
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {payment.method === 'COUPON' && selectedMember && (
+                            <select
+                              value={payment.couponServiceId || ''}
+                              onChange={(event) =>
+                                updatePayment(
+                                  index,
+                                  'couponServiceId',
+                                  parseInt(event.target.value, 10) || undefined,
+                                )
+                              }
+                              className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold outline-none"
+                            >
+                              <option value="">쿠폰 선택</option>
+                              {selectedMember.coupons.map((coupon) => (
+                                <option
+                                  key={`${selectedMember.id}-${coupon.serviceId}`}
+                                  value={coupon.serviceId}
+                                >
+                                  {coupon.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-dashed border-slate-200">
+                    <div className="text-[10px] font-bold text-slate-400">결제 상태</div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-[10px] font-bold text-slate-500">수납: ₩{paidTotal.toLocaleString()}</div>
+                      <div
+                        className={`text-[10px] font-black ${
+                          remainingAmount === 0 ? 'text-emerald-500' : remainingAmount > 0 ? 'text-red-500' : 'text-amber-500'
+                        }`}
+                      >
+                        {remainingAmount === 0
+                          ? '결제 완료'
+                          : remainingAmount > 0
+                            ? `미수: ₩${remainingAmount.toLocaleString()}`
+                            : `초과: ₩${Math.abs(remainingAmount).toLocaleString()}`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => handleSaveSettlement('PROCESSING')}
+                    className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                  >
+                    작업중 저장
+                  </button>
+                  <button
+                    onClick={() => handleSaveSettlement('COMPLETED')}
+                    className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                  >
+                    결제 완료 처리
+                  </button>
+                </div>
+              </div>
+            </DraggableModal>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

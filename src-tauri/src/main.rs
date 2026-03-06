@@ -3,7 +3,7 @@
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio_postgres::{Client, NoTls};
 
 const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";
@@ -442,6 +442,154 @@ struct ServiceCatalogDataResult {
     items: Vec<ServiceCatalogItemDto>,
 }
 
+#[derive(Debug, Deserialize)]
+struct MemberPointQueryPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MemberPointRechargePayload {
+    user_id: i64,
+    recharge_type: String,
+    amount: Option<i64>,
+    service_id: Option<i64>,
+    coupon_count: Option<i32>,
+    payment_method_code: String,
+    memo: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RechargeMemberPointPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    recharge: MemberPointRechargePayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct MemberPointUsePayload {
+    user_id: i64,
+    use_type: String,
+    amount: Option<i64>,
+    service_id: Option<i64>,
+    coupon_count: Option<i32>,
+    memo: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UseMemberPointPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    usage: MemberPointUsePayload,
+}
+
+#[derive(Debug, Serialize)]
+struct MemberPointCouponDto {
+    service_id: i64,
+    service_name: String,
+    count: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct MemberPointMemberDto {
+    user_id: i64,
+    user_name: String,
+    phone: Option<String>,
+    point_balance: i64,
+    coupons: Vec<MemberPointCouponDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct MemberPointHistoryDto {
+    id: i64,
+    action_type: String,
+    user_id: i64,
+    user_name: String,
+    recharge_type: String,
+    amount: Option<i64>,
+    service_id: Option<i64>,
+    service_name: Option<String>,
+    coupon_count: Option<i32>,
+    payment_method_code: String,
+    payment_method_name: String,
+    memo: String,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MemberPointDataResult {
+    success: bool,
+    message: String,
+    members: Vec<MemberPointMemberDto>,
+    histories: Vec<MemberPointHistoryDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SalesSettlementQueryPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SalesSettlementPaymentPayload {
+    payment_method_code: String,
+    amount: i64,
+    coupon_service_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SalesSettlementPayload {
+    settlement_id: Option<i64>,
+    member_user_id: Option<i64>,
+    manager_employee_id: i64,
+    service_ids: Vec<i64>,
+    payments: Vec<SalesSettlementPaymentPayload>,
+    status: String,
+    reservation_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertSalesSettlementPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    settlement: SalesSettlementPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteSalesSettlementPayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    settlement_id: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct SalesSettlementPaymentDto {
+    payment_method_code: String,
+    amount: i64,
+    coupon_service_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct SalesSettlementDto {
+    settlement_id: i64,
+    settlement_datetime: String,
+    member_user_id: Option<i64>,
+    manager_employee_id: i64,
+    service_ids: Vec<i64>,
+    total_amount: i64,
+    total_time_minutes: i32,
+    payments: Vec<SalesSettlementPaymentDto>,
+    status: String,
+    reservation_ref: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SalesSettlementDataResult {
+    success: bool,
+    message: String,
+    settlements: Vec<SalesSettlementDto>,
+}
+
 fn get_safe_schema(schema: &str) -> Result<String, String> {
     let trimmed = schema.trim();
     if trimmed.is_empty() {
@@ -739,8 +887,7 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
                 can_write BOOLEAN NOT NULL DEFAULT FALSE,
                 can_delete BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (role_id, menu_id)
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE INDEX IF NOT EXISTS idx_role_menu_permission_role
@@ -776,6 +923,12 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
 
             ALTER TABLE role_menu_permission
             ALTER COLUMN store_code SET NOT NULL;
+
+            ALTER TABLE role_menu_permission
+            DROP CONSTRAINT IF EXISTS role_menu_permission_role_id_menu_id_key;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_role_menu_permission_store_role_menu
+            ON role_menu_permission (store_code, role_id, menu_id);
 
             CREATE INDEX IF NOT EXISTS idx_role_menu_permission_store
             ON role_menu_permission (store_code);
@@ -912,6 +1065,249 @@ async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), 
         .batch_execute(sql)
         .await
         .map_err(|e| format!("시술 항목 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_member_point_management_tables(client: &Client) -> Result<(), String> {
+    ensure_user_management_table(client).await?;
+    ensure_service_catalog_management_table(client).await?;
+    ensure_common_code_tables(client).await?;
+
+    let sql = r#"
+        CREATE TABLE IF NOT EXISTS member_point_balance (
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
+            point_balance BIGINT NOT NULL DEFAULT 0 CHECK (point_balance >= 0),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (store_code, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS member_coupon_balance (
+            id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
+            service_id BIGINT NOT NULL REFERENCES service_catalog_management(service_id) ON DELETE CASCADE,
+            coupon_count INTEGER NOT NULL DEFAULT 0 CHECK (coupon_count >= 0),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (store_code, user_id, service_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS member_point_history (
+            id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
+            recharge_type VARCHAR(20) NOT NULL CHECK (recharge_type IN ('BALANCE', 'COUPON')),
+            amount BIGINT NULL CHECK (amount IS NULL OR amount >= 0),
+            service_id BIGINT NULL REFERENCES service_catalog_management(service_id) ON DELETE SET NULL,
+            coupon_count INTEGER NULL CHECK (coupon_count IS NULL OR coupon_count >= 0),
+            payment_method_code VARCHAR(100) NOT NULL,
+            memo TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS member_point_usage_history (
+            id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
+            use_type VARCHAR(20) NOT NULL CHECK (use_type IN ('BALANCE', 'COUPON')),
+            amount BIGINT NULL CHECK (amount IS NULL OR amount >= 0),
+            service_id BIGINT NULL REFERENCES service_catalog_management(service_id) ON DELETE SET NULL,
+            coupon_count INTEGER NULL CHECK (coupon_count IS NULL OR coupon_count >= 0),
+            memo TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        ALTER TABLE member_point_balance
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE member_point_balance
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE member_point_balance
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE member_point_balance
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE member_coupon_balance
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE member_coupon_balance
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE member_coupon_balance
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE member_coupon_balance
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE member_point_history
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE member_point_history
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE member_point_history
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE member_point_history
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE member_point_usage_history
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE member_point_usage_history
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE member_point_usage_history
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE member_point_usage_history
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_member_point_balance_store
+        ON member_point_balance (store_code, user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_member_coupon_balance_store
+        ON member_coupon_balance (store_code, user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_member_point_history_store
+        ON member_point_history (store_code, user_id, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_member_point_usage_history_store
+        ON member_point_usage_history (store_code, user_id, created_at DESC);
+    "#;
+    log_sql!(sql);
+    client
+        .batch_execute(sql)
+        .await
+        .map_err(|e| format!("회원 포인트 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
+    ensure_member_point_management_tables(client).await?;
+    ensure_employee_management_table(client).await?;
+    ensure_common_code_tables(client).await?;
+
+    let sql = r#"
+        CREATE TABLE IF NOT EXISTS sales_settlement_management (
+            settlement_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            member_user_id BIGINT NULL REFERENCES user_management(user_id) ON DELETE SET NULL,
+            manager_employee_id BIGINT NOT NULL REFERENCES employee_management(employee_id) ON DELETE RESTRICT,
+            total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
+            total_time_minutes INTEGER NOT NULL CHECK (total_time_minutes >= 0),
+            status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED')),
+            reservation_ref VARCHAR(100) NULL,
+            settlement_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS sales_settlement_service_line (
+            line_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            settlement_id BIGINT NOT NULL REFERENCES sales_settlement_management(settlement_id) ON DELETE CASCADE,
+            line_no INTEGER NOT NULL CHECK (line_no > 0),
+            service_id BIGINT NOT NULL REFERENCES service_catalog_management(service_id) ON DELETE RESTRICT,
+            service_name VARCHAR(200) NOT NULL,
+            category_code VARCHAR(100) NOT NULL,
+            category_name VARCHAR(100) NOT NULL,
+            unit_price BIGINT NOT NULL CHECK (unit_price >= 0),
+            duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 0),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS sales_settlement_payment_line (
+            payment_id BIGSERIAL PRIMARY KEY,
+            store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+            settlement_id BIGINT NOT NULL REFERENCES sales_settlement_management(settlement_id) ON DELETE CASCADE,
+            line_no INTEGER NOT NULL CHECK (line_no > 0),
+            payment_method_code VARCHAR(100) NOT NULL,
+            payment_method_name VARCHAR(100) NOT NULL,
+            amount BIGINT NOT NULL CHECK (amount >= 0),
+            coupon_service_id BIGINT NULL REFERENCES service_catalog_management(service_id) ON DELETE SET NULL,
+            coupon_service_name VARCHAR(200) NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE sales_settlement_management
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE sales_settlement_management
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE sales_settlement_management
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE sales_settlement_service_line
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE sales_settlement_service_line
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE sales_settlement_service_line
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE sales_settlement_service_line
+        ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE sales_settlement_payment_line
+        ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        UPDATE sales_settlement_payment_line
+           SET store_code = 'HAIR_001'
+         WHERE store_code IS NULL
+            OR BTRIM(store_code) = '';
+
+        ALTER TABLE sales_settlement_payment_line
+        ALTER COLUMN store_code SET DEFAULT 'HAIR_001';
+
+        ALTER TABLE sales_settlement_payment_line
+        ALTER COLUMN store_code SET NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_sales_settlement_store_datetime
+        ON sales_settlement_management (store_code, settlement_datetime DESC, settlement_id DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_sales_settlement_store_member
+        ON sales_settlement_management (store_code, member_user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_sales_settlement_store_manager
+        ON sales_settlement_management (store_code, manager_employee_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_settlement_service_line_store_settlement_line
+        ON sales_settlement_service_line (store_code, settlement_id, line_no);
+
+        CREATE INDEX IF NOT EXISTS idx_sales_settlement_service_line_store_settlement
+        ON sales_settlement_service_line (store_code, settlement_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_settlement_payment_line_store_settlement_line
+        ON sales_settlement_payment_line (store_code, settlement_id, line_no);
+
+        CREATE INDEX IF NOT EXISTS idx_sales_settlement_payment_line_store_settlement
+        ON sales_settlement_payment_line (store_code, settlement_id);
+    "#;
+    log_sql!(sql);
+    client
+        .batch_execute(sql)
+        .await
+        .map_err(|e| format!("시술 정산 테이블 생성 실패: {e}"))
 }
 
 #[tauri::command]
@@ -1829,7 +2225,7 @@ async fn upsert_role_menu_permission(
             r#"
             INSERT INTO role_menu_permission (role_id, menu_id, store_code, can_read, can_write, can_delete)
             VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (role_id, menu_id)
+            ON CONFLICT (store_code, role_id, menu_id)
             DO UPDATE SET
                 store_code = EXCLUDED.store_code,
                 can_read = EXCLUDED.can_read,
@@ -2418,6 +2814,1060 @@ async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationRe
     })
 }
 
+#[tauri::command]
+async fn get_member_point_management_data(
+    payload: MemberPointQueryPayload,
+) -> Result<MemberPointDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_member_point_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let member_rows = client
+        .query(
+            r#"
+            SELECT
+                u.user_id::BIGINT,
+                u.name,
+                u.phone,
+                COALESCE(pb.point_balance, 0)::BIGINT AS point_balance
+              FROM user_management u
+         LEFT JOIN member_point_balance pb
+                ON pb.store_code = $1
+               AND pb.user_id = u.user_id
+             WHERE u.store_code = $1
+             ORDER BY u.user_id DESC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("회원 포인트 회원 조회 실패: {e}"))?;
+
+    let coupon_rows = client
+        .query(
+            r#"
+            SELECT
+                cb.user_id::BIGINT,
+                cb.service_id::BIGINT,
+                s.service_name,
+                cb.coupon_count
+              FROM member_coupon_balance cb
+              JOIN service_catalog_management s
+                ON s.service_id = cb.service_id
+               AND s.store_code = cb.store_code
+             WHERE cb.store_code = $1
+               AND cb.coupon_count > 0
+             ORDER BY cb.user_id, cb.service_id
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("회원 포인트 쿠폰 조회 실패: {e}"))?;
+
+    let mut coupon_map: HashMap<i64, Vec<MemberPointCouponDto>> = HashMap::new();
+    for row in coupon_rows {
+        let user_id = row.get::<_, i64>(0);
+        let coupon = MemberPointCouponDto {
+            service_id: row.get::<_, i64>(1),
+            service_name: row.get::<_, String>(2),
+            count: row.get::<_, i32>(3),
+        };
+        coupon_map.entry(user_id).or_default().push(coupon);
+    }
+
+    let members = member_rows
+        .into_iter()
+        .map(|row| {
+            let user_id = row.get::<_, i64>(0);
+            MemberPointMemberDto {
+                user_id,
+                user_name: row.get::<_, String>(1),
+                phone: row.get::<_, Option<String>>(2),
+                point_balance: row.get::<_, i64>(3),
+                coupons: coupon_map.remove(&user_id).unwrap_or_default(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let history_rows = client
+        .query(
+            r#"
+            SELECT
+                x.id::BIGINT,
+                x.action_type,
+                x.user_id::BIGINT,
+                x.user_name,
+                x.recharge_type,
+                x.amount::BIGINT,
+                x.service_id::BIGINT,
+                x.service_name,
+                x.coupon_count,
+                x.payment_method_code,
+                x.payment_method_name,
+                x.memo,
+                x.created_at::TEXT
+              FROM (
+                    SELECT
+                        h.id,
+                        'RECHARGE'::TEXT AS action_type,
+                        h.user_id,
+                        u.name AS user_name,
+                        h.recharge_type,
+                        h.amount,
+                        h.service_id,
+                        s.service_name,
+                        h.coupon_count,
+                        h.payment_method_code,
+                        COALESCE(pm.detail_name, h.payment_method_code) AS payment_method_name,
+                        COALESCE(h.memo, '') AS memo,
+                        h.created_at
+                      FROM member_point_history h
+                      JOIN user_management u
+                        ON u.user_id = h.user_id
+                       AND u.store_code = h.store_code
+                 LEFT JOIN service_catalog_management s
+                        ON s.service_id = h.service_id
+                       AND s.store_code = h.store_code
+                 LEFT JOIN common_code_detail pm
+                        ON pm.group_code_id = 'PAYMENT_METHOD'
+                       AND pm.detail_code = h.payment_method_code
+                     WHERE h.store_code = $1
+
+                    UNION ALL
+
+                    SELECT
+                        uh.id,
+                        'USE'::TEXT AS action_type,
+                        uh.user_id,
+                        u.name AS user_name,
+                        uh.use_type AS recharge_type,
+                        uh.amount,
+                        uh.service_id,
+                        s.service_name,
+                        uh.coupon_count,
+                        'USE'::TEXT AS payment_method_code,
+                        '사용'::TEXT AS payment_method_name,
+                        COALESCE(uh.memo, '') AS memo,
+                        uh.created_at
+                      FROM member_point_usage_history uh
+                      JOIN user_management u
+                        ON u.user_id = uh.user_id
+                       AND u.store_code = uh.store_code
+                 LEFT JOIN service_catalog_management s
+                        ON s.service_id = uh.service_id
+                       AND s.store_code = uh.store_code
+                     WHERE uh.store_code = $1
+                   ) x
+             ORDER BY x.created_at DESC, x.id DESC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("회원 포인트 이력 조회 실패: {e}"))?;
+
+    let histories = history_rows
+        .into_iter()
+        .map(|row| MemberPointHistoryDto {
+            id: row.get::<_, i64>(0),
+            action_type: row.get::<_, String>(1),
+            user_id: row.get::<_, i64>(2),
+            user_name: row.get::<_, String>(3),
+            recharge_type: row.get::<_, String>(4),
+            amount: row.get::<_, Option<i64>>(5),
+            service_id: row.get::<_, Option<i64>>(6),
+            service_name: row.get::<_, Option<String>>(7),
+            coupon_count: row.get::<_, Option<i32>>(8),
+            payment_method_code: row.get::<_, String>(9),
+            payment_method_name: row.get::<_, String>(10),
+            memo: row.get::<_, String>(11),
+            created_at: row.get::<_, String>(12),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(MemberPointDataResult {
+        success: true,
+        message: "회원 포인트 조회 완료".to_string(),
+        members,
+        histories,
+    })
+}
+
+#[tauri::command]
+async fn recharge_member_point(
+    payload: RechargeMemberPointPayload,
+) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_member_point_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let recharge = payload.recharge;
+    if recharge.user_id <= 0 {
+        return Err("user_id는 1 이상이어야 합니다.".to_string());
+    }
+
+    let recharge_type = recharge.recharge_type.trim().to_uppercase();
+    if recharge_type != "BALANCE" && recharge_type != "COUPON" {
+        return Err("recharge_type은 BALANCE 또는 COUPON 이어야 합니다.".to_string());
+    }
+
+    let payment_method_code = recharge.payment_method_code.trim().to_uppercase();
+    if payment_method_code.is_empty() {
+        return Err("결제수단(payment_method_code)은 필수입니다.".to_string());
+    }
+
+    let payment_method_exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM common_code_detail
+             WHERE group_code_id = 'PAYMENT_METHOD'
+               AND detail_code = $1
+               AND use_yn = 'Y'
+            "#,
+            &[&payment_method_code],
+        )
+        .await
+        .map_err(|e| format!("결제수단 코드 확인 실패: {e}"))?;
+    if payment_method_exists.is_none() {
+        return Err("PAYMENT_METHOD 공통코드에 등록된 사용중 결제수단만 가능합니다.".to_string());
+    }
+
+    let user_exists = client
+        .query_opt(
+            "SELECT 1 FROM user_management WHERE user_id::BIGINT = $1 AND store_code = $2",
+            &[&recharge.user_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("회원 확인 실패: {e}"))?;
+    if user_exists.is_none() {
+        return Err("선택한 점포의 회원이 존재하지 않습니다.".to_string());
+    }
+
+    let memo = recharge
+        .memo
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("포인트 충전 트랜잭션 시작 실패: {e}"))?;
+
+    if recharge_type == "BALANCE" {
+        let amount = recharge.amount.unwrap_or(0);
+        if amount <= 0 {
+            return Err("예치금 충전 금액은 1원 이상이어야 합니다.".to_string());
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO member_point_balance (store_code, user_id, point_balance)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (store_code, user_id)
+            DO UPDATE SET
+                point_balance = member_point_balance.point_balance + EXCLUDED.point_balance,
+                updated_at = NOW()
+            "#,
+            &[&store_code, &recharge.user_id, &amount],
+        )
+        .await
+        .map_err(|e| format!("예치금 충전 저장 실패: {e}"))?;
+
+        let amount_option: Option<i64> = Some(amount);
+        let none_service_id: Option<i64> = None;
+        let none_coupon_count: Option<i32> = None;
+        tx.execute(
+            r#"
+            INSERT INTO member_point_history (
+                store_code, user_id, recharge_type, amount, service_id, coupon_count, payment_method_code, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            "#,
+            &[
+                &store_code,
+                &recharge.user_id,
+                &recharge_type,
+                &amount_option,
+                &none_service_id,
+                &none_coupon_count,
+                &payment_method_code,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("예치금 충전 이력 저장 실패: {e}"))?;
+    } else {
+        let service_id = recharge
+            .service_id
+            .ok_or_else(|| "쿠폰 충전 시 service_id는 필수입니다.".to_string())?;
+        if service_id <= 0 {
+            return Err("service_id는 1 이상이어야 합니다.".to_string());
+        }
+
+        let coupon_count = recharge.coupon_count.unwrap_or(0);
+        if coupon_count <= 0 {
+            return Err("쿠폰 충전 횟수는 1 이상이어야 합니다.".to_string());
+        }
+
+        let service_exists = tx
+            .query_opt(
+                r#"
+                SELECT 1
+                  FROM service_catalog_management
+                 WHERE service_id = $1
+                   AND store_code = $2
+                   AND use_yn = 'Y'
+                "#,
+                &[&service_id, &store_code],
+            )
+            .await
+            .map_err(|e| format!("시술 항목 확인 실패: {e}"))?;
+        if service_exists.is_none() {
+            return Err("선택한 점포의 사용중 시술항목만 쿠폰으로 충전할 수 있습니다.".to_string());
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO member_coupon_balance (store_code, user_id, service_id, coupon_count)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (store_code, user_id, service_id)
+            DO UPDATE SET
+                coupon_count = member_coupon_balance.coupon_count + EXCLUDED.coupon_count,
+                updated_at = NOW()
+            "#,
+            &[&store_code, &recharge.user_id, &service_id, &coupon_count],
+        )
+        .await
+        .map_err(|e| format!("쿠폰 충전 저장 실패: {e}"))?;
+
+        let none_amount: Option<i64> = None;
+        let service_id_option: Option<i64> = Some(service_id);
+        let coupon_count_option: Option<i32> = Some(coupon_count);
+        tx.execute(
+            r#"
+            INSERT INTO member_point_history (
+                store_code, user_id, recharge_type, amount, service_id, coupon_count, payment_method_code, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            "#,
+            &[
+                &store_code,
+                &recharge.user_id,
+                &recharge_type,
+                &none_amount,
+                &service_id_option,
+                &coupon_count_option,
+                &payment_method_code,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("쿠폰 충전 이력 저장 실패: {e}"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("포인트 충전 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: "회원 포인트 충전이 완료되었습니다.".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_member_point_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let usage = payload.usage;
+    if usage.user_id <= 0 {
+        return Err("user_id는 1 이상이어야 합니다.".to_string());
+    }
+
+    let use_type = usage.use_type.trim().to_uppercase();
+    if use_type != "BALANCE" && use_type != "COUPON" {
+        return Err("use_type은 BALANCE 또는 COUPON 이어야 합니다.".to_string());
+    }
+
+    let user_exists = client
+        .query_opt(
+            "SELECT 1 FROM user_management WHERE user_id::BIGINT = $1 AND store_code = $2",
+            &[&usage.user_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("회원 확인 실패: {e}"))?;
+    if user_exists.is_none() {
+        return Err("선택한 점포의 회원이 존재하지 않습니다.".to_string());
+    }
+
+    let memo = usage
+        .memo
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("포인트 사용 트랜잭션 시작 실패: {e}"))?;
+
+    if use_type == "BALANCE" {
+        let amount = usage.amount.unwrap_or(0);
+        if amount <= 0 {
+            return Err("예치금 사용 금액은 1원 이상이어야 합니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_point_balance
+                   SET point_balance = point_balance - $3,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND point_balance >= $3
+                "#,
+                &[&store_code, &usage.user_id, &amount],
+            )
+            .await
+            .map_err(|e| format!("예치금 사용 처리 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("예치금 잔액이 부족합니다.".to_string());
+        }
+
+        let amount_option: Option<i64> = Some(amount);
+        let none_service_id: Option<i64> = None;
+        let none_coupon_count: Option<i32> = None;
+        tx.execute(
+            r#"
+            INSERT INTO member_point_usage_history (
+                store_code, user_id, use_type, amount, service_id, coupon_count, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            "#,
+            &[
+                &store_code,
+                &usage.user_id,
+                &use_type,
+                &amount_option,
+                &none_service_id,
+                &none_coupon_count,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("예치금 사용 이력 저장 실패: {e}"))?;
+    } else {
+        let service_id = usage
+            .service_id
+            .ok_or_else(|| "쿠폰 사용 시 service_id는 필수입니다.".to_string())?;
+        if service_id <= 0 {
+            return Err("service_id는 1 이상이어야 합니다.".to_string());
+        }
+
+        let coupon_count = usage.coupon_count.unwrap_or(0);
+        if coupon_count <= 0 {
+            return Err("쿠폰 사용 횟수는 1 이상이어야 합니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_coupon_balance
+                   SET coupon_count = coupon_count - $4,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND service_id = $3
+                   AND coupon_count >= $4
+                "#,
+                &[&store_code, &usage.user_id, &service_id, &coupon_count],
+            )
+            .await
+            .map_err(|e| format!("쿠폰 사용 처리 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("쿠폰 잔여 횟수가 부족합니다.".to_string());
+        }
+
+        let none_amount: Option<i64> = None;
+        let service_id_option: Option<i64> = Some(service_id);
+        let coupon_count_option: Option<i32> = Some(coupon_count);
+        tx.execute(
+            r#"
+            INSERT INTO member_point_usage_history (
+                store_code, user_id, use_type, amount, service_id, coupon_count, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            "#,
+            &[
+                &store_code,
+                &usage.user_id,
+                &use_type,
+                &none_amount,
+                &service_id_option,
+                &coupon_count_option,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("쿠폰 사용 이력 저장 실패: {e}"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("포인트 사용 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: "회원 포인트 사용 처리가 완료되었습니다.".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_sales_settlement_data(
+    payload: SalesSettlementQueryPayload,
+) -> Result<SalesSettlementDataResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_sales_settlement_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let settlement_rows = client
+        .query(
+            r#"
+            SELECT
+                s.settlement_id::BIGINT,
+                TO_CHAR(s.settlement_datetime, 'YYYY-MM-DD HH24:MI') AS settlement_datetime,
+                s.member_user_id::BIGINT,
+                s.manager_employee_id::BIGINT,
+                s.total_amount::BIGINT,
+                s.total_time_minutes::INTEGER,
+                s.status,
+                s.reservation_ref
+              FROM sales_settlement_management s
+             WHERE s.store_code = $1
+             ORDER BY s.settlement_datetime DESC, s.settlement_id DESC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("정산 마스터 조회 실패: {e}"))?;
+
+    let service_rows = client
+        .query(
+            r#"
+            SELECT
+                l.settlement_id::BIGINT,
+                l.line_no::INTEGER,
+                l.service_id::BIGINT
+              FROM sales_settlement_service_line l
+             WHERE l.store_code = $1
+             ORDER BY l.settlement_id DESC, l.line_no ASC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("정산 시술 라인 조회 실패: {e}"))?;
+
+    let payment_rows = client
+        .query(
+            r#"
+            SELECT
+                p.settlement_id::BIGINT,
+                p.line_no::INTEGER,
+                p.payment_method_code,
+                p.amount::BIGINT,
+                p.coupon_service_id::BIGINT
+              FROM sales_settlement_payment_line p
+             WHERE p.store_code = $1
+             ORDER BY p.settlement_id DESC, p.line_no ASC
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("정산 결제 라인 조회 실패: {e}"))?;
+
+    let mut service_map: HashMap<i64, Vec<(i32, i64)>> = HashMap::new();
+    for row in service_rows {
+        let settlement_id = row.get::<_, i64>(0);
+        let line_no = row.get::<_, i32>(1);
+        let service_id = row.get::<_, i64>(2);
+        service_map
+            .entry(settlement_id)
+            .or_default()
+            .push((line_no, service_id));
+    }
+
+    let mut payment_map: HashMap<i64, Vec<(i32, SalesSettlementPaymentDto)>> = HashMap::new();
+    for row in payment_rows {
+        let settlement_id = row.get::<_, i64>(0);
+        let line_no = row.get::<_, i32>(1);
+        let payment = SalesSettlementPaymentDto {
+            payment_method_code: row.get::<_, String>(2),
+            amount: row.get::<_, i64>(3),
+            coupon_service_id: row.get::<_, Option<i64>>(4),
+        };
+        payment_map
+            .entry(settlement_id)
+            .or_default()
+            .push((line_no, payment));
+    }
+
+    let settlements = settlement_rows
+        .into_iter()
+        .map(|row| {
+            let settlement_id = row.get::<_, i64>(0);
+            let mut service_lines = service_map.remove(&settlement_id).unwrap_or_default();
+            service_lines.sort_by_key(|line| line.0);
+            let service_ids = service_lines
+                .into_iter()
+                .map(|line| line.1)
+                .collect::<Vec<_>>();
+
+            let mut payment_lines = payment_map.remove(&settlement_id).unwrap_or_default();
+            payment_lines.sort_by_key(|line| line.0);
+            let payments = payment_lines
+                .into_iter()
+                .map(|line| line.1)
+                .collect::<Vec<_>>();
+
+            SalesSettlementDto {
+                settlement_id,
+                settlement_datetime: row.get::<_, String>(1),
+                member_user_id: row.get::<_, Option<i64>>(2),
+                manager_employee_id: row.get::<_, i64>(3),
+                total_amount: row.get::<_, i64>(4),
+                total_time_minutes: row.get::<_, i32>(5),
+                status: row.get::<_, String>(6),
+                reservation_ref: row.get::<_, Option<String>>(7),
+                service_ids,
+                payments,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(SalesSettlementDataResult {
+        success: true,
+        message: "정산 조회 완료".to_string(),
+        settlements,
+    })
+}
+
+#[tauri::command]
+async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_sales_settlement_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let settlement = payload.settlement;
+    let is_update = settlement.settlement_id.is_some();
+
+    if settlement.manager_employee_id <= 0 {
+        return Err("manager_employee_id는 1 이상이어야 합니다.".to_string());
+    }
+    if settlement.service_ids.is_empty() {
+        return Err("service_ids는 1건 이상이어야 합니다.".to_string());
+    }
+
+    let status = settlement.status.trim().to_uppercase();
+    if status != "PROCESSING" && status != "COMPLETED" {
+        return Err("status는 PROCESSING 또는 COMPLETED 이어야 합니다.".to_string());
+    }
+
+    if let Some(member_user_id) = settlement.member_user_id {
+        if member_user_id <= 0 {
+            return Err("member_user_id는 1 이상이어야 합니다.".to_string());
+        }
+        let member_exists = client
+            .query_opt(
+                "SELECT 1 FROM user_management WHERE store_code = $1 AND user_id::BIGINT = $2",
+                &[&store_code, &member_user_id],
+            )
+            .await
+            .map_err(|e| format!("회원 확인 실패: {e}"))?;
+        if member_exists.is_none() {
+            return Err("선택한 점포의 회원이 존재하지 않습니다.".to_string());
+        }
+    }
+
+    let manager_exists = client
+        .query_opt(
+            "SELECT 1 FROM employee_management WHERE store_code = $1 AND employee_id::BIGINT = $2",
+            &[&store_code, &settlement.manager_employee_id],
+        )
+        .await
+        .map_err(|e| format!("담당자 확인 실패: {e}"))?;
+    if manager_exists.is_none() {
+        return Err("선택한 점포의 담당자가 존재하지 않습니다.".to_string());
+    }
+
+    let mut unique_service_ids = Vec::<i64>::new();
+    let mut seen_service_ids = HashSet::<i64>::new();
+    for service_id in &settlement.service_ids {
+        if *service_id <= 0 {
+            return Err("service_ids에는 1 이상의 값만 사용할 수 있습니다.".to_string());
+        }
+        if seen_service_ids.insert(*service_id) {
+            unique_service_ids.push(*service_id);
+        }
+    }
+
+    let service_rows = client
+        .query(
+            r#"
+            SELECT
+                s.service_id::BIGINT,
+                s.service_name,
+                s.category_code,
+                COALESCE(cc.detail_name, s.category_code) AS category_name,
+                s.unit_price::BIGINT,
+                s.duration_minutes::INTEGER
+              FROM service_catalog_management s
+         LEFT JOIN common_code_detail cc
+                ON cc.group_code_id = 'T_CATEGORY'
+               AND cc.detail_code = s.category_code
+             WHERE s.store_code = $1
+               AND s.use_yn = 'Y'
+               AND s.service_id::BIGINT = ANY($2::BIGINT[])
+            "#,
+            &[&store_code, &unique_service_ids],
+        )
+        .await
+        .map_err(|e| format!("시술 항목 확인 실패: {e}"))?;
+
+    let mut service_map = HashMap::<i64, (String, String, String, i64, i32)>::new();
+    for row in service_rows {
+        let service_id = row.get::<_, i64>(0);
+        service_map.insert(
+            service_id,
+            (
+                row.get::<_, String>(1),
+                row.get::<_, String>(2),
+                row.get::<_, String>(3),
+                row.get::<_, i64>(4),
+                row.get::<_, i32>(5),
+            ),
+        );
+    }
+
+    for service_id in &unique_service_ids {
+        if !service_map.contains_key(service_id) {
+            return Err("선택한 시술 항목이 존재하지 않거나 사용중이 아닙니다.".to_string());
+        }
+    }
+
+    let mut total_amount: i64 = 0;
+    let mut total_time_minutes: i32 = 0;
+    for service_id in &settlement.service_ids {
+        let Some(snapshot) = service_map.get(service_id) else {
+            return Err("시술 항목 계산 중 데이터가 유실되었습니다.".to_string());
+        };
+        total_amount += snapshot.3;
+        total_time_minutes += snapshot.4;
+    }
+
+    let payment_method_rows = client
+        .query(
+            r#"
+            SELECT detail_code, detail_name
+              FROM common_code_detail
+             WHERE group_code_id = 'PAYMENT_METHOD'
+               AND use_yn = 'Y'
+            "#,
+            &[],
+        )
+        .await
+        .map_err(|e| format!("결제수단 확인 실패: {e}"))?;
+
+    let mut payment_method_map = HashMap::<String, String>::new();
+    for row in payment_method_rows {
+        let code = row.get::<_, String>(0).trim().to_uppercase();
+        let name = row.get::<_, String>(1);
+        payment_method_map.insert(code, name);
+    }
+
+    #[derive(Clone)]
+    struct PaymentInsertLine {
+        payment_method_code: String,
+        payment_method_name: String,
+        amount: i64,
+        coupon_service_id: Option<i64>,
+        coupon_service_name: Option<String>,
+    }
+
+    let mut insert_payment_lines = Vec::<PaymentInsertLine>::new();
+    let mut paid_total: i64 = 0;
+    let mut coupon_service_ids = HashSet::<i64>::new();
+
+    for payment in &settlement.payments {
+        let code = payment.payment_method_code.trim().to_uppercase();
+        if code.is_empty() {
+            return Err("결제수단 코드는 필수입니다.".to_string());
+        }
+        let Some(method_name) = payment_method_map.get(&code) else {
+            return Err("PAYMENT_METHOD 공통코드에 등록된 사용중 결제수단만 사용할 수 있습니다.".to_string());
+        };
+
+        if payment.amount < 0 {
+            return Err("결제 금액은 0 이상이어야 합니다.".to_string());
+        }
+        if settlement.member_user_id.is_none() && (code == "PREPAID" || code == "COUPON") {
+            return Err("일반 방문객은 PREPAID 또는 COUPON 결제를 사용할 수 없습니다.".to_string());
+        }
+
+        let coupon_service_id = if code == "COUPON" {
+            let Some(coupon_service_id) = payment.coupon_service_id else {
+                return Err("COUPON 결제 시 coupon_service_id는 필수입니다.".to_string());
+            };
+            if coupon_service_id <= 0 {
+                return Err("coupon_service_id는 1 이상이어야 합니다.".to_string());
+            }
+            coupon_service_ids.insert(coupon_service_id);
+            Some(coupon_service_id)
+        } else {
+            None
+        };
+
+        paid_total += payment.amount;
+        insert_payment_lines.push(PaymentInsertLine {
+            payment_method_code: code,
+            payment_method_name: method_name.clone(),
+            amount: payment.amount,
+            coupon_service_id,
+            coupon_service_name: None,
+        });
+    }
+
+    if status == "COMPLETED" && paid_total > total_amount {
+        return Err("결제 완료 시 결제 금액 합계가 총 금액을 초과할 수 없습니다.".to_string());
+    }
+
+    if !coupon_service_ids.is_empty() {
+        let coupon_service_id_vec = coupon_service_ids.into_iter().collect::<Vec<_>>();
+        let coupon_service_rows = client
+            .query(
+                r#"
+                SELECT service_id::BIGINT, service_name
+                  FROM service_catalog_management
+                 WHERE store_code = $1
+                   AND service_id::BIGINT = ANY($2::BIGINT[])
+                "#,
+                &[&store_code, &coupon_service_id_vec],
+            )
+            .await
+            .map_err(|e| format!("쿠폰 시술 확인 실패: {e}"))?;
+
+        let mut coupon_service_map = HashMap::<i64, String>::new();
+        for row in coupon_service_rows {
+            coupon_service_map.insert(row.get::<_, i64>(0), row.get::<_, String>(1));
+        }
+
+        for payment in insert_payment_lines.iter_mut() {
+            if let Some(coupon_service_id) = payment.coupon_service_id {
+                let Some(name) = coupon_service_map.get(&coupon_service_id) else {
+                    return Err("쿠폰 결제에 연결된 시술이 존재하지 않습니다.".to_string());
+                };
+                payment.coupon_service_name = Some(name.clone());
+            }
+        }
+    }
+
+    let reservation_ref = settlement
+        .reservation_ref
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("시술 정산 저장 트랜잭션 시작 실패: {e}"))?;
+
+    let settlement_id = if let Some(settlement_id) = settlement.settlement_id {
+        if settlement_id <= 0 {
+            return Err("settlement_id는 1 이상이어야 합니다.".to_string());
+        }
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE sales_settlement_management
+                   SET member_user_id = $3,
+                       manager_employee_id = $4,
+                       total_amount = $5,
+                       total_time_minutes = $6,
+                       status = $7,
+                       reservation_ref = $8,
+                       updated_at = NOW()
+                 WHERE settlement_id = $1
+                   AND store_code = $2
+                "#,
+                &[
+                    &settlement_id,
+                    &store_code,
+                    &settlement.member_user_id,
+                    &settlement.manager_employee_id,
+                    &total_amount,
+                    &total_time_minutes,
+                    &status,
+                    &reservation_ref,
+                ],
+            )
+            .await
+            .map_err(|e| format!("정산 수정 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("수정 대상 정산 데이터가 없습니다.".to_string());
+        }
+
+        tx.execute(
+            "DELETE FROM sales_settlement_service_line WHERE settlement_id = $1 AND store_code = $2",
+            &[&settlement_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("기존 시술 라인 정리 실패: {e}"))?;
+
+        tx.execute(
+            "DELETE FROM sales_settlement_payment_line WHERE settlement_id = $1 AND store_code = $2",
+            &[&settlement_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("기존 결제 라인 정리 실패: {e}"))?;
+
+        settlement_id
+    } else {
+        tx.query_one(
+            r#"
+            INSERT INTO sales_settlement_management (
+                store_code,
+                member_user_id,
+                manager_employee_id,
+                total_amount,
+                total_time_minutes,
+                status,
+                reservation_ref
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            RETURNING settlement_id::BIGINT
+            "#,
+            &[
+                &store_code,
+                &settlement.member_user_id,
+                &settlement.manager_employee_id,
+                &total_amount,
+                &total_time_minutes,
+                &status,
+                &reservation_ref,
+            ],
+        )
+        .await
+        .map_err(|e| format!("정산 등록 실패: {e}"))?
+        .get::<_, i64>(0)
+    };
+
+    for (index, service_id) in settlement.service_ids.iter().enumerate() {
+        let Some(snapshot) = service_map.get(service_id) else {
+            return Err("시술 라인 저장 중 데이터가 유실되었습니다.".to_string());
+        };
+        let line_no = (index + 1) as i32;
+        tx.execute(
+            r#"
+            INSERT INTO sales_settlement_service_line (
+                store_code,
+                settlement_id,
+                line_no,
+                service_id,
+                service_name,
+                category_code,
+                category_name,
+                unit_price,
+                duration_minutes
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            "#,
+            &[
+                &store_code,
+                &settlement_id,
+                &line_no,
+                service_id,
+                &snapshot.0,
+                &snapshot.1,
+                &snapshot.2,
+                &snapshot.3,
+                &snapshot.4,
+            ],
+        )
+        .await
+        .map_err(|e| format!("시술 라인 저장 실패: {e}"))?;
+    }
+
+    for (index, payment) in insert_payment_lines.iter().enumerate() {
+        let line_no = (index + 1) as i32;
+        tx.execute(
+            r#"
+            INSERT INTO sales_settlement_payment_line (
+                store_code,
+                settlement_id,
+                line_no,
+                payment_method_code,
+                payment_method_name,
+                amount,
+                coupon_service_id,
+                coupon_service_name
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            "#,
+            &[
+                &store_code,
+                &settlement_id,
+                &line_no,
+                &payment.payment_method_code,
+                &payment.payment_method_name,
+                &payment.amount,
+                &payment.coupon_service_id,
+                &payment.coupon_service_name,
+            ],
+        )
+        .await
+        .map_err(|e| format!("결제 라인 저장 실패: {e}"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("시술 정산 저장 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: if is_update {
+            "시술 정산 수정 완료".to_string()
+        } else {
+            "시술 정산 등록 완료".to_string()
+        },
+    })
+}
+
+#[tauri::command]
+async fn delete_sales_settlement(
+    payload: DeleteSalesSettlementPayload,
+) -> Result<MutationResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_sales_settlement_management_tables(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    if payload.settlement_id <= 0 {
+        return Err("삭제할 settlement_id가 올바르지 않습니다.".to_string());
+    }
+
+    let affected = client
+        .execute(
+            "DELETE FROM sales_settlement_management WHERE settlement_id = $1 AND store_code = $2",
+            &[&payload.settlement_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("정산 삭제 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("삭제 대상 정산 데이터가 없습니다.".to_string());
+    }
+
+    Ok(MutationResult {
+        success: true,
+        message: "시술 정산 삭제 완료".to_string(),
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -2443,6 +3893,12 @@ fn main() {
             get_service_catalog_data,
             upsert_service_catalog_item,
             delete_service_catalog_item,
+            get_member_point_management_data,
+            recharge_member_point,
+            use_member_point,
+            get_sales_settlement_data,
+            upsert_sales_settlement,
+            delete_sales_settlement,
             get_user_management_data,
             upsert_user_management,
             delete_user_management
