@@ -17,6 +17,7 @@ const STORE_CODE_GROUP_ID: &str = "STR_CD";
 const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
 const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
 const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
+const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct LocalMigrationCache {
@@ -675,6 +676,14 @@ struct UseMemberPointPayload {
     usage: MemberPointUsePayload,
 }
 
+#[derive(Debug, Deserialize)]
+struct CancelMemberPointRechargePayload {
+    connection: DbConnectionPayload,
+    store_code: Option<String>,
+    history_id: i64,
+    cancel_reason: String,
+}
+
 #[derive(Debug, Serialize)]
 struct MemberPointCouponDto {
     service_id: i64,
@@ -697,6 +706,7 @@ struct MemberPointHistoryDto {
     action_type: String,
     user_id: i64,
     user_name: String,
+    user_phone: Option<String>,
     recharge_type: String,
     amount: Option<i64>,
     service_id: Option<i64>,
@@ -706,6 +716,9 @@ struct MemberPointHistoryDto {
     payment_method_name: String,
     memo: String,
     created_at: String,
+    is_cancelled: bool,
+    cancel_reason: Option<String>,
+    cancelled_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1534,6 +1547,39 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
         .batch_execute(sql)
         .await
         .map_err(|e| format!("회원 포인트 테이블 생성 실패: {e}"))
+}
+
+async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Result<(), String> {
+    let sql = r#"
+        ALTER TABLE member_point_history
+        ADD COLUMN IF NOT EXISTS status_code VARCHAR(20);
+
+        UPDATE member_point_history
+           SET status_code = 'ACTIVE'
+         WHERE status_code IS NULL
+            OR BTRIM(status_code) = '';
+
+        ALTER TABLE member_point_history
+        ALTER COLUMN status_code SET DEFAULT 'ACTIVE';
+
+        ALTER TABLE member_point_history
+        ALTER COLUMN status_code SET NOT NULL;
+
+        ALTER TABLE member_point_history
+        ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+
+        ALTER TABLE member_point_history
+        ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+        CREATE INDEX IF NOT EXISTS idx_member_point_history_status_store
+        ON member_point_history (store_code, status_code, created_at DESC);
+    "#;
+
+    log_sql!(sql);
+    client
+        .batch_execute(sql)
+        .await
+        .map_err(|e| format!("회원 포인트 충전 취소 상태 컬럼 준비 실패: {e}"))
 }
 
 async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
@@ -3601,6 +3647,7 @@ async fn get_member_point_management_data(
 ) -> Result<MemberPointDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_member_point_management_tables(&client).await?;
+    ensure_member_point_recharge_cancel_log_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let member_rows = client
@@ -3677,6 +3724,7 @@ async fn get_member_point_management_data(
                 x.action_type,
                 x.user_id::BIGINT,
                 x.user_name,
+                x.user_phone,
                 x.recharge_type,
                 x.amount::BIGINT,
                 x.service_id::BIGINT,
@@ -3685,13 +3733,17 @@ async fn get_member_point_management_data(
                 x.payment_method_code,
                 x.payment_method_name,
                 x.memo,
-                x.created_at::TEXT
+                x.created_at::TEXT,
+                x.is_cancelled,
+                x.cancel_reason,
+                x.cancelled_at
               FROM (
                     SELECT
                         h.id,
                         'RECHARGE'::TEXT AS action_type,
                         h.user_id,
                         u.name AS user_name,
+                        u.phone AS user_phone,
                         h.recharge_type,
                         h.amount,
                         h.service_id,
@@ -3700,7 +3752,10 @@ async fn get_member_point_management_data(
                         h.payment_method_code,
                         COALESCE(pm.detail_name, h.payment_method_code) AS payment_method_name,
                         COALESCE(h.memo, '') AS memo,
-                        h.created_at
+                        h.created_at,
+                        (h.status_code = 'CANCELLED') AS is_cancelled,
+                        h.cancel_reason,
+                        TO_CHAR(h.cancelled_at, 'YYYY-MM-DD HH24:MI:SS') AS cancelled_at
                       FROM member_point_history h
                       JOIN user_management u
                         ON u.user_id = h.user_id
@@ -3710,8 +3765,8 @@ async fn get_member_point_management_data(
                        AND s.store_code = h.store_code
                  LEFT JOIN common_code_detail pm
                         ON pm.group_code_id = 'PAYMENT_METHOD'
-                       AND pm.detail_code = h.payment_method_code
-                     WHERE h.store_code = $1
+                        AND pm.detail_code = h.payment_method_code
+                      WHERE h.store_code = $1
 
                     UNION ALL
 
@@ -3720,6 +3775,7 @@ async fn get_member_point_management_data(
                         'USE'::TEXT AS action_type,
                         uh.user_id,
                         u.name AS user_name,
+                        u.phone AS user_phone,
                         uh.use_type AS recharge_type,
                         uh.amount,
                         uh.service_id,
@@ -3728,7 +3784,10 @@ async fn get_member_point_management_data(
                         'USE'::TEXT AS payment_method_code,
                         '사용'::TEXT AS payment_method_name,
                         COALESCE(uh.memo, '') AS memo,
-                        uh.created_at
+                        uh.created_at,
+                        FALSE AS is_cancelled,
+                        NULL::TEXT AS cancel_reason,
+                        NULL::TEXT AS cancelled_at
                       FROM member_point_usage_history uh
                       JOIN user_management u
                         ON u.user_id = uh.user_id
@@ -3752,15 +3811,19 @@ async fn get_member_point_management_data(
             action_type: row.get::<_, String>(1),
             user_id: row.get::<_, i64>(2),
             user_name: row.get::<_, String>(3),
-            recharge_type: row.get::<_, String>(4),
-            amount: row.get::<_, Option<i64>>(5),
-            service_id: row.get::<_, Option<i64>>(6),
-            service_name: row.get::<_, Option<String>>(7),
-            coupon_count: row.get::<_, Option<i32>>(8),
-            payment_method_code: row.get::<_, String>(9),
-            payment_method_name: row.get::<_, String>(10),
-            memo: row.get::<_, String>(11),
-            created_at: row.get::<_, String>(12),
+            user_phone: row.get::<_, Option<String>>(4),
+            recharge_type: row.get::<_, String>(5),
+            amount: row.get::<_, Option<i64>>(6),
+            service_id: row.get::<_, Option<i64>>(7),
+            service_name: row.get::<_, Option<String>>(8),
+            coupon_count: row.get::<_, Option<i32>>(9),
+            payment_method_code: row.get::<_, String>(10),
+            payment_method_name: row.get::<_, String>(11),
+            memo: row.get::<_, String>(12),
+            created_at: row.get::<_, String>(13),
+            is_cancelled: row.get::<_, bool>(14),
+            cancel_reason: row.get::<_, Option<String>>(15),
+            cancelled_at: row.get::<_, Option<String>>(16),
         })
         .collect::<Vec<_>>();
 
@@ -3876,6 +3939,11 @@ async fn recharge_member_point(
         .await
         .map_err(|e| format!("예치금 충전 이력 저장 실패: {e}"))?;
     } else {
+        let amount = recharge.amount.unwrap_or(0);
+        if amount <= 0 {
+            return Err("쿠폰 충전 수납 금액은 1원 이상이어야 합니다.".to_string());
+        }
+
         let service_id = recharge
             .service_id
             .ok_or_else(|| "쿠폰 충전 시 service_id는 필수입니다.".to_string())?;
@@ -3919,7 +3987,7 @@ async fn recharge_member_point(
         .await
         .map_err(|e| format!("쿠폰 충전 저장 실패: {e}"))?;
 
-        let none_amount: Option<i64> = None;
+        let amount_option: Option<i64> = Some(amount);
         let service_id_option: Option<i64> = Some(service_id);
         let coupon_count_option: Option<i32> = Some(coupon_count);
         tx.execute(
@@ -3932,7 +4000,7 @@ async fn recharge_member_point(
                 &store_code,
                 &recharge.user_id,
                 &recharge_type,
-                &none_amount,
+                &amount_option,
                 &service_id_option,
                 &coupon_count_option,
                 &payment_method_code,
@@ -3950,6 +4018,153 @@ async fn recharge_member_point(
     Ok(MutationResult {
         success: true,
         message: "회원 포인트 충전이 완료되었습니다.".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn cancel_member_point_recharge(
+    payload: CancelMemberPointRechargePayload,
+) -> Result<MutationResult, String> {
+    let mut client = connect_with_schema(&payload.connection).await?;
+    ensure_member_point_management_tables(&client).await?;
+    ensure_member_point_recharge_cancel_log_table(&client).await?;
+    let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    if payload.history_id <= 0 {
+        return Err("history_id는 1 이상이어야 합니다.".to_string());
+    }
+
+    let cancel_reason = payload.cancel_reason.trim().to_string();
+    if cancel_reason.is_empty() {
+        return Err("취소 사유를 입력해주세요.".to_string());
+    }
+
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| format!("충전 취소 트랜잭션 시작 실패: {e}"))?;
+
+    let recharge_row = tx
+        .query_opt(
+            r#"
+            SELECT
+                h.user_id::BIGINT,
+                h.recharge_type,
+                COALESCE(h.amount, 0)::BIGINT,
+                h.service_id::BIGINT,
+                COALESCE(h.coupon_count, 0)::INTEGER,
+                COALESCE(h.status_code, 'ACTIVE')
+              FROM member_point_history h
+             WHERE h.id::BIGINT = $1
+               AND h.store_code = $2
+             FOR UPDATE
+            "#,
+            &[&payload.history_id, &store_code],
+        )
+        .await
+        .map_err(|e| format!("취소 대상 충전 이력 조회 실패: {e}"))?;
+
+    let Some(recharge_row) = recharge_row else {
+        return Err("취소 대상 충전 이력이 없습니다.".to_string());
+    };
+
+    let user_id = recharge_row.get::<_, i64>(0);
+    let recharge_type = recharge_row.get::<_, String>(1).trim().to_uppercase();
+    let amount = recharge_row.get::<_, i64>(2);
+    let service_id = recharge_row.get::<_, Option<i64>>(3);
+    let coupon_count = recharge_row.get::<_, i32>(4);
+    let current_status = recharge_row.get::<_, String>(5).trim().to_uppercase();
+
+    if recharge_type != "BALANCE" && recharge_type != "COUPON" {
+        return Err("취소 대상 충전 이력 유형이 올바르지 않습니다.".to_string());
+    }
+
+    if current_status == "CANCELLED" {
+        return Err("이미 취소된 충전 이력입니다.".to_string());
+    }
+
+    if recharge_type == "BALANCE" {
+        if amount <= 0 {
+            return Err("취소 대상 충전 금액이 올바르지 않습니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_point_balance
+                   SET point_balance = point_balance - $3,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND point_balance >= $3
+                "#,
+                &[&store_code, &user_id, &amount],
+            )
+            .await
+            .map_err(|e| format!("예치금 충전 취소 롤백 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("예치금 잔액이 부족하여 충전을 취소할 수 없습니다.".to_string());
+        }
+    } else {
+        let Some(service_id) = service_id else {
+            return Err("취소 대상 시술 정보가 없습니다.".to_string());
+        };
+        if service_id <= 0 {
+            return Err("취소 대상 시술 정보가 올바르지 않습니다.".to_string());
+        }
+        if coupon_count <= 0 {
+            return Err("취소 대상 횟수 정보가 올바르지 않습니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_coupon_balance
+                   SET coupon_count = coupon_count - $4,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND service_id = $3
+                   AND coupon_count >= $4
+                "#,
+                &[&store_code, &user_id, &service_id, &coupon_count],
+            )
+            .await
+            .map_err(|e| format!("쿠폰 충전 취소 롤백 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("쿠폰 잔여 횟수가 부족하여 충전을 취소할 수 없습니다.".to_string());
+        }
+    }
+
+    let affected = tx
+        .execute(
+        r#"
+        UPDATE member_point_history
+           SET status_code = 'CANCELLED',
+               cancel_reason = $3,
+               cancelled_at = NOW()
+         WHERE id::BIGINT = $1
+           AND store_code = $2
+           AND (status_code IS NULL OR status_code <> 'CANCELLED')
+        "#,
+        &[&payload.history_id, &store_code, &cancel_reason],
+    )
+    .await
+    .map_err(|e| format!("충전 이력 상태 취소 처리 실패: {e}"))?;
+
+    if affected == 0 {
+        return Err("취소 대상 충전 이력이 없거나 이미 취소되었습니다.".to_string());
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("충전 취소 트랜잭션 커밋 실패: {e}"))?;
+
+    Ok(MutationResult {
+        success: true,
+        message: "충전 취소가 완료되었습니다.".to_string(),
     })
 }
 
@@ -4237,10 +4452,157 @@ async fn get_sales_settlement_data(
     })
 }
 
+fn build_sales_coupon_usage_memo(settlement_id: i64, line_no: i32) -> String {
+    format!("{SALES_COUPON_USAGE_MEMO_PREFIX}{settlement_id}:{line_no}")
+}
+
+fn build_sales_coupon_usage_memo_pattern(settlement_id: i64) -> String {
+    format!("{SALES_COUPON_USAGE_MEMO_PREFIX}{settlement_id}:%")
+}
+
+async fn restore_sales_settlement_coupon_usage(
+    tx: &tokio_postgres::Transaction<'_>,
+    store_code: &str,
+    settlement_id: i64,
+) -> Result<(), String> {
+    let memo_pattern = build_sales_coupon_usage_memo_pattern(settlement_id);
+    let usage_rows = tx
+        .query(
+            r#"
+            SELECT
+                id::BIGINT,
+                user_id::BIGINT,
+                service_id::BIGINT,
+                COALESCE(coupon_count, 0)::INTEGER
+              FROM member_point_usage_history
+             WHERE store_code = $1
+               AND use_type = 'COUPON'
+               AND memo LIKE $2
+             ORDER BY id
+             FOR UPDATE
+            "#,
+            &[&store_code, &memo_pattern],
+        )
+        .await
+        .map_err(|e| format!("정산 쿠폰 사용 이력 조회 실패: {e}"))?;
+
+    for row in usage_rows {
+        let usage_id = row.get::<_, i64>(0);
+        let user_id = row.get::<_, i64>(1);
+        let service_id = row
+            .get::<_, Option<i64>>(2)
+            .ok_or_else(|| format!("정산 쿠폰 사용 이력의 시술 정보가 없습니다. (usage_id={usage_id})"))?;
+        if service_id <= 0 {
+            return Err(format!(
+                "정산 쿠폰 사용 이력의 시술 정보가 올바르지 않습니다. (usage_id={usage_id})"
+            ));
+        }
+        let coupon_count = row.get::<_, i32>(3);
+        if coupon_count <= 0 {
+            return Err(format!(
+                "정산 쿠폰 사용 이력의 횟수 정보가 올바르지 않습니다. (usage_id={usage_id})"
+            ));
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO member_coupon_balance (store_code, user_id, service_id, coupon_count)
+            VALUES ($1,$2,$3,$4)
+            ON CONFLICT (store_code, user_id, service_id)
+            DO UPDATE SET
+                coupon_count = member_coupon_balance.coupon_count + EXCLUDED.coupon_count,
+                updated_at = NOW()
+            "#,
+            &[&store_code, &user_id, &service_id, &coupon_count],
+        )
+        .await
+        .map_err(|e| format!("정산 쿠폰 원복 처리 실패: {e}"))?;
+    }
+
+    tx.execute(
+        r#"
+        DELETE FROM member_point_usage_history
+         WHERE store_code = $1
+           AND use_type = 'COUPON'
+           AND memo LIKE $2
+        "#,
+        &[&store_code, &memo_pattern],
+    )
+    .await
+    .map_err(|e| format!("정산 쿠폰 사용 이력 정리 실패: {e}"))?;
+
+    Ok(())
+}
+
+async fn apply_sales_settlement_coupon_usage(
+    tx: &tokio_postgres::Transaction<'_>,
+    store_code: &str,
+    settlement_id: i64,
+    member_user_id: i64,
+    coupon_usage_lines: &[(i32, i64, i32)],
+) -> Result<(), String> {
+    for (line_no, service_id, coupon_count) in coupon_usage_lines {
+        if *service_id <= 0 {
+            return Err("쿠폰 결제 시술 정보가 올바르지 않습니다.".to_string());
+        }
+        if *coupon_count <= 0 {
+            return Err("쿠폰 사용 횟수는 1 이상이어야 합니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_coupon_balance
+                   SET coupon_count = coupon_count - $4,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND service_id = $3
+                   AND coupon_count >= $4
+                "#,
+                &[&store_code, &member_user_id, service_id, coupon_count],
+            )
+            .await
+            .map_err(|e| format!("정산 쿠폰 차감 처리 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("쿠폰 잔여 횟수가 부족하여 결제완료 처리할 수 없습니다.".to_string());
+        }
+
+        let use_type = "COUPON".to_string();
+        let amount_option: Option<i64> = None;
+        let service_id_option: Option<i64> = Some(*service_id);
+        let coupon_count_option: Option<i32> = Some(*coupon_count);
+        let memo = build_sales_coupon_usage_memo(settlement_id, *line_no);
+
+        tx.execute(
+            r#"
+            INSERT INTO member_point_usage_history (
+                store_code, user_id, use_type, amount, service_id, coupon_count, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            "#,
+            &[
+                &store_code,
+                &member_user_id,
+                &use_type,
+                &amount_option,
+                &service_id_option,
+                &coupon_count_option,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("정산 쿠폰 사용 이력 저장 실패: {e}"))?;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_sales_settlement_management_tables(&client).await?;
+    ensure_member_point_management_tables(&client).await?;
     ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
@@ -4502,6 +4864,9 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
         if settlement_id <= 0 {
             return Err("settlement_id는 1 이상이어야 합니다.".to_string());
         }
+
+        restore_sales_settlement_coupon_usage(&tx, &store_code, settlement_id).await?;
+
         let affected = tx
             .execute(
                 r#"
@@ -4649,6 +5014,31 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
         .map_err(|e| format!("결제 라인 저장 실패: {e}"))?;
     }
 
+    let coupon_usage_lines = insert_payment_lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, payment)| {
+            payment
+                .coupon_service_id
+                .map(|service_id| ((index + 1) as i32, service_id, 1_i32))
+        })
+        .collect::<Vec<_>>();
+
+    if status == "COMPLETED" && !coupon_usage_lines.is_empty() {
+        let Some(member_user_id) = settlement.member_user_id else {
+            return Err("쿠폰 결제는 회원 지정이 필요합니다.".to_string());
+        };
+
+        apply_sales_settlement_coupon_usage(
+            &tx,
+            &store_code,
+            settlement_id,
+            member_user_id,
+            &coupon_usage_lines,
+        )
+        .await?;
+    }
+
     // 예약 연동 건이면 정산 상태를 예약 상태에도 동기화한다.
     if let Some(reservation_id) = linked_reservation_id {
         let affected = tx
@@ -4690,6 +5080,7 @@ async fn cancel_sales_settlement(
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_sales_settlement_management_tables(&client).await?;
+    ensure_member_point_management_tables(&client).await?;
     ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
@@ -4793,6 +5184,10 @@ async fn cancel_sales_settlement(
         return Err("취소 대상 정산 데이터가 없습니다.".to_string());
     }
 
+    if current_status == "COMPLETED" {
+        restore_sales_settlement_coupon_usage(&tx, &store_code, payload.settlement_id).await?;
+    }
+
     if let Some(reservation_id) = linked_reservation_id {
         let affected = tx
             .execute(
@@ -4888,6 +5283,7 @@ fn main() {
             delete_reservation_calendar_item,
             get_member_point_management_data,
             recharge_member_point,
+            cancel_member_point_recharge,
             use_member_point,
             get_sales_settlement_data,
             upsert_sales_settlement,

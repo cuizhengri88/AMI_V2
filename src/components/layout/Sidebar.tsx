@@ -128,6 +128,7 @@ function getIconByPath(path: string): LucideIcon {
   if (path.startsWith('/inventory/history')) return HistoryIcon;
   if (path.startsWith('/inventory')) return Package;
   if (path.startsWith('/users/points')) return Wallet;
+  if (path.startsWith('/users/point-history')) return HistoryIcon;
   if (path.startsWith('/users/reservations')) return CalendarDays;
   if (path.startsWith('/users/sales')) return Receipt;
   if (path.startsWith('/users')) return Users;

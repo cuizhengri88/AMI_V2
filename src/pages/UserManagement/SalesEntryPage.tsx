@@ -193,7 +193,6 @@ export default function SalesEntryPage() {
   const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Settlement | null>(null);
-  const [cancelType, setCancelType] = useState<SettlementCancelType>('PROCEDURE');
   const [cancelReason, setCancelReason] = useState('');
 
   const isBusy = isLoading || isMutating;
@@ -661,17 +660,12 @@ export default function SalesEntryPage() {
     }
   };
 
-  const handleOpenCancelModal = (settlement: Settlement, type: SettlementCancelType) => {
+  const handleOpenCancelModal = (settlement: Settlement) => {
     if (settlement.status === 'CANCELLED') {
       alert('이미 취소된 매출입니다.');
       return;
     }
-    if (type === 'PAYMENT' && settlement.status !== 'COMPLETED') {
-      alert('결제취소는 결제완료 상태에서만 가능합니다.');
-      return;
-    }
     setCancelTarget(settlement);
-    setCancelType(type);
     setCancelReason('');
     setIsCancelModalOpen(true);
   };
@@ -683,6 +677,8 @@ export default function SalesEntryPage() {
       alert('취소 사유를 입력해주세요.');
       return;
     }
+    const cancelType: SettlementCancelType =
+      cancelTarget.status === 'COMPLETED' ? 'PAYMENT' : 'PROCEDURE';
 
     try {
       setIsMutating(true);
@@ -866,22 +862,12 @@ export default function SalesEntryPage() {
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleOpenCancelModal(settlement, 'PAYMENT');
-                          }}
-                          disabled={settlement.status !== 'COMPLETED' || isBusy}
-                          className="px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          결제취소
-                        </button>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleOpenCancelModal(settlement, 'PROCEDURE');
+                            handleOpenCancelModal(settlement);
                           }}
                           disabled={settlement.status === 'CANCELLED' || isBusy}
                           className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          시술취소
+                          취소
                         </button>
                       </div>
                     </td>
@@ -1148,7 +1134,7 @@ export default function SalesEntryPage() {
                                   key={`${selectedMember.id}-${coupon.serviceId}`}
                                   value={coupon.serviceId}
                                 >
-                                  {coupon.name}
+                                  {coupon.name} (잔여 {coupon.count}회)
                                 </option>
                               ))}
                             </select>
@@ -1199,7 +1185,7 @@ export default function SalesEntryPage() {
         {isCancelModalOpen && cancelTarget && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={cancelType === 'PAYMENT' ? '결제취소 처리' : '시술취소 처리'}
+              title="취소 처리"
               onClose={() => {
                 if (isMutating) return;
                 setIsCancelModalOpen(false);
@@ -1212,9 +1198,6 @@ export default function SalesEntryPage() {
                 <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-xs text-slate-600">
                   <p className="font-semibold text-slate-800">
                     대상 정산: #{cancelTarget.id} / {cancelTarget.date}
-                  </p>
-                  <p className="mt-1">
-                    취소 유형: {cancelType === 'PAYMENT' ? '결제취소' : '시술취소'}
                   </p>
                 </div>
 

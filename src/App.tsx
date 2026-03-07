@@ -14,6 +14,7 @@ import RoleManagementPage from './pages/System/RoleManagementPage';
 import SystemSettingsPage from './pages/System/SystemSettingsPage';
 import ServiceCatalogPage from './pages/System/ServiceCatalogPage';
 import PointRechargePage from './pages/UserManagement/PointRechargePage';
+import MemberPointHistoryPage from './pages/UserManagement/MemberPointHistoryPage';
 import ReservationCalendarPage from './pages/UserManagement/ReservationCalendarPage';
 import SalesEntryPage from './pages/UserManagement/SalesEntryPage';
 
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/system/role" element={<RoleManagementPage />} />
           <Route path="/system/settings" element={<SystemSettingsPage />} />
           <Route path="/users/points" element={<PointRechargePage />} />
+          <Route path="/users/point-history" element={<MemberPointHistoryPage />} />
           <Route path="/users/reservations" element={<ReservationCalendarPage />} />
           <Route path="/users/sales" element={<SalesEntryPage />} />
           {/* Fallback */}

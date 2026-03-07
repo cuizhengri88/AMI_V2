@@ -117,18 +117,33 @@ export default function RoleManagementPage() {
       }
     });
 
-    perms.forEach(p => {
-      if ([1, 4, 2, 31, 32, 5, 11, 7, 8, 9, 10].includes(p.menu_id)) {
-        const node = nodeMap.get(p.menu_id);
-        if (node) {
-          const parentId = [1, 4].includes(p.menu_id) ? 100 : [2, 31, 32].includes(p.menu_id) ? 200 : [5, 11].includes(p.menu_id) ? 300 : 6;
-          const parent = nodeMap.get(parentId);
-          if (parent) {
-            parent.children.push(node);
-            node.parent_id = parentId;
-          }
-        }
+    const salesChildren = [1, 4];
+    const productChildren = [2, 31, 32];
+    const hrChildren = [5, 11, 12, 13, 14, 16];
+    const systemChildren = [7, 8, 9, 10, 15];
+
+    perms.forEach((p) => {
+      if (
+        ![...salesChildren, ...productChildren, ...hrChildren, ...systemChildren].includes(p.menu_id)
+      ) {
+        return;
       }
+
+      const node = nodeMap.get(p.menu_id);
+      if (!node) return;
+
+      const parentId = salesChildren.includes(p.menu_id)
+        ? 100
+        : productChildren.includes(p.menu_id)
+          ? 200
+          : hrChildren.includes(p.menu_id)
+            ? 300
+            : 6;
+
+      const parent = nodeMap.get(parentId);
+      if (!parent) return;
+      parent.children.push(node);
+      node.parent_id = parentId;
     });
 
     roots.sort((a, b) => a.id - b.id);

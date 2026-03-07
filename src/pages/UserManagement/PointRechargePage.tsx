@@ -10,7 +10,6 @@ import {
   GripHorizontal,
   DollarSign,
   Ticket,
-  History,
   Loader2,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
@@ -25,7 +24,6 @@ type Member = {
   id: number;
   name: string;
   phone: string;
-  balance: number;
   coupons: Coupon[];
 };
 
@@ -41,33 +39,14 @@ type PaymentMethodOption = {
   order: number;
 };
 
-type HistoryItem = {
-  id: number;
-  userId: number;
-  userName: string;
-  rechargeType: 'BALANCE' | 'COUPON';
-  amount: number | null;
-  serviceName: string | null;
-  couponCount: number | null;
-  paymentMethodName: string;
-  createdAt: string;
-};
-
-type RechargeType = 'balance' | 'coupon';
-
 const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'WECHAT_PAY', label: '위챗페이', order: 1 },
   { code: 'ALIPAY', label: '알리페이', order: 2 },
   { code: 'CASH', label: '현금', order: 3 },
 ];
 
-function formatCurrency(value: number) {
-  return `₩${value.toLocaleString('ko-KR')}`;
-}
-
 export default function MemberRechargePage() {
   const [members, setMembers] = useState<Member[]>([]);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodOption[]>(
     FALLBACK_PAYMENT_METHODS,
@@ -78,7 +57,6 @@ export default function MemberRechargePage() {
   const [isMutating, setIsMutating] = useState(false);
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const [rechargeType, setRechargeType] = useState<RechargeType>('balance');
 
   const [amount, setAmount] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState<number>(0);
@@ -95,23 +73,11 @@ export default function MemberRechargePage() {
         user_id: number;
         user_name: string;
         phone: string | null;
-        point_balance: number;
         coupons: Array<{
           service_id: number;
           service_name: string;
           count: number;
         }>;
-      }>;
-      histories: Array<{
-        id: number;
-        user_id: number;
-        user_name: string;
-        recharge_type: 'BALANCE' | 'COUPON';
-        amount: number | null;
-        service_name: string | null;
-        coupon_count: number | null;
-        payment_method_name: string;
-        created_at: string;
       }>;
     }>('get_member_point_management_data');
 
@@ -119,7 +85,6 @@ export default function MemberRechargePage() {
       id: member.user_id,
       name: member.user_name,
       phone: member.phone || '-',
-      balance: member.point_balance || 0,
       coupons: (member.coupons || []).map((coupon) => ({
         serviceId: coupon.service_id,
         name: coupon.service_name,
@@ -127,20 +92,7 @@ export default function MemberRechargePage() {
       })),
     }));
 
-    const mappedHistories: HistoryItem[] = (result.histories || []).map((item) => ({
-      id: item.id,
-      userId: item.user_id,
-      userName: item.user_name,
-      rechargeType: item.recharge_type,
-      amount: item.amount,
-      serviceName: item.service_name,
-      couponCount: item.coupon_count,
-      paymentMethodName: item.payment_method_name,
-      createdAt: item.created_at,
-    }));
-
     setMembers(mappedMembers);
-    setHistoryItems(mappedHistories);
   };
 
   const loadReferenceData = async () => {
@@ -224,9 +176,8 @@ export default function MemberRechargePage() {
     setPaymentMethodCode(paymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code);
   };
 
-  const openRechargeModal = (member: Member, type: RechargeType = 'balance') => {
+  const openRechargeModal = (member: Member) => {
     setSelectedMember(member);
-    setRechargeType(type);
     resetRechargeForm();
     setIsRechargeModalOpen(true);
   };
@@ -243,16 +194,16 @@ export default function MemberRechargePage() {
     const parsedAmount = parseInt(amount, 10) || 0;
     const parsedCouponCount = parseInt(couponCount, 10) || 0;
 
-    if (rechargeType === 'balance' && parsedAmount <= 0) {
-      alert('충전 금액을 1원 이상 입력해주세요.');
+    if (selectedServiceId <= 0) {
+      alert('시술을 선택해주세요.');
       return;
     }
-    if (rechargeType === 'coupon' && selectedServiceId <= 0) {
-      alert('쿠폰 충전 시 시술을 선택해주세요.');
-      return;
-    }
-    if (rechargeType === 'coupon' && parsedCouponCount <= 0) {
+    if (parsedCouponCount <= 0) {
       alert('충전 횟수를 1회 이상 입력해주세요.');
+      return;
+    }
+    if (parsedAmount <= 0) {
+      alert('받은 금액을 1원 이상 입력해주세요.');
       return;
     }
 
@@ -261,10 +212,10 @@ export default function MemberRechargePage() {
       await invokeDbCommand<{ success: boolean; message: string }>('recharge_member_point', {
         recharge: {
           user_id: selectedMember.id,
-          recharge_type: rechargeType === 'balance' ? 'BALANCE' : 'COUPON',
-          amount: rechargeType === 'balance' ? parsedAmount : null,
-          service_id: rechargeType === 'coupon' ? selectedServiceId : null,
-          coupon_count: rechargeType === 'coupon' ? parsedCouponCount : null,
+          recharge_type: 'COUPON',
+          amount: parsedAmount,
+          service_id: selectedServiceId,
+          coupon_count: parsedCouponCount,
           payment_method_code: paymentMethodCode,
           memo: null,
         },
@@ -289,10 +240,6 @@ export default function MemberRechargePage() {
     [members, searchTerm],
   );
 
-  const totalBalance = useMemo(
-    () => members.reduce((sum, member) => sum + member.balance, 0),
-    [members],
-  );
   const totalCoupons = useMemo(
     () =>
       members.reduce(
@@ -315,12 +262,12 @@ export default function MemberRechargePage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원 충전 및 쿠폰 관리</h1>
-          <p className="text-slate-500 mt-1">회원의 예치금 충전 및 시술 횟수권(쿠폰)을 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원 포인트 관리</h1>
+          <p className="text-slate-500 mt-1">회원이 보유한 시술 쿠폰과 총 횟수를 확인하고 충전합니다.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
           <div className="size-12 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
             <User size={24} />
@@ -328,15 +275,6 @@ export default function MemberRechargePage() {
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">전체 회원</p>
             <p className="text-2xl font-black text-slate-900">{members.length}명</p>
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
-          <div className="size-12 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <DollarSign size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">총 예치금 잔액</p>
-            <p className="text-2xl font-black text-slate-900">{formatCurrency(totalBalance)}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
@@ -377,7 +315,6 @@ export default function MemberRechargePage() {
             <tr className="bg-slate-900 text-slate-200">
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">회원정보</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">연락처</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">예치금 잔액</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">보유 쿠폰(횟수권)</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
             </tr>
@@ -385,7 +322,7 @@ export default function MemberRechargePage() {
           <tbody className="divide-y divide-slate-100">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-slate-400">
+                <td colSpan={4} className="py-10 text-center text-sm text-slate-400">
                   회원 데이터가 없습니다.
                 </td>
               </tr>
@@ -404,7 +341,6 @@ export default function MemberRechargePage() {
                     </div>
                   </td>
                   <td className="py-4 px-6 text-sm text-slate-600 font-mono">{member.phone}</td>
-                  <td className="py-4 px-6 text-sm text-right font-bold text-primary">{formatCurrency(member.balance)}</td>
                   <td className="py-4 px-6">
                     <div className="flex flex-wrap gap-1">
                       {member.coupons.length > 0 ? (
@@ -425,21 +361,11 @@ export default function MemberRechargePage() {
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => openRechargeModal(member, 'balance')}
+                        onClick={() => openRechargeModal(member)}
                         className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
                       >
                         <Plus size={14} />
-                        충전
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const lastHistory = historyItems.find((item) => item.userId === member.id);
-                          alert(lastHistory ? `${lastHistory.userName} 최근 이력: ${lastHistory.createdAt}` : '이력이 없습니다.');
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
-                      >
-                        <History size={16} />
+                        횟수권 충전
                       </button>
                     </div>
                   </td>
@@ -454,104 +380,74 @@ export default function MemberRechargePage() {
         {isRechargeModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={`${selectedMember?.name || ''} 회원 충전`}
+              title={`${selectedMember?.name || ''} 회원 횟수권 충전`}
               onClose={closeRechargeModal}
               icon={<CreditCard size={20} className="text-primary" />}
             >
               <div className="p-6">
-                <div className="flex p-1 bg-slate-100 rounded-xl mb-6">
-                  <button
-                    type="button"
-                    onClick={() => setRechargeType('balance')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
-                      rechargeType === 'balance'
-                        ? 'bg-white text-primary shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    <DollarSign size={14} />
-                    예치금 충전
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRechargeType('coupon')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
-                      rechargeType === 'coupon'
-                        ? 'bg-white text-primary shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    <Ticket size={14} />
-                    쿠폰(횟수권) 충전
-                  </button>
-                </div>
-
                 <form onSubmit={handleRecharge} className="space-y-4">
-                  {rechargeType === 'balance' ? (
-                    <div className="space-y-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase">충전 금액 (₩)</label>
-                        <div className="relative">
-                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="number"
-                            required
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[10000, 50000, 100000].map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))}
-                            className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                          >
-                            +{value.toLocaleString()}
-                          </button>
-                        ))}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">시술 선택</label>
+                      <select
+                        value={selectedServiceId}
+                        onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      >
+                        {serviceOptions.length === 0 ? (
+                          <option value={0}>시술 항목 없음</option>
+                        ) : (
+                          serviceOptions.map((service) => (
+                            <option key={service.id} value={service.id}>
+                              {service.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">충전 횟수</label>
+                      <div className="relative">
+                        <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          required
+                          value={couponCount}
+                          onChange={(e) => setCouponCount(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          placeholder="0"
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase">시술 선택</label>
-                        <select
-                          value={selectedServiceId}
-                          onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">받은 금액 (₩)</label>
+                      <div className="relative">
+                        <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          required
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[10000, 50000, 100000].map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))}
+                          className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
                         >
-                          {serviceOptions.length === 0 ? (
-                            <option value={0}>시술 항목 없음</option>
-                          ) : (
-                            serviceOptions.map((service) => (
-                              <option key={service.id} value={service.id}>
-                                {service.name}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase">충전 횟수</label>
-                        <div className="relative">
-                          <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="number"
-                            required
-                            value={couponCount}
-                            onChange={(e) => setCouponCount(e.target.value)}
-                            className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
+                          +{value.toLocaleString()}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">결제 수단</label>
