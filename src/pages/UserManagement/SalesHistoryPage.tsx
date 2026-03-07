@@ -124,13 +124,27 @@ function getDiscountAmount(entry: Settlement) {
 }
 
 function normalizeRechargeType(value?: string) {
-  const normalized = value?.trim().toUpperCase();
-  if (normalized === 'COUPON') return 'COUPON';
+  const raw = value?.trim() || '';
+  const normalized = raw.toUpperCase();
+  if (normalized === 'COUPON' || raw.includes('쿠폰')) return 'COUPON';
   return 'BALANCE';
 }
 
 function getPointRechargeLabel(entry: Settlement) {
   return entry.rechargeType === 'COUPON' ? '쿠폰 충전' : '포인트 충전';
+}
+
+function getRechargeTypeDisplayLabel(value?: string) {
+  const raw = value?.trim() || '';
+  if (!raw) return '-';
+  const normalized = raw.toUpperCase();
+  if (normalized === 'COUPON' || raw === '쿠폰결재건') return '쿠폰 결재';
+  return raw;
+}
+
+function normalizePaymentMethodLabel(value: string) {
+  if (value.trim() === '쿠폰결재건') return '쿠폰 결재';
+  return value;
 }
 
 function csvEscape(value: string | number) {
@@ -312,7 +326,7 @@ export default function SalesHistoryPage() {
     [paymentMethods],
   );
 
-  const getPaymentMethodName = (code: string) => paymentMethodNameMap.get(code) || code;
+  const getPaymentMethodName = (code: string) => normalizePaymentMethodLabel(paymentMethodNameMap.get(code) || code);
 
   const filteredHistory = useMemo(() => {
     const keyword = searchMember.trim().toLowerCase();
@@ -671,17 +685,25 @@ export default function SalesHistoryPage() {
                   </p>
                   {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                     <div className="p-3 border border-slate-100 rounded-xl bg-emerald-50/40">
-                      <p className="text-sm font-bold text-slate-900">{getPointRechargeLabel(selectedHistory)} ({selectedHistory.rechargeType || '-'})</p>
+                      <p className="text-sm font-bold text-slate-900">{getPointRechargeLabel(selectedHistory)} ({getRechargeTypeDisplayLabel(selectedHistory.rechargeType)})</p>
                       <p className="text-[10px] text-slate-500 font-bold">실매출 반영 대상</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {selectedHistory.procedureIds.map((id) => {
                         const procedure = procedures.find((entry) => entry.id === id);
+                        const isCouponProcedure = selectedHistory.payments.some(
+                          (payment) => isCouponPaymentMethod(payment.method) && payment.couponServiceId === id,
+                        );
                         return (
                           <div key={id} className="flex items-center justify-between p-3 border border-slate-100 rounded-xl">
                             <div>
-                              <p className="text-sm font-bold text-slate-900">{procedure?.name || '미등록 시술'}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-slate-900">{procedure?.name || '미등록 시술'}</p>
+                                {isCouponProcedure && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">쿠폰결재</span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400 font-bold">{procedure?.categoryName || '-'} | {procedure?.time || 0}분</p>
                             </div>
                             <p className="text-sm font-black text-slate-900">{formatCurrency(procedure?.price || 0)}</p>

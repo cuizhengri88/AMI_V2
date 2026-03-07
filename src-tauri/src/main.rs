@@ -1546,18 +1546,20 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
     client
         .batch_execute(sql)
         .await
-        .map_err(|e| format!("회원 포인트 테이블 생성 실패: {e}"))
+        .map_err(|e| format!("회원 포인트 테이블 생성 실패: {e}"))?;
+
+    ensure_member_point_recharge_cancel_log_table(client).await?;
+    Ok(())
 }
 
 async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Result<(), String> {
+    if !is_db_integrity_check_mode() {
+        return Ok(());
+    }
+
     let sql = r#"
         ALTER TABLE member_point_history
         ADD COLUMN IF NOT EXISTS status_code VARCHAR(20);
-
-        UPDATE member_point_history
-           SET status_code = 'ACTIVE'
-         WHERE status_code IS NULL
-            OR BTRIM(status_code) = '';
 
         ALTER TABLE member_point_history
         ALTER COLUMN status_code SET DEFAULT 'ACTIVE';
@@ -3647,7 +3649,6 @@ async fn get_member_point_management_data(
 ) -> Result<MemberPointDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_member_point_management_tables(&client).await?;
-    ensure_member_point_recharge_cancel_log_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let member_rows = client
@@ -4027,7 +4028,6 @@ async fn cancel_member_point_recharge(
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_member_point_management_tables(&client).await?;
-    ensure_member_point_recharge_cancel_log_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     if payload.history_id <= 0 {
@@ -4745,6 +4745,11 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
     let mut insert_payment_lines = Vec::<PaymentInsertLine>::new();
     let mut paid_total: i64 = 0;
     let mut coupon_service_ids = HashSet::<i64>::new();
+    let mut selected_service_count_map = HashMap::<i64, i32>::new();
+    for service_id in &settlement.service_ids {
+        *selected_service_count_map.entry(*service_id).or_insert(0) += 1;
+    }
+    let mut coupon_usage_count_map = HashMap::<i64, i32>::new();
 
     for payment in &settlement.payments {
         let code = payment.payment_method_code.trim().to_uppercase();
@@ -4768,6 +4773,20 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
             };
             if coupon_service_id <= 0 {
                 return Err("coupon_service_id는 1 이상이어야 합니다.".to_string());
+            }
+            let selected_count = selected_service_count_map
+                .get(&coupon_service_id)
+                .copied()
+                .unwrap_or(0);
+            if selected_count <= 0 {
+                return Err("쿠폰 결제 시술은 이번 정산의 시술 항목에 포함되어야 합니다.".to_string());
+            }
+            let next_coupon_count = coupon_usage_count_map
+                .entry(coupon_service_id)
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+            if *next_coupon_count > selected_count {
+                return Err("동일 시술에 대한 쿠폰 사용 횟수가 시술 건수를 초과했습니다.".to_string());
             }
             coupon_service_ids.insert(coupon_service_id);
             Some(coupon_service_id)

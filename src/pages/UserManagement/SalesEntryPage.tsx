@@ -187,6 +187,7 @@ export default function SalesEntryPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'GUEST'>('GUEST');
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
+  const [couponAppliedServiceIds, setCouponAppliedServiceIds] = useState<number[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('커트');
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
@@ -421,6 +422,16 @@ export default function SalesEntryPage() {
     return members.find((member) => member.id === memberId) || null;
   }, [selectedMemberId, members]);
 
+  const selectedMemberCouponMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!selectedMember) return map;
+
+    selectedMember.coupons.forEach((coupon) => {
+      map.set(coupon.serviceId, coupon.count);
+    });
+    return map;
+  }, [selectedMember]);
+
   // [계산] 이미 정산에 연결된 예약 ID 집합
   const settledReservationIdSet = useMemo(
     () => new Set(settlements.map((settlement) => settlement.reservationId).filter(Boolean) as string[]),
@@ -474,9 +485,33 @@ export default function SalesEntryPage() {
     );
   }, [selectedProcs]);
 
+  const couponAppliedSet = useMemo(() => new Set(couponAppliedServiceIds), [couponAppliedServiceIds]);
+  const couponAppliedCountMap = useMemo(() => {
+    const map = new Map<number, number>();
+    couponAppliedServiceIds.forEach((serviceId) => {
+      map.set(serviceId, (map.get(serviceId) || 0) + 1);
+    });
+    return map;
+  }, [couponAppliedServiceIds]);
+
+  const couponDiscountAmount = useMemo(() => {
+    return selectedProcs.reduce((sum, serviceId) => {
+      if (!couponAppliedSet.has(serviceId)) return sum;
+      const procedure = procedures.find((entry) => entry.id === serviceId);
+      return sum + (procedure?.price || 0);
+    }, 0);
+  }, [couponAppliedSet, procedures, selectedProcs]);
+
+  const payableAmount = Math.max(totals.price - couponDiscountAmount, 0);
+
+  const manualPaymentMethods = useMemo(
+    () => paymentMethods.filter((method) => method.code !== 'COUPON'),
+    [paymentMethods],
+  );
+
   // [계산] 결제 금액 합계/미수(또는 초과) 금액
   const paidTotal = useMemo(() => payments.reduce((sum, payment) => sum + payment.amount, 0), [payments]);
-  const remainingAmount = totals.price - paidTotal;
+  const remainingAmount = payableAmount - paidTotal;
 
   // [동작] 신규 작성 시 모달 입력값 초기화
   const resetModalForm = () => {
@@ -484,6 +519,7 @@ export default function SalesEntryPage() {
     setSelectedMemberId('GUEST');
     setSelectedManagerId('');
     setSelectedProcs([]);
+    setCouponAppliedServiceIds([]);
     setSelectedCategory(categories[0] || '커트');
     setPayments([]);
   };
@@ -499,7 +535,11 @@ export default function SalesEntryPage() {
       );
       setSelectedManagerId(String(settlement.managerId));
       setSelectedProcs(settlement.procedureIds);
-      setPayments(settlement.payments);
+      const couponIds = settlement.payments
+        .filter((payment) => payment.method === 'COUPON' && typeof payment.couponServiceId === 'number')
+        .map((payment) => payment.couponServiceId as number);
+      setCouponAppliedServiceIds(Array.from(new Set(couponIds)));
+      setPayments(settlement.payments.filter((payment) => payment.method !== 'COUPON'));
     } else {
       setEditingSettlement(null);
       resetModalForm();
@@ -529,6 +569,7 @@ export default function SalesEntryPage() {
         : '',
     );
     setSelectedProcs(validProcedureIds);
+    setCouponAppliedServiceIds([]);
 
     const firstProcedure = procedures.find((procedure) => procedure.id === validProcedureIds[0]);
     if (firstProcedure) {
@@ -548,12 +589,29 @@ export default function SalesEntryPage() {
     }
   }, [selectedReservationId, importableReservations]);
 
+  useEffect(() => {
+    setCouponAppliedServiceIds((prev) => prev.filter((serviceId) => selectedProcs.includes(serviceId)));
+  }, [selectedProcs]);
+
+  useEffect(() => {
+    if (selectedMember) return;
+    setCouponAppliedServiceIds([]);
+  }, [selectedMember]);
+
+  useEffect(() => {
+    if (selectedMemberId !== 'GUEST') return;
+    setPayments((prev) => prev.filter((payment) => payment.method !== 'PREPAID' && payment.method !== 'COUPON'));
+  }, [selectedMemberId]);
+
   // [동작] 잔액만큼 결제수단 라인 1건 자동 추가
   const handleAddPayment = () => {
     if (remainingAmount <= 0) return;
+    const defaultMethod =
+      manualPaymentMethods.find((method) => !(selectedMemberId === 'GUEST' && method.code === 'PREPAID'))?.code
+      || 'CARD';
     setPayments((prev) => [
       ...prev,
-      { method: paymentMethods[0]?.code || 'CARD', amount: remainingAmount },
+      { method: defaultMethod, amount: remainingAmount },
     ]);
   };
 
@@ -591,7 +649,9 @@ export default function SalesEntryPage() {
       return;
     }
 
-    const prepaidTotal = payments
+    const normalizedPayments = payments.filter((payment) => payment.method !== 'COUPON');
+
+    const prepaidTotal = normalizedPayments
       .filter((payment) => payment.method === 'PREPAID')
       .reduce((sum, payment) => sum + payment.amount, 0);
 
@@ -612,8 +672,8 @@ export default function SalesEntryPage() {
       return;
     }
 
-    if (payments.some((payment) => payment.method === 'COUPON' && !payment.couponServiceId)) {
-      alert('쿠폰 결제는 쿠폰 시술을 선택해야 합니다.');
+    if (couponAppliedServiceIds.length > 0 && !selectedMember) {
+      alert('쿠폰 사용은 회원 선택이 필요합니다.');
       return;
     }
 
@@ -623,6 +683,12 @@ export default function SalesEntryPage() {
         : Number.isFinite(Number(selectedMemberId))
           ? Number(selectedMemberId)
           : null;
+
+    const couponPayments = couponAppliedServiceIds.map((serviceId) => ({
+      payment_method_code: 'COUPON',
+      amount: 0,
+      coupon_service_id: serviceId,
+    }));
 
     try {
       setIsMutating(true);
@@ -634,14 +700,14 @@ export default function SalesEntryPage() {
             member_user_id: parsedMemberUserId,
             manager_employee_id: managerId,
             service_ids: serviceIds,
-            payments: payments.map((payment) => ({
-              payment_method_code: payment.method,
-              amount: payment.amount || 0,
-              coupon_service_id:
-                payment.method === 'COUPON'
-                  ? payment.couponServiceId || null
-                  : null,
-            })),
+            payments: [
+              ...normalizedPayments.map((payment) => ({
+                payment_method_code: payment.method,
+                amount: payment.amount || 0,
+                coupon_service_id: null,
+              })),
+              ...couponPayments,
+            ],
             status,
             reservation_ref: selectedReservationId || null,
           },
@@ -1023,18 +1089,66 @@ export default function SalesEntryPage() {
                     </select>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-2">
+                    {selectedProcs.length === 0 && (
+                      <div className="text-[10px] text-slate-400 px-2 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+                        선택된 시술이 없습니다.
+                      </div>
+                    )}
                     {selectedProcs.map((id) => {
                       const procedure = procedures.find((entry) => entry.id === id);
+                      if (!procedure) return null;
+
+                      const couponRemaining = selectedMemberCouponMap.get(id) || 0;
+                      const appliedCouponCount = couponAppliedCountMap.get(id) || 0;
+                      const visibleCouponRemaining = Math.max(couponRemaining - appliedCouponCount, 0);
+                      const isCouponApplied = couponAppliedSet.has(id);
+                      const canUseCoupon = !!selectedMember && (visibleCouponRemaining > 0 || isCouponApplied);
+
                       return (
                         <div
                           key={id}
-                          className="flex items-center gap-2 px-2 py-1 bg-primary/5 border border-primary/10 rounded-lg text-[10px] font-bold text-primary"
+                          className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
                         >
-                          {procedure?.name}
-                          <button onClick={() => setSelectedProcs((prev) => prev.filter((entry) => entry !== id))} className="hover:text-red-500">
-                            <X size={12} />
-                          </button>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-800">{procedure.name}</span>
+                            <span className={`text-[10px] font-bold ${isCouponApplied ? 'text-emerald-600' : 'text-slate-500'}`}>
+                              {isCouponApplied ? '쿠폰 적용' : `₩${procedure.price.toLocaleString()}`}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {selectedMember ? (
+                              canUseCoupon ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCouponAppliedServiceIds((prev) =>
+                                      prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id],
+                                    )
+                                  }
+                                  className={`px-2 py-1 rounded text-[10px] font-black border transition-colors ${
+                                    isCouponApplied
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
+                                  }`}
+                                >
+                                  {isCouponApplied ? '쿠폰적용 취소' : '쿠폰사용'} (잔여 {visibleCouponRemaining}회)
+                                </button>
+                              ) : (
+                                <span className="text-[10px] font-bold text-slate-400">쿠폰 없음</span>
+                              )
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">회원 선택 시 쿠폰 사용 가능</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProcs((prev) => prev.filter((entry) => entry !== id))}
+                              className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"
+                              aria-label="시술 삭제"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1053,12 +1167,22 @@ export default function SalesEntryPage() {
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 시술 합계</div>
                   </div>
 
-                  {remainingAmount > 0 && paidTotal > 0 && (
+                  {couponDiscountAmount > 0 && (
                     <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                      <div className="text-[10px] font-black text-red-400 uppercase tracking-widest">할인 적용액</div>
-                      <div className="text-sm font-black text-red-400">
-                        - ₩{remainingAmount.toLocaleString()} ({totals.price > 0 ? Math.round((remainingAmount / totals.price) * 100) : 0}%)
-                      </div>
+                      <div className="text-[10px] font-black text-emerald-300 uppercase tracking-widest">쿠폰 차감</div>
+                      <div className="text-sm font-black text-emerald-300">- ₩{couponDiscountAmount.toLocaleString()}</div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">실결제 대상</div>
+                    <div className="text-sm font-black text-white">₩{payableAmount.toLocaleString()}</div>
+                  </div>
+
+                  {paidTotal > 0 && (
+                    <div className="flex justify-between items-center pt-1">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">수납 합계</div>
+                      <div className="text-xs font-bold text-slate-200">₩{paidTotal.toLocaleString()}</div>
                     </div>
                   )}
                 </div>
@@ -1085,8 +1209,8 @@ export default function SalesEntryPage() {
                               onChange={(event) => updatePayment(index, 'method', event.target.value as PaymentMethodCode)}
                               className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold outline-none"
                             >
-                              {paymentMethods.map((method) => {
-                                const isDisabled = (method.code === 'PREPAID' || method.code === 'COUPON') && selectedMemberId === 'GUEST';
+                              {manualPaymentMethods.map((method) => {
+                                const isDisabled = method.code === 'PREPAID' && selectedMemberId === 'GUEST';
                                 return (
                                   <option key={method.code} value={method.code} disabled={isDisabled}>
                                     {method.name}
@@ -1114,30 +1238,6 @@ export default function SalesEntryPage() {
                                 </span>
                               )}
                             </div>
-                          )}
-
-                          {payment.method === 'COUPON' && selectedMember && (
-                            <select
-                              value={payment.couponServiceId || ''}
-                              onChange={(event) =>
-                                updatePayment(
-                                  index,
-                                  'couponServiceId',
-                                  parseInt(event.target.value, 10) || undefined,
-                                )
-                              }
-                              className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold outline-none"
-                            >
-                              <option value="">쿠폰 선택</option>
-                              {selectedMember.coupons.map((coupon) => (
-                                <option
-                                  key={`${selectedMember.id}-${coupon.serviceId}`}
-                                  value={coupon.serviceId}
-                                >
-                                  {coupon.name} (잔여 {coupon.count}회)
-                                </option>
-                              ))}
-                            </select>
                           )}
                         </div>
                       </div>

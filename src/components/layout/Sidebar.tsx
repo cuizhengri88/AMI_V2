@@ -124,6 +124,7 @@ function normalizeType(value: string): 'MAIN' | 'SUB' {
 
 function getIconByPath(path: string): LucideIcon {
   if (path === '/sales-stats' || path.startsWith('/sales')) return TrendingUp;
+  if (path === '/hair_sales-stats' || path === '/Hair_sales-stats' || path === '/hair-sales-stats') return TrendingUp;
   if (path.startsWith('/purchases')) return ShoppingCart;
   if (path.startsWith('/products')) return ShoppingBag;
   if (path.startsWith('/inventory/history')) return HistoryIcon;
