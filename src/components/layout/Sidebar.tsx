@@ -96,6 +96,7 @@ const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
       { id: 12, icon: Wallet, order: 3, status: '사용중', names: { ko: '회원 포인트 관리', en: 'Point Recharge', zh: '会员积分充值' }, path: '/users/points', children: [] },
       { id: 13, icon: CalendarDays, order: 4, status: '사용중', names: { ko: '예약 캘린더', en: 'Reservation Calendar', zh: '预约日历' }, path: '/users/reservations', children: [] },
       { id: 14, icon: Receipt, order: 5, status: '사용중', names: { ko: '매출 등록', en: 'Sales Entry', zh: '销售登记' }, path: '/users/sales', children: [] },
+      { id: 17, icon: Receipt, order: 6, status: '사용중', names: { ko: '매출 내역', en: 'Sales History', zh: '销售记录' }, path: '/users/sales-history', children: [] },
     ] 
   },
   { 

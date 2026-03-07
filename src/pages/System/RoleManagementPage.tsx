@@ -119,7 +119,7 @@ export default function RoleManagementPage() {
 
     const salesChildren = [1, 4];
     const productChildren = [2, 31, 32];
-    const hrChildren = [5, 11, 12, 13, 14, 16];
+    const hrChildren = [5, 11, 12, 13, 14, 16, 17];
     const systemChildren = [7, 8, 9, 10, 15];
 
     perms.forEach((p) => {

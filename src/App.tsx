@@ -17,6 +17,7 @@ import PointRechargePage from './pages/UserManagement/PointRechargePage';
 import MemberPointHistoryPage from './pages/UserManagement/MemberPointHistoryPage';
 import ReservationCalendarPage from './pages/UserManagement/ReservationCalendarPage';
 import SalesEntryPage from './pages/UserManagement/SalesEntryPage';
+import SalesHistoryPage from './pages/UserManagement/SalesHistoryPage';
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/users/point-history" element={<MemberPointHistoryPage />} />
           <Route path="/users/reservations" element={<ReservationCalendarPage />} />
           <Route path="/users/sales" element={<SalesEntryPage />} />
+          <Route path="/users/sales-history" element={<SalesHistoryPage />} />
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/sales-stats" replace />} />
         </Route>

@@ -25,7 +25,7 @@ fn role_seeds() -> Vec<RoleSeed> {
 }
 
 fn permission_seeds() -> Vec<PermissionSeed> {
-    let menu_ids: Vec<i64> = vec![100, 1, 4, 200, 2, 31, 32, 300, 5, 11, 12, 13, 14, 16, 6, 7, 8, 15, 9, 10];
+    let menu_ids: Vec<i64> = vec![100, 1, 4, 200, 2, 31, 32, 300, 5, 11, 12, 13, 14, 16, 17, 6, 7, 8, 15, 9, 10];
     let mut perms = Vec::new();
 
     // ROLE_OWNER: 모든 권한
@@ -37,7 +37,7 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let manager_perms = [
         (100, true, true, false), (1, true, false, false), (4, true, true, false),
         (200, true, true, true), (2, true, true, true), (31, true, true, true), (32, true, true, false),
-        (300, true, true, false), (5, true, true, false), (11, true, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, true, false, false),
+        (300, true, true, false), (5, true, true, false), (11, true, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, true, false, false), (17, true, false, false),
         (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in manager_perms {
@@ -48,7 +48,7 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let staff_perms = [
         (100, true, false, false), (1, false, false, false), (4, false, false, false),
         (200, true, true, false), (2, true, false, false), (31, true, true, false), (32, true, false, false),
-        (300, true, false, false), (5, true, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, true, false, false),
+        (300, true, false, false), (5, true, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, true, false, false), (17, true, false, false),
         (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in staff_perms {
@@ -59,7 +59,7 @@ fn permission_seeds() -> Vec<PermissionSeed> {
     let parttime_perms = [
         (100, true, false, false), (1, false, false, false), (4, false, false, false),
         (200, true, false, false), (2, true, false, false), (31, false, false, false), (32, false, false, false),
-        (300, false, false, false), (5, false, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, false, false, false),
+        (300, false, false, false), (5, false, false, false), (11, false, false, false), (12, false, false, false), (13, false, false, false), (14, false, false, false), (16, false, false, false), (17, false, false, false),
         (6, false, false, false), (7, false, false, false), (8, false, false, false), (15, false, false, false), (9, false, false, false), (10, false, false, false),
     ];
     for (mid, r, w, d) in parttime_perms {

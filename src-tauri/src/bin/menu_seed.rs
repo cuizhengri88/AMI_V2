@@ -29,6 +29,7 @@ fn menu_seeds() -> Vec<MenuSeed> {
         MenuSeed { id: 16, parent_id: Some(300), menu_type: "SUB", path: "/users/point-history", order: 4, status: "사용중", ko: "회원포인트 내역", en: "Point History", zh: "会员积分记录" },
         MenuSeed { id: 13, parent_id: Some(300), menu_type: "SUB", path: "/users/reservations", order: 5, status: "사용중", ko: "예약 캘린더", en: "Reservation Calendar", zh: "预约日历" },
         MenuSeed { id: 14, parent_id: Some(300), menu_type: "SUB", path: "/users/sales", order: 6, status: "사용중", ko: "매출 등록", en: "Sales Entry", zh: "销售登记" },
+        MenuSeed { id: 17, parent_id: Some(300), menu_type: "SUB", path: "/users/sales-history", order: 7, status: "사용중", ko: "매출 내역", en: "Sales History", zh: "销售记录" },
         MenuSeed { id: 6, parent_id: None, menu_type: "MAIN", path: "/system", order: 4, status: "사용중", ko: "시스템 관리", en: "System Management", zh: "系统管理" },
         MenuSeed { id: 7, parent_id: Some(6), menu_type: "SUB", path: "/system/menu", order: 1, status: "사용중", ko: "메뉴 관리", en: "Menu Management", zh: "菜单管理" },
         MenuSeed { id: 8, parent_id: Some(6), menu_type: "SUB", path: "/system/code", order: 2, status: "사용중", ko: "코드 관리", en: "Code Management", zh: "代码管理" },
@@ -121,6 +122,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     seeds.sort_by_key(|m| m.parent_id.is_some());
 
     for menu in &seeds {
+        tx.execute(
+            r#"
+            DELETE FROM menu_management
+             WHERE store_code = $1
+               AND menu_path = $2
+               AND menu_id <> $3
+            "#,
+            &[&"HAIR_001", &menu.path, &menu.id],
+        )
+        .await?;
+
         tx.execute(
             r#"
             INSERT INTO menu_management (
