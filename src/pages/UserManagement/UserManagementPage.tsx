@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripHorizontal, Trash2, Loader2, Database } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type User = {
   user_id: number;
@@ -24,6 +25,7 @@ type FormData = {
 };
 
 export default function UserManagementPage() {
+  const pt = usePageText('user_management_user_management');
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -74,7 +76,7 @@ export default function UserManagementPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.email) {
-      alert('이름과 이메일은 필수입니다.');
+      alert(pt('t001'));
       return;
     }
 
@@ -94,12 +96,12 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (userId: number) => {
-    if (!window.confirm('정말 이 회원을 삭제하시겠습니까?')) return;
+    if (!window.confirm(pt('t003'))) return;
     try {
       setIsMutating(true);
       await invokeDbCommand('delete_user_management', { user_id: userId });
       await loadUsers();
-      alert('회원이 삭제되었습니다.');
+      alert(pt('t006'));
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || '삭제에 실패했습니다.');
     } finally {
@@ -136,8 +138,7 @@ export default function UserManagementPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             <UserPlus size={18} />
-            {t('user.add_button')}
-          </button>
+            {t('user.add_button')}</button>
         </div>
       </div>
 
@@ -147,10 +148,8 @@ export default function UserManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder={t('user.search_placeholder')}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={t('user.search_placeholder')} value={searchText}
+              onChange={(e) => setSearchText(e.target.value)} className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <div className="text-xs text-slate-400 font-medium">{t('user.total_count', { count: filteredUsers.length })}</div>
@@ -210,16 +209,13 @@ export default function UserManagementPage() {
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button 
-                          onClick={() => handleEditClick(user)}
-                          disabled={isMutating}
+                          onClick={() => handleEditClick(user)} disabled={isMutating}
                           className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 bg-primary/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
                         >
                           <Edit2 size={14} />
-                          {t('common.edit')}
-                        </button>
+                          {t('common.edit')}</button>
                         <button 
-                          onClick={() => handleDelete(user.user_id)}
-                          disabled={isMutating}
+                          onClick={() => handleDelete(user.user_id)} disabled={isMutating}
                           className="text-red-500 hover:text-red-600 font-bold text-xs flex items-center justify-center gap-1 bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
                         >
                           <Trash2 size={14} />
@@ -229,8 +225,7 @@ export default function UserManagementPage() {
                     </td>
                   </tr>
                 ))
-              )}
-            </tbody>
+              )}</tbody>
           </table>
         </div>
       </div>
@@ -241,8 +236,7 @@ export default function UserManagementPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
               title={modalMode === 'add' ? '새 회원 추가' : '회원 정보 수정'} 
-              onClose={() => setIsModalOpen(false)}
-              icon={<UserPlus size={20} className="text-primary" />}
+              onClose={() => setIsModalOpen(false)} icon={<UserPlus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-1">
@@ -250,9 +244,7 @@ export default function UserManagementPage() {
                   <input 
                     type="text" 
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="회원 이름"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={pt('t005')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -260,9 +252,7 @@ export default function UserManagementPage() {
                   <input 
                     type="email" 
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="이메일 주소"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder={pt('t002')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -270,8 +260,7 @@ export default function UserManagementPage() {
                   <input 
                     type="text" 
                     value={formData.phone || ''}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="010-1234-5678"
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="010-1234-5678"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
@@ -280,8 +269,7 @@ export default function UserManagementPage() {
                   <input 
                     type="text" 
                     value={formData.address || ''}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="주소"
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder="주소"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
@@ -289,9 +277,7 @@ export default function UserManagementPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
                   <textarea 
                     value={formData.remarks || ''}
-                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                    placeholder="특이사항 입력"
-                    rows={3}
+                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })} placeholder={pt('t004')} rows={3}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
                 </div>
@@ -299,25 +285,21 @@ export default function UserManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    disabled={isMutating}
+                    onClick={() => setIsModalOpen(false)} disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
                   >
-                    {t('common.cancel')}
-                  </button>
+                    {t('common.cancel')}</button>
                   <button 
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                   >
-                    {isMutating ? '저장 중...' : t('common.save')}
-                  </button>
+                    {isMutating ? '저장 중...' : t('common.save')}</button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
@@ -337,8 +319,7 @@ function DraggableModal({ title, children, onClose, icon }: { title: string; chi
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div 
-        onPointerDown={(e) => dragControls.start(e)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(e) => dragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}

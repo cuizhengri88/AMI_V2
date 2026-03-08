@@ -16,6 +16,7 @@ import {
   Scissors,
 } from 'lucide-react';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type CodeGroup = {
   id: string;
@@ -56,6 +57,7 @@ const SALON_CATEGORY_CODES: Array<{ code: string; name: string; order: number }>
 ];
 
 export default function CommonCodePage() {
+  const pt = usePageText('system_common_code');
   const [codeGroups, setCodeGroups] = useState<CodeGroup[]>([]);
   const [codes, setCodes] = useState<CodeDetail[]>([]);
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -107,14 +109,14 @@ export default function CommonCodePage() {
         setSelectedGroup(groups[0].id);
       }
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '공통코드 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t024'));
     } finally {
       setIsLoading(false);
     }
   };
 
   const setupSalonDefaultCodes = async () => {
-    if (!window.confirm('미용실 기본 카테고리(커트/파마/염색)를 생성 또는 업데이트하시겠습니까?')) return;
+    if (!window.confirm(pt('t008'))) return;
 
     try {
       setIsMutating(true);
@@ -142,9 +144,9 @@ export default function CommonCodePage() {
 
       await loadCommonCodeData();
       setSelectedGroup(SALON_CATEGORY_GROUP_ID);
-      alert('미용실 기본 카테고리 코드가 반영되었습니다.');
+      alert(pt('t007'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '미용실 기본 카테고리 생성에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t025'));
     } finally {
       setIsMutating(false);
     }
@@ -159,7 +161,7 @@ export default function CommonCodePage() {
     e.preventDefault();
     if (!currentGroup) return;
     if (!currentGroup.id.trim() || !currentGroup.name.trim()) {
-      alert('그룹 ID와 그룹명은 필수입니다.');
+      alert(pt('t002'));
       return;
     }
 
@@ -179,14 +181,14 @@ export default function CommonCodePage() {
       setIsGroupModalOpen(false);
       alert(result.message);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '그룹 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t026'));
     } finally {
       setIsMutating(false);
     }
   };
 
   const deleteGroup = async (groupId: string) => {
-    if (!window.confirm('선택한 그룹과 포함된 상세코드를 모두 삭제하시겠습니까?')) return;
+    if (!window.confirm(pt('t016'))) return;
     try {
       setIsMutating(true);
       const result = await invokeDbCommand<{ success: boolean; message: string }>('delete_common_code_group', {
@@ -195,7 +197,7 @@ export default function CommonCodePage() {
       await loadCommonCodeData();
       alert(result.message);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '그룹 삭제에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t027'));
     } finally {
       setIsMutating(false);
     }
@@ -205,11 +207,11 @@ export default function CommonCodePage() {
     e.preventDefault();
     if (!currentCode) return;
     if (!selectedGroup) {
-      alert('먼저 그룹을 선택해주세요.');
+      alert(pt('t005'));
       return;
     }
     if (!currentCode.code.trim() || !currentCode.name.trim()) {
-      alert('상세코드와 상세코드명은 필수입니다.');
+      alert(pt('t015'));
       return;
     }
 
@@ -228,14 +230,14 @@ export default function CommonCodePage() {
       setIsCodeModalOpen(false);
       alert(result.message);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '상세코드 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t028'));
     } finally {
       setIsMutating(false);
     }
   };
 
   const deleteCode = async (codeId: string) => {
-    if (!window.confirm('선택한 상세코드를 삭제하시겠습니까?')) return;
+    if (!window.confirm(pt('t017'))) return;
     try {
       setIsMutating(true);
       const result = await invokeDbCommand<{ success: boolean; message: string }>('delete_common_code_detail', {
@@ -245,7 +247,7 @@ export default function CommonCodePage() {
       await loadCommonCodeData();
       alert(result.message);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '상세코드 삭제에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t029'));
     } finally {
       setIsMutating(false);
     }
@@ -257,8 +259,8 @@ export default function CommonCodePage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">공통 코드 관리</h1>
-          <p className="text-slate-500 mt-1">시스템에서 공통으로 사용하는 그룹코드/상세코드를 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t030')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t018')}</p>
         </div>
 
         <div className="flex gap-2">
@@ -268,7 +270,7 @@ export default function CommonCodePage() {
             className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-slate-800/10 disabled:opacity-60"
           >
             <Scissors size={18} />
-            미용실 기본 코드 생성
+            {pt('t031')}
           </button>
           <button
             disabled={isMutating}
@@ -280,7 +282,7 @@ export default function CommonCodePage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
           >
             <Plus size={18} />
-            코드 그룹 추가
+            {pt('t032')}
           </button>
         </div>
       </div>
@@ -291,7 +293,7 @@ export default function CommonCodePage() {
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <Database size={16} className="text-primary" />
-                코드 그룹
+                {pt('t033')}
               </h3>
               <button
                 onClick={loadCommonCodeData}
@@ -299,12 +301,12 @@ export default function CommonCodePage() {
                 disabled={isLoading || isMutating}
               >
                 {isLoading ? <Loader2 size={12} className="animate-spin" /> : null}
-                {isLoading ? '불러오는 중...' : '새로고침'}
+                {isLoading ? pt('t034') : pt('t035')}
               </button>
             </div>
             <div className="p-2 max-h-[600px] overflow-y-auto">
               {codeGroups.length === 0 ? (
-                <div className="text-sm text-slate-400 px-3 py-6 text-center">등록된 그룹이 없습니다.</div>
+                <div className="text-sm text-slate-400 px-3 py-6 text-center">{pt('t004')}</div>
               ) : (
                 codeGroups.map((group) => (
                   <div
@@ -355,8 +357,7 @@ export default function CommonCodePage() {
                     </div>
                   </div>
                 ))
-              )}
-            </div>
+              )}</div>
           </div>
         </div>
 
@@ -366,9 +367,9 @@ export default function CommonCodePage() {
               <div className="flex items-center gap-3">
                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                   <Tag size={16} className="text-primary" />
-                  상세 코드 목록
+                  {pt('t036')}
                 </h3>
-                <span className="text-xs text-slate-400 font-medium">| {selectedGroup || '선택 없음'}</span>
+                <span className="text-xs text-slate-400 font-medium">| {selectedGroup || pt('t037')}</span>
               </div>
               <button
                 disabled={!selectedGroup || isMutating}
@@ -380,18 +381,18 @@ export default function CommonCodePage() {
                 className="bg-white border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-slate-50 shadow-sm disabled:opacity-50"
               >
                 <Plus size={14} />
-                코드 추가
+                {pt('t038')}
               </button>
             </div>
 
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">코드</th>
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">코드명</th>
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">정렬</th>
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">사용여부</th>
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t021')}</th>
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t022')}</th>
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t019')}</th>
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011')}</th>
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t039')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -409,7 +410,7 @@ export default function CommonCodePage() {
                               : 'bg-slate-100 text-slate-500'
                           }`}
                         >
-                          {code.useYn === 'Y' ? '사용' : '미사용'}
+                          {code.useYn === 'Y' ? pt('t040') : pt('t041')}
                         </span>
                       </td>
                       <td className="py-3 px-6 text-center">
@@ -430,8 +431,7 @@ export default function CommonCodePage() {
                             <Edit2 size={14} />
                           </button>
                           <button
-                            onClick={() => deleteCode(code.code)}
-                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            onClick={() => deleteCode(code.code)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -442,11 +442,10 @@ export default function CommonCodePage() {
                 ) : (
                   <tr>
                     <td colSpan={5} className="py-12 text-center text-slate-400 text-sm">
-                      등록된 상세코드가 없습니다.
+                      {pt('t042')}
                     </td>
                   </tr>
-                )}
-              </tbody>
+                )}</tbody>
             </table>
           </div>
         </div>
@@ -456,14 +455,13 @@ export default function CommonCodePage() {
         {isGroupModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={modalMode === 'create' ? '코드 그룹 추가' : '코드 그룹 수정'}
-              onClose={() => setIsGroupModalOpen(false)}
-              icon={<Database size={20} className="text-primary" />}
+              title={modalMode === 'create' ? pt('t032') : pt('t043')}
+              onClose={() => setIsGroupModalOpen(false)} icon={<Database size={20} className="text-primary" />}
             >
               <form onSubmit={handleGroupSubmit} className="p-6 space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    <Hash size={12} /> 그룹 ID
+                    <Hash size={12} /> {pt('t044')}
                   </label>
                   <input
                     type="text"
@@ -484,7 +482,7 @@ export default function CommonCodePage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    <TypeIcon size={12} /> 그룹명
+                    <TypeIcon size={12} /> {pt('t045')}
                   </label>
                   <input
                     type="text"
@@ -497,12 +495,11 @@ export default function CommonCodePage() {
                       }))
                     }
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                    placeholder="그룹명을 입력하세요"
-                  />
+                    placeholder={pt('t003')} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    <AlignLeft size={12} /> 설명
+                    <AlignLeft size={12} /> {pt('t046')}
                   </label>
                   <textarea
                     value={currentGroup?.desc || ''}
@@ -513,11 +510,10 @@ export default function CommonCodePage() {
                       }))
                     }
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none min-h-[80px]"
-                    placeholder="그룹 설명을 입력하세요"
-                  />
+                    placeholder={pt('t001')} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">표시 순서</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t023')}</label>
                   <input
                     type="number"
                     value={currentGroup?.displayOrder || 1}
@@ -533,37 +529,34 @@ export default function CommonCodePage() {
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsGroupModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsGroupModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {pt('t047')}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    {modalMode === 'create' ? '생성' : '수정'}
+                    {modalMode === 'create' ? pt('t048') : pt('t049')}
                   </button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
 
       <AnimatePresence>
         {isCodeModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={modalMode === 'create' ? '상세 코드 추가' : '상세 코드 수정'}
-              onClose={() => setIsCodeModalOpen(false)}
-              icon={<Tag size={20} className="text-primary" />}
+              title={modalMode === 'create' ? pt('t050') : pt('t051')}
+              onClose={() => setIsCodeModalOpen(false)} icon={<Tag size={20} className="text-primary" />}
             >
               <form onSubmit={handleCodeSubmit} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상세코드</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t012')}</label>
                     <input
                       type="text"
                       required
@@ -582,7 +575,7 @@ export default function CommonCodePage() {
                     />
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">상세코드명</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t013')}</label>
                     <input
                       type="text"
                       required
@@ -594,11 +587,10 @@ export default function CommonCodePage() {
                         }))
                       }
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder="상세코드명을 입력하세요"
-                    />
+                      placeholder={pt('t014')} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">정렬 순서</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t020')}</label>
                     <input
                       type="number"
                       required
@@ -613,7 +605,7 @@ export default function CommonCodePage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">사용 여부</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
                     <select
                       value={currentCode?.useYn || 'Y'}
                       onChange={(e) =>
@@ -624,32 +616,30 @@ export default function CommonCodePage() {
                       }
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      <option value="Y">사용 (Y)</option>
-                      <option value="N">미사용 (N)</option>
+                      <option value="Y">{pt('t009')}</option>
+                      <option value="N">{pt('t006')}</option>
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsCodeModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsCodeModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    취소
+                    {pt('t047')}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    {modalMode === 'create' ? '생성' : '수정'}
+                    {modalMode === 'create' ? pt('t048') : pt('t049')}
                   </button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
@@ -679,8 +669,7 @@ function DraggableModal({
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div
-        onPointerDown={(e) => dragControls.start(e)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(e) => dragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}

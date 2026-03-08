@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type Coupon = {
   serviceId: number;
@@ -145,8 +146,7 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
       className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative"
     >
       <div
-        onPointerDown={(event) => dragControls.start(event)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(event) => dragControls.start(event)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}
@@ -165,6 +165,7 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
 }
 
 export default function SalesEntryPage() {
+  const pt = usePageText('user_management_sales_entry');
   // [상태] 기준 데이터(회원/직원/시술/결제수단/정산) 조회 결과
   const [members, setMembers] = useState<Member[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
@@ -596,7 +597,7 @@ export default function SalesEntryPage() {
     }
 
     if (validProcedureIds.length === 0) {
-      alert('선택한 예약의 시술 항목이 현재 시술 목록에 없어 자동 반영되지 않았습니다.');
+      alert(pt('t014'));
     }
   };
 
@@ -655,16 +656,16 @@ export default function SalesEntryPage() {
   // [동작] 정산 저장(작업중/결제완료)
   const handleSaveSettlement = async (status: 'PROCESSING' | 'COMPLETED') => {
     if (!selectedManagerId) {
-      alert('담당 디자이너를 선택해주세요.');
+      alert(pt('t010'));
       return;
     }
     if (selectedProcs.length === 0) {
-      alert('시술 항목을 선택해주세요.');
+      alert(pt('t021'));
       return;
     }
 
     if (status === 'COMPLETED' && remainingAmount < 0) {
-      alert('결제 금액이 총액을 초과했습니다. 금액을 확인해주세요.');
+      alert(pt('t002'));
       return;
     }
 
@@ -681,18 +682,18 @@ export default function SalesEntryPage() {
 
     const managerId = Number(selectedManagerId);
     if (!Number.isFinite(managerId) || managerId <= 0) {
-      alert('담당 디자이너 값이 올바르지 않습니다.');
+      alert(pt('t009'));
       return;
     }
 
     const serviceIds = selectedProcs.filter((value) => Number.isFinite(value) && value > 0);
     if (serviceIds.length === 0) {
-      alert('시술 항목을 선택해주세요.');
+      alert(pt('t021'));
       return;
     }
 
     if (couponAppliedServiceIds.length > 0 && !selectedMember) {
-      alert('쿠폰 사용은 회원 선택이 필요합니다.');
+      alert(pt('t031'));
       return;
     }
 
@@ -747,7 +748,7 @@ export default function SalesEntryPage() {
 
   const handleOpenCancelModal = (settlement: Settlement) => {
     if (settlement.status === 'CANCELLED') {
-      alert('이미 취소된 매출입니다.');
+      alert(pt('t024'));
       return;
     }
     setCancelTarget(settlement);
@@ -759,7 +760,7 @@ export default function SalesEntryPage() {
     if (!cancelTarget) return;
     const reason = cancelReason.trim();
     if (!reason) {
-      alert('취소 사유를 입력해주세요.');
+      alert(pt('t029'));
       return;
     }
     const cancelType: SettlementCancelType =
@@ -799,12 +800,11 @@ export default function SalesEntryPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">매출 등록</h1>
-          <p className="text-slate-500 mt-1">시술 내역 조회 및 결제 정산을 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t013')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t016')}</p>
         </div>
         <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+          onClick={() => handleOpenModal()} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
         >
           <Plus size={20} />
           신규 시술 등록
@@ -816,10 +816,8 @@ export default function SalesEntryPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="고객명, 전화번호, 담당자 검색..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+            placeholder={pt('t006')} value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
@@ -827,8 +825,7 @@ export default function SalesEntryPage() {
           <input
             type="date"
             value={filterDate}
-            onChange={(event) => setFilterDate(event.target.value)}
-            className="bg-transparent text-sm font-bold outline-none"
+            onChange={(event) => setFilterDate(event.target.value)} className="bg-transparent text-sm font-bold outline-none"
           />
         </div>
       </div>
@@ -838,12 +835,12 @@ export default function SalesEntryPage() {
           <table className="w-full text-left border-collapse min-w-[980px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
-                <th className="py-4 px-6">일시</th>
+                <th className="py-4 px-6">{pt('t026')}</th>
                 <th className="py-4 px-6">고객명</th>
-                <th className="py-4 px-6">담당자</th>
-                <th className="py-4 px-6">시술 항목</th>
-                <th className="py-4 px-6">금액</th>
-                <th className="py-4 px-6">할인</th>
+                <th className="py-4 px-6">{pt('t011')}</th>
+                <th className="py-4 px-6">{pt('t019')}</th>
+                <th className="py-4 px-6">{pt('t007')}</th>
+                <th className="py-4 px-6">{pt('t034')}</th>
                 <th className="py-4 px-6">상태</th>
                 <th className="py-4 px-6 text-center">작업</th>
               </tr>
@@ -901,8 +898,7 @@ export default function SalesEntryPage() {
                             <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
                               <Calendar size={8} /> 예약건
                             </span>
-                          )}
-                        </div>
+                          )}</div>
                       </div>
                     </td>
                     <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
@@ -918,8 +914,7 @@ export default function SalesEntryPage() {
                         </span>
                       ) : (
                         <span className="text-slate-300 text-[10px]">-</span>
-                      )}
-                    </td>
+                      )}</td>
                     <td className="py-4 px-6">
                       <span
                         className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}
@@ -933,8 +928,7 @@ export default function SalesEntryPage() {
                         >
                           사유: {settlement.cancelReason}
                         </p>
-                      )}
-                    </td>
+                      )}</td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
@@ -951,15 +945,13 @@ export default function SalesEntryPage() {
                     </td>
                   </tr>
                 );
-              })}
-              {filteredSettlements.length === 0 && (
+              })} {filteredSettlements.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-20 text-center text-slate-400 font-bold">
                     조회된 내역이 없습니다.
                   </td>
                 </tr>
-              )}
-            </tbody>
+              )}</tbody>
           </table>
         </div>
       </div>
@@ -969,8 +961,7 @@ export default function SalesEntryPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
               title={editingSettlement ? '시술 정보 수정' : '신규 시술 등록'}
-              onClose={() => setIsModalOpen(false)}
-              icon={<Scissors size={20} className="text-primary" />}
+              onClose={() => setIsModalOpen(false)} icon={<Scissors size={20} className="text-primary" />}
             >
               <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
                 {!editingSettlement && (
@@ -991,14 +982,12 @@ export default function SalesEntryPage() {
                         >
                           초기화
                         </button>
-                      )}
-                    </div>
+                      )}</div>
                     <div className="flex items-center justify-between gap-2">
                       <input
                         type="date"
                         value={reservationImportDate}
-                        onChange={(event) => setReservationImportDate(event.target.value)}
-                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                        onChange={(event) => setReservationImportDate(event.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
                       />
                       <span className="text-[10px] font-bold text-slate-500">
                         예약 {importableReservations.length}건
@@ -1006,10 +995,9 @@ export default function SalesEntryPage() {
                     </div>
                     <select
                       value={selectedReservationId}
-                      onChange={(event) => handleImportReservation(event.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                      onChange={(event) => handleImportReservation(event.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
                     >
-                      <option value="">예약 건을 선택하세요 (선택 시 자동 입력)</option>
+                      <option value="">{pt('t023')}</option>
                       {importableReservations.map((reservation) => {
                         const member = reservation.memberId
                           ? members.find((entry) => entry.id === reservation.memberId)
@@ -1025,59 +1013,50 @@ export default function SalesEntryPage() {
                             [{reservation.time}] {customerLabel} - {procLabel || '시술 미매핑'}
                           </option>
                         );
-                      })}
-                    </select>
-                    {selectedReservationId && <p className="text-[10px] text-primary font-medium">* 예약 정보가 자동으로 입력되었습니다.</p>}
+                      })}</select>
+                    {selectedReservationId && <p className="text-[10px] text-primary font-medium">{pt('t001')}</p>}
                   </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
+                )}<div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">고객 선택</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t005')}</label>
                     <select
                       value={selectedMemberId}
-                      onChange={(event) => setSelectedMemberId(event.target.value as string | 'GUEST')}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                      onChange={(event) => setSelectedMemberId(event.target.value as string | 'GUEST')} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                     >
-                      <option value="GUEST">일반 방문객</option>
+                      <option value="GUEST">{pt('t025')}</option>
                       {members.map((member) => (
                         <option key={member.id} value={member.id}>
                           {member.name} ({member.phone})
                         </option>
-                      ))}
-                    </select>
+                      ))}</select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">담당 디자이너</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t008')}</label>
                     <select
                       value={selectedManagerId}
-                      onChange={(event) => setSelectedManagerId(event.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                      onChange={(event) => setSelectedManagerId(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                     >
-                      <option value="">디자이너 선택</option>
+                      <option value="">{pt('t012')}</option>
                       {managers.map((manager) => (
                         <option key={manager.id} value={manager.id}>
                           {manager.name} ({manager.role})
                         </option>
-                      ))}
-                    </select>
+                      ))}</select>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">시술 항목 추가</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t020')}</label>
                   <div className="flex gap-2">
                     <select
                       value={selectedCategory}
-                      onChange={(event) => setSelectedCategory(event.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
+                      onChange={(event) => setSelectedCategory(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
                     >
                       {categories.map((category) => (
                         <option key={category} value={category}>
                           {category}
                         </option>
-                      ))}
-                    </select>
+                      ))}</select>
                     <select
                       onChange={(event) => {
                         if (!event.target.value) return;
@@ -1090,15 +1069,14 @@ export default function SalesEntryPage() {
                       }}
                       className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
                     >
-                      <option value="">시술 선택</option>
+                      <option value="">{pt('t018')}</option>
                       {procedures
                         .filter((procedure) => procedure.categoryName === selectedCategory)
                         .map((procedure) => (
                           <option key={procedure.id} value={procedure.id}>
                             {procedure.name} (₩{procedure.price.toLocaleString()})
                           </option>
-                        ))}
-                    </select>
+                        ))}</select>
                   </div>
 
                   <div className="space-y-2">
@@ -1106,8 +1084,7 @@ export default function SalesEntryPage() {
                       <div className="text-[10px] text-slate-400 px-2 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
                         선택된 시술이 없습니다.
                       </div>
-                    )}
-                    {selectedProcs.map((id) => {
+                    )} {selectedProcs.map((id) => {
                       const procedure = procedures.find((entry) => entry.id === id);
                       if (!procedure) return null;
 
@@ -1147,24 +1124,20 @@ export default function SalesEntryPage() {
                                   {isCouponApplied ? '쿠폰적용 취소' : '쿠폰사용'} (잔여 {visibleCouponRemaining}회)
                                 </button>
                               ) : (
-                                <span className="text-[10px] font-bold text-slate-400">쿠폰 없음</span>
+                                <span className="text-[10px] font-bold text-slate-400">{pt('t032')}</span>
                               )
                             ) : (
-                              <span className="text-[10px] font-bold text-slate-400">회원 선택 시 쿠폰 사용 가능</span>
-                            )}
-                            <button
+                              <span className="text-[10px] font-bold text-slate-400">{pt('t035')}</span>
+                            )}<button
                               type="button"
-                              onClick={() => setSelectedProcs((prev) => prev.filter((entry) => entry !== id))}
-                              className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"
-                              aria-label="시술 삭제"
-                            >
+                              onClick={() => setSelectedProcs((prev) => prev.filter((entry) => entry !== id))} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"
+                              aria-label={pt('t017')} >
                               <X size={12} />
                             </button>
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                    })}</div>
                 </div>
 
                 <div className="p-4 bg-slate-900 rounded-2xl text-white space-y-2">
@@ -1176,32 +1149,29 @@ export default function SalesEntryPage() {
                       </div>
                       <div className="text-lg font-black">₩{totals.price.toLocaleString()}</div>
                     </div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 시술 합계</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</div>
                   </div>
 
                   {couponDiscountAmount > 0 && (
                     <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                      <div className="text-[10px] font-black text-emerald-300 uppercase tracking-widest">쿠폰 차감</div>
+                      <div className="text-[10px] font-black text-emerald-300 uppercase tracking-widest">{pt('t033')}</div>
                       <div className="text-sm font-black text-emerald-300">- ₩{couponDiscountAmount.toLocaleString()}</div>
                     </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">실결제 대상</div>
+                  )}<div className="flex justify-between items-center pt-2 border-t border-white/10">
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{pt('t022')}</div>
                     <div className="text-sm font-black text-white">₩{payableAmount.toLocaleString()}</div>
                   </div>
 
                   {paidTotal > 0 && (
                     <div className="flex justify-between items-center pt-1">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">수납 합계</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t015')}</div>
                       <div className="text-xs font-bold text-slate-200">₩{paidTotal.toLocaleString()}</div>
                     </div>
-                  )}
-                </div>
+                  )}</div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">결제 수단 등록</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t004')}</label>
                     <button
                       onClick={handleAddPayment}
                       disabled={remainingAmount <= 0}
@@ -1218,8 +1188,7 @@ export default function SalesEntryPage() {
                           <div className="flex gap-2">
                             <select
                               value={payment.method}
-                              onChange={(event) => updatePayment(index, 'method', event.target.value as PaymentMethodCode)}
-                              className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold outline-none"
+                              onChange={(event) => updatePayment(index, 'method', event.target.value as PaymentMethodCode)} className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold outline-none"
                             >
                               {manualPaymentMethods.map((method) => {
                                 const isDisabled = method.code === 'PREPAID' && selectedMemberId === 'GUEST';
@@ -1228,13 +1197,11 @@ export default function SalesEntryPage() {
                                     {method.name}
                                   </option>
                                 );
-                              })}
-                            </select>
+                              })}</select>
                             <input
                               type="number"
                               value={payment.amount}
-                              onChange={(event) => updatePayment(index, 'amount', parseInt(event.target.value, 10) || 0)}
-                              className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-black outline-none"
+                              onChange={(event) => updatePayment(index, 'amount', parseInt(event.target.value, 10) || 0)} className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-black outline-none"
                             />
                             <button onClick={() => removePayment(index)} className="p-1.5 text-slate-300 hover:text-red-500">
                               <Trash2 size={14} />
@@ -1248,16 +1215,13 @@ export default function SalesEntryPage() {
                                 <span className="text-red-500 flex items-center gap-0.5">
                                   <AlertCircle size={10} /> 잔액 부족
                                 </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                              )}</div>
+                          )}</div>
                       </div>
-                    ))}
-                  </div>
+                    ))}</div>
 
                   <div className="flex items-center justify-between p-3 rounded-xl border border-dashed border-slate-200">
-                    <div className="text-[10px] font-bold text-slate-400">결제 상태</div>
+                    <div className="text-[10px] font-bold text-slate-400">{pt('t003')}</div>
                     <div className="flex items-center gap-3">
                       <div className="text-[10px] font-bold text-slate-500">수납: ₩{paidTotal.toLocaleString()}</div>
                       <div
@@ -1277,14 +1241,12 @@ export default function SalesEntryPage() {
 
                 <div className="flex gap-3 pt-4">
                   <button
-                    onClick={() => handleSaveSettlement('PROCESSING')}
-                    className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                    onClick={() => handleSaveSettlement('PROCESSING')} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
                   >
                     작업중 저장
                   </button>
                   <button
-                    onClick={() => handleSaveSettlement('COMPLETED')}
-                    className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    onClick={() => handleSaveSettlement('COMPLETED')} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
                   >
                     결제 완료 처리
                   </button>
@@ -1292,13 +1254,10 @@ export default function SalesEntryPage() {
               </div>
             </DraggableModal>
           </div>
-        )}
-
-        {isCancelModalOpen && cancelTarget && (
+        )} {isCancelModalOpen && cancelTarget && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title="취소 처리"
-              onClose={() => {
+              title={pt('t030')} onClose={() => {
                 if (isMutating) return;
                 setIsCancelModalOpen(false);
                 setCancelTarget(null);
@@ -1319,9 +1278,7 @@ export default function SalesEntryPage() {
                   </label>
                   <textarea
                     value={cancelReason}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                    placeholder="취소 사유를 입력하세요."
-                    rows={4}
+                    onChange={(event) => setCancelReason(event.target.value)} placeholder={pt('t028')} rows={4}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-rose-200 resize-none"
                   />
                 </div>
@@ -1350,8 +1307,7 @@ export default function SalesEntryPage() {
               </div>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }

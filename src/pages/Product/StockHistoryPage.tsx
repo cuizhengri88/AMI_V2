@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { usePageText } from '../../i18n/usePageText';
 import { 
   History as HistoryIcon, 
   Search, 
@@ -19,6 +20,7 @@ const initialHistory = [
 ];
 
 export default function StockHistoryPage() {
+  const pt = usePageText('product_stock_history');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
 
@@ -36,8 +38,8 @@ export default function StockHistoryPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">재고 기록</h1>
-          <p className="text-slate-500 mt-1">입고 및 출고 처리된 모든 내역을 시간순으로 확인합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t006')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t005')}</p>
         </div>
         
         <div className="flex gap-2">
@@ -55,29 +57,24 @@ export default function StockHistoryPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="text" 
-                placeholder="상품명 또는 코드 검색..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                placeholder={pt('t003')} value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
             
             <div className="flex bg-white border border-slate-200 rounded-lg p-1 w-full md:w-auto">
               <button 
-                onClick={() => setFilterType('ALL')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                onClick={() => setFilterType('ALL')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 전체
               </button>
               <button 
-                onClick={() => setFilterType('IN')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'IN' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                onClick={() => setFilterType('IN')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'IN' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 입고
               </button>
               <button 
-                onClick={() => setFilterType('OUT')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'OUT' ? 'bg-rose-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                onClick={() => setFilterType('OUT')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterType === 'OUT' ? 'bg-rose-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 출고
               </button>
@@ -95,11 +92,11 @@ export default function StockHistoryPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">일시</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">구분</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상품 정보</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t002')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">수량</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">처리자</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t007')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">비고</th>
             </tr>
           </thead>
@@ -127,8 +124,7 @@ export default function StockHistoryPage() {
                 </td>
                 <td className="py-4 px-6 text-right">
                   <span className={`text-sm font-black ${item.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {item.type === 'IN' ? '+' : '-'}{item.quantity.toLocaleString()}
-                  </span>
+                    {item.type === 'IN' ? '+' : '-'}{item.quantity.toLocaleString()}</span>
                 </td>
                 <td className="py-4 px-6 text-center text-sm text-slate-600 font-medium">
                   {item.user}
@@ -137,15 +133,13 @@ export default function StockHistoryPage() {
                   {item.note}
                 </td>
               </tr>
-            ))}
-            {filteredHistory.length === 0 && (
+            ))} {filteredHistory.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
                   조회된 기록이 없습니다.
                 </td>
               </tr>
-            )}
-          </tbody>
+            )}</tbody>
         </table>
       </div>
     </motion.div>

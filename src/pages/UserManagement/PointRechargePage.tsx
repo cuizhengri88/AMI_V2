@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type Coupon = {
   serviceId: number;
@@ -46,6 +47,7 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
 ];
 
 export default function MemberRechargePage() {
+  const pt = usePageText('user_management_point_recharge');
   const [members, setMembers] = useState<Member[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodOption[]>(
@@ -195,15 +197,15 @@ export default function MemberRechargePage() {
     const parsedCouponCount = parseInt(couponCount, 10) || 0;
 
     if (selectedServiceId <= 0) {
-      alert('시술을 선택해주세요.');
+      alert(pt('t009'));
       return;
     }
     if (parsedCouponCount <= 0) {
-      alert('충전 횟수를 1회 이상 입력해주세요.');
+      alert(pt('t012'));
       return;
     }
     if (parsedAmount <= 0) {
-      alert('받은 금액을 1원 이상 입력해주세요.');
+      alert(pt('t003'));
       return;
     }
 
@@ -222,7 +224,7 @@ export default function MemberRechargePage() {
       });
 
       await loadPointData();
-      alert('충전이 완료되었습니다.');
+      alert(pt('t013'));
       closeRechargeModal();
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || '충전에 실패했습니다.');
@@ -255,8 +257,8 @@ export default function MemberRechargePage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원 포인트 관리</h1>
-          <p className="text-slate-500 mt-1">회원이 보유한 시술 쿠폰과 총 횟수를 확인하고 충전합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t014')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t016')}</p>
         </div>
       </div>
 
@@ -266,7 +268,7 @@ export default function MemberRechargePage() {
             <User size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">전체 회원</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t010')}</p>
             <p className="text-2xl font-black text-slate-900">{members.length}명</p>
           </div>
         </div>
@@ -275,7 +277,7 @@ export default function MemberRechargePage() {
             <Ticket size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">보유 쿠폰 총합</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t005')}</p>
             <p className="text-2xl font-black text-slate-900">{totalCoupons}회</p>
           </div>
         </div>
@@ -287,10 +289,8 @@ export default function MemberRechargePage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="회원명 또는 연락처 검색..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={pt('t015')} value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
 
@@ -306,9 +306,9 @@ export default function MemberRechargePage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">회원정보</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t017')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">연락처</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">보유 쿠폰(횟수권)</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
             </tr>
           </thead>
@@ -346,16 +346,14 @@ export default function MemberRechargePage() {
                           </span>
                         ))
                       ) : (
-                        <span className="text-xs text-slate-300 italic">보유 쿠폰 없음</span>
-                      )}
-                    </div>
+                        <span className="text-xs text-slate-300 italic">{pt('t004')}</span>
+                      )}</div>
                   </td>
                   <td className="py-4 px-6 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => openRechargeModal(member)}
-                        className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
+                        onClick={() => openRechargeModal(member)} className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
                       >
                         <Plus size={14} />
                         횟수권 충전
@@ -364,8 +362,7 @@ export default function MemberRechargePage() {
                   </td>
                 </tr>
               ))
-            )}
-          </tbody>
+            )}</tbody>
         </table>
       </div>
 
@@ -381,49 +378,45 @@ export default function MemberRechargePage() {
                 <form onSubmit={handleRecharge} className="space-y-4">
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">시술 선택</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
                       <select
                         value={selectedServiceId}
-                        onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                        onChange={(e) => setSelectedServiceId(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       >
                         {serviceOptions.length === 0 ? (
-                          <option value={0}>시술 항목 없음</option>
+                          <option value={0}>{pt('t008')}</option>
                         ) : (
                           serviceOptions.map((service) => (
                             <option key={service.id} value={service.id}>
                               {service.name}
                             </option>
                           ))
-                        )}
-                      </select>
+                        )}</select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">충전 횟수</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t011')}</label>
                       <div className="relative">
                         <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           type="number"
                           required
                           value={couponCount}
-                          onChange={(e) => setCouponCount(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          onChange={(e) => setCouponCount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                           placeholder="0"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">받은 금액 (₩)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t002')}</label>
                       <div className="relative">
                         <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           type="number"
                           required
                           value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                           placeholder="0"
                         />
                       </div>
@@ -433,24 +426,20 @@ export default function MemberRechargePage() {
                         <button
                           key={value}
                           type="button"
-                          onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))}
-                          className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                          onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))} className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
                         >
-                          +{value.toLocaleString()}
-                        </button>
-                      ))}
-                    </div>
+                          +{value.toLocaleString()}</button>
+                      ))}</div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">결제 수단</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {paymentMethodOptions.map((method) => (
                         <button
                           key={method.code}
                           type="button"
-                          onClick={() => setPaymentMethodCode(method.code)}
-                          className={`py-2 border rounded-lg text-[10px] font-bold transition-all ${
+                          onClick={() => setPaymentMethodCode(method.code)} className={`py-2 border rounded-lg text-[10px] font-bold transition-all ${
                             paymentMethodCode === method.code
                               ? 'border-primary text-primary bg-primary/5'
                               : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
@@ -458,8 +447,7 @@ export default function MemberRechargePage() {
                         >
                           {method.label}
                         </button>
-                      ))}
-                    </div>
+                      ))}</div>
                   </div>
 
                   <div className="flex gap-3 pt-4">
@@ -482,8 +470,7 @@ export default function MemberRechargePage() {
               </div>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
@@ -513,8 +500,7 @@ function DraggableModal({
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div
-        onPointerDown={(e) => dragControls.start(e)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(e) => dragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}

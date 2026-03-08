@@ -145,19 +145,15 @@ export default function PurchaseManagementPage() {
         
         <div className="flex gap-2">
           <button 
-            onClick={() => setIsNewModalOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20"
+            onClick={() => setIsNewModalOpen(true)} className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20"
           >
             <Plus size={18} />
-            {t('purchase.add_button')}
-          </button>
+            {t('purchase.add_button')}</button>
           <button 
-            onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`bg-white border text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 ${showDatePicker ? 'border-primary text-primary ring-2 ring-primary/10' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            onClick={() => setShowDatePicker(!showDatePicker)} className={`bg-white border text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 ${showDatePicker ? 'border-primary text-primary ring-2 ring-primary/10' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
           >
             <Calendar size={18} />
-            {t('purchase.set_period')}
-          </button>
+            {t('purchase.set_period')}</button>
         </div>
       </div>
 
@@ -176,8 +172,7 @@ export default function PurchaseManagementPage() {
                 <input 
                   type="date" 
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  onChange={(e) => setStartDate(e.target.value)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <div className="text-slate-300">~</div>
@@ -186,8 +181,7 @@ export default function PurchaseManagementPage() {
                 <input 
                   type="date" 
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  onChange={(e) => setEndDate(e.target.value)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <button 
@@ -195,12 +189,10 @@ export default function PurchaseManagementPage() {
                 className="ml-auto text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1"
               >
                 <RotateCcw size={12} />
-                {t('purchase.reset')}
-              </button>
+                {t('purchase.reset')}</button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
 
       {/* Sales Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -242,10 +234,8 @@ export default function PurchaseManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder={t('purchase.search_placeholder')} 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={t('purchase.search_placeholder')} value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           
@@ -258,8 +248,7 @@ export default function PurchaseManagementPage() {
             </select>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50">
               <Filter size={16} />
-              {t('purchase.filter_detail')}
-            </button>
+              {t('purchase.filter_detail')}</button>
           </div>
         </div>
 
@@ -293,8 +282,7 @@ export default function PurchaseManagementPage() {
                   {order.quantity}
                 </td>
                 <td className="py-4 px-6 text-sm text-right font-bold text-slate-900">
-                  ₩{order.total.toLocaleString()}
-                </td>
+                  ₩{order.total.toLocaleString()}</td>
                 <td className="py-4 px-6 text-center text-xs text-slate-400">
                   {order.date}
                 </td>
@@ -305,37 +293,30 @@ export default function PurchaseManagementPage() {
                     'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
                     {order.status === '결제완료' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                    {getStatusLabel(order.status)}
-                  </span>
+                    {getStatusLabel(order.status)}</span>
                 </td>
                 <td className="py-4 px-6 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <button 
-                      onClick={() => handleEditClick(order)}
-                      className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                      onClick={() => handleEditClick(order)} className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
                     >
                       <Edit2 size={14} />
                     </button>
                     {order.status === '결제완료' && (
                       <button 
-                        onClick={() => handleRefund(order.id)}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 border border-rose-100 rounded transition-colors"
+                        onClick={() => handleRefund(order.id)} className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 border border-rose-100 rounded transition-colors"
                       >
                         <RotateCcw size={10} />
-                        {t('purchase.action_refund')}
-                      </button>
-                    )}
-                  </div>
+                        {t('purchase.action_refund')}</button>
+                    )}</div>
                 </td>
               </tr>
-            ))}
-          </tbody>
+            ))}</tbody>
         </table>
         
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="text-xs text-slate-400 font-medium">
-            {t('purchase.recent_orders_info', { count: 12 })}
-          </div>
+            {t('purchase.recent_orders_info', { count: 12 })}</div>
           <div className="flex items-center gap-2">
             <button className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-slate-800">{t('purchase.view_more')}</button>
           </div>
@@ -347,16 +328,13 @@ export default function PurchaseManagementPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('purchase.modal_add_title')} 
-              onClose={() => setIsNewModalOpen(false)}
-              icon={<Plus size={20} className="text-primary" />}
+              title={t('purchase.modal_add_title')} onClose={() => setIsNewModalOpen(false)} icon={<Plus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Hash size={12} /> {t('purchase.form_order_id_auto')}
-                    </label>
+                      <Hash size={12} /> {t('purchase.form_order_id_auto')}</label>
                     <input 
                       type="text" 
                       value={orderId}
@@ -370,27 +348,21 @@ export default function PurchaseManagementPage() {
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg mb-2">
                       <button 
                         type="button"
-                        onClick={() => setCustomerType('member')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'member' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setCustomerType('member')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'member' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        {t('purchase.form_customer_member')}
-                      </button>
+                        {t('purchase.form_customer_member')}</button>
                       <button 
                         type="button"
-                        onClick={() => setCustomerType('phone')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setCustomerType('phone')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        {t('purchase.form_customer_phone')}
-                      </button>
+                        {t('purchase.form_customer_phone')}</button>
                     </div>
                     {customerType === 'member' ? (
                       <select 
                         value={selectedMember}
-                        onChange={(e) => setSelectedMember(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                        onChange={(e) => setSelectedMember(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       >
-                        {mockMembers.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                        {mockMembers.map(m => <option key={m} value={m}>{m}</option>)}</select>
                     ) : (
                       <div className="relative">
                         <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -398,24 +370,19 @@ export default function PurchaseManagementPage() {
                           type="text" 
                           placeholder="010-0000-0000"
                           value={phoneNumber}
-                          onChange={(e) => setPhoneNumber(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          onChange={(e) => setPhoneNumber(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         />
                       </div>
-                    )}
-                  </div>
+                    )}</div>
 
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Package size={12} /> {t('purchase.form_product_select')}
-                    </label>
+                      <Package size={12} /> {t('purchase.form_product_select')}</label>
                     <select 
                       value={selectedProduct.name}
-                      onChange={(e) => setSelectedProduct(mockProducts.find(p => p.name === e.target.value) || mockProducts[0])}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setSelectedProduct(mockProducts.find(p => p.name === e.target.value) || mockProducts[0])} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}
-                    </select>
+                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}</select>
                   </div>
 
                   <div className="space-y-1">
@@ -424,8 +391,7 @@ export default function PurchaseManagementPage() {
                       type="number" 
                       min="1"
                       value={quantity}
-                      onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
 
@@ -433,8 +399,7 @@ export default function PurchaseManagementPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_status')}</label>
                     <select 
                       value={orderStatus}
-                      onChange={(e) => setOrderStatus(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setOrderStatus(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       <option value="결제완료">{t('purchase.filter_paid')}</option>
                       <option value="결제대기">{t('purchase.filter_payment_pending')}</option>
@@ -454,39 +419,32 @@ export default function PurchaseManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsNewModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsNewModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    {t('common.cancel')}
-                  </button>
+                    {t('common.cancel')}</button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    {t('common.save')}
-                  </button>
+                    {t('common.save')}</button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
 
       {/* Edit Purchase Modal */}
       <AnimatePresence>
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('purchase.modal_edit_title')} 
-              onClose={() => setIsEditModalOpen(false)}
-              icon={<Edit2 size={20} className="text-primary" />}
+              title={t('purchase.modal_edit_title')} onClose={() => setIsEditModalOpen(false)} icon={<Edit2 size={20} className="text-primary" />}
             >
               <form onSubmit={handleUpdate} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Hash size={12} /> {t('purchase.form_order_id')}
-                    </label>
+                      <Hash size={12} /> {t('purchase.form_order_id')}</label>
                     <input 
                       type="text" 
                       value={editOrder?.id}
@@ -507,24 +465,19 @@ export default function PurchaseManagementPage() {
                         }}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${(!editOrder?.customerType || editOrder?.customerType === 'member') ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        {t('purchase.form_customer_member')}
-                      </button>
+                        {t('purchase.form_customer_member')}</button>
                       <button 
                         type="button"
-                        onClick={() => setEditOrder({ ...editOrder, customerType: 'phone' })}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${editOrder?.customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setEditOrder({ ...editOrder, customerType: 'phone' })} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${editOrder?.customerType === 'phone' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        {t('purchase.form_customer_phone')}
-                      </button>
+                        {t('purchase.form_customer_phone')}</button>
                     </div>
                     {(!editOrder?.customerType || editOrder?.customerType === 'member') ? (
                       <select 
                         value={mockMembers.includes(editOrder?.customer) ? editOrder?.customer : mockMembers[0]}
-                        onChange={(e) => setEditOrder({ ...editOrder, customer: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                        onChange={(e) => setEditOrder({ ...editOrder, customer: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       >
-                        {mockMembers.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                        {mockMembers.map(m => <option key={m} value={m}>{m}</option>)}</select>
                     ) : (
                       <div className="relative">
                         <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -532,17 +485,14 @@ export default function PurchaseManagementPage() {
                           type="text" 
                           placeholder="010-0000-0000"
                           value={editOrder?.customer}
-                          onChange={(e) => setEditOrder({ ...editOrder, customer: e.target.value })}
-                          className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          onChange={(e) => setEditOrder({ ...editOrder, customer: e.target.value })} className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         />
                       </div>
-                    )}
-                  </div>
+                    )}</div>
 
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Package size={12} /> {t('purchase.form_product_select')}
-                    </label>
+                      <Package size={12} /> {t('purchase.form_product_select')}</label>
                     <select 
                       value={editOrder?.product}
                       onChange={(e) => {
@@ -551,8 +501,7 @@ export default function PurchaseManagementPage() {
                       }}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}
-                    </select>
+                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}</select>
                   </div>
 
                   <div className="space-y-1">
@@ -561,8 +510,7 @@ export default function PurchaseManagementPage() {
                       type="number" 
                       min="1"
                       value={editOrder?.quantity}
-                      onChange={(e) => setEditOrder({ ...editOrder, quantity: parseInt(e.target.value) || 1 })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditOrder({ ...editOrder, quantity: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
 
@@ -570,8 +518,7 @@ export default function PurchaseManagementPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_status')}</label>
                     <select 
                       value={editOrder?.status}
-                      onChange={(e) => setEditOrder({ ...editOrder, status: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditOrder({ ...editOrder, status: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       <option value="결제완료">{t('purchase.filter_paid')}</option>
                       <option value="결제대기">{t('purchase.filter_payment_pending')}</option>
@@ -585,14 +532,10 @@ export default function PurchaseManagementPage() {
                       <label className="text-xs font-bold text-slate-500 uppercase">{t('purchase.form_refund_reason')}</label>
                       <textarea 
                         value={editOrder?.refundReason || ''}
-                        onChange={(e) => setEditOrder({ ...editOrder, refundReason: e.target.value })}
-                        placeholder={t('purchase.form_refund_reason_placeholder')}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none min-h-[80px] resize-none"
+                        onChange={(e) => setEditOrder({ ...editOrder, refundReason: e.target.value })} placeholder={t('purchase.form_refund_reason_placeholder')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none min-h-[80px] resize-none"
                       />
                     </div>
-                  )}
-
-                  <div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
+                  )}<div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-slate-600">{t('purchase.form_total_price')}</span>
                       <span className="text-xl font-black text-primary">₩{(editOrder?.price * editOrder?.quantity || 0).toLocaleString()}</span>
@@ -604,23 +547,19 @@ export default function PurchaseManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsEditModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsEditModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    {t('common.cancel')}
-                  </button>
+                    {t('common.cancel')}</button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    {t('common.save')}
-                  </button>
+                    {t('common.save')}</button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
@@ -640,8 +579,7 @@ function DraggableModal({ title, children, onClose, icon }: { title: string; chi
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div 
-        onPointerDown={(e) => dragControls.start(e)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(e) => dragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}

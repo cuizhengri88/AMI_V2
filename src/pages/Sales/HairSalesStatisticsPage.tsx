@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type ViewType = 'daily' | 'weekly' | 'monthly' | 'period';
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
@@ -163,6 +164,7 @@ function parseDateSafe(value: string): Date | null {
 }
 
 export default function HairSalesStatisticsPage() {
+  const pt = usePageText('sales_hair_sales_statistics');
   const [viewType, setViewType] = useState<ViewType>('monthly');
   const [startDate, setStartDate] = useState(monthStartIso());
   const [endDate, setEndDate] = useState(todayIso());
@@ -242,7 +244,7 @@ export default function HairSalesStatisticsPage() {
 
       setSettlements(summaryRows);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '미용실 매출 통계 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t013'));
     } finally {
       setIsLoading(false);
     }
@@ -351,7 +353,7 @@ export default function HairSalesStatisticsPage() {
 
     return Array.from(map.entries())
       .map(([managerId, value]) => ({
-        name: employeeNameById.get(managerId) || `직원#${managerId}`,
+        name: employeeNameById.get(managerId) || `${pt('t014')}#${managerId}`,
         sales: value.sales,
         count: value.count,
         avg: value.count > 0 ? Math.round(value.sales / value.count) : 0,
@@ -365,7 +367,7 @@ export default function HairSalesStatisticsPage() {
       const baseCount = row.serviceIds.length > 0 ? row.serviceIds.length : 1;
       row.serviceIds.forEach((serviceId) => {
         const service = serviceById.get(serviceId);
-        const category = service?.category_name?.trim() || '미분류';
+        const category = service?.category_name?.trim() || pt('t015');
         const fallbackPrice = Math.round(row.netAmount / baseCount);
         map.set(category, (map.get(category) || 0) + (service?.unit_price || fallbackPrice));
       });
@@ -430,8 +432,8 @@ export default function HairSalesStatisticsPage() {
         const prevCount = previousServiceCountMap.get(serviceId) || 0;
         return {
           id: serviceId,
-          name: service?.service_name || `시술#${serviceId}`,
-          category: service?.category_name || '미분류',
+          name: service?.service_name || `${pt('t016')}#${serviceId}`,
+          category: service?.category_name || pt('t015'),
           price: service?.unit_price || 0,
           count: value.count,
           share: totalCount > 0 ? (value.count / totalCount) * 100 : 0,
@@ -461,7 +463,7 @@ export default function HairSalesStatisticsPage() {
       row.avgTicket,
       row.growthRate == null ? '-' : `${row.growthRate.toFixed(1)}%`,
     ]);
-    const csv = `\uFEFF${[['날짜', '시술 건수', '총 매출액', '할인 금액', '실수납액', '객단가', '성장률'], ...rows]
+    const csv = `\uFEFF${[[pt('t002'), pt('t007'), pt('t010'), pt('t012'), pt('t008'), pt('t001'), pt('t006')], ...rows]
       .map((line) => line.map(csvEscape).join(','))
       .join('\n')}`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -486,25 +488,29 @@ export default function HairSalesStatisticsPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">미용실 매출 통계</h1>
-          <p className="text-slate-500 mt-1">매장의 매출 흐름과 성과를 데이터로 시각화합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t004')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t003')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
             {(['daily', 'weekly', 'monthly', 'period'] as const).map((type) => (
               <button
                 key={type}
-                onClick={() => setViewType(type)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                onClick={() => setViewType(type)} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
                   viewType === type
                     ? 'bg-primary text-white shadow-lg shadow-primary/20'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
-                {type === 'daily' ? '일별' : type === 'weekly' ? '주간' : type === 'monthly' ? '월별' : '기간별'}
+                {type === 'daily'
+                  ? pt('t017')
+                  : type === 'weekly'
+                    ? pt('t018')
+                    : type === 'monthly'
+                      ? pt('t019')
+                      : pt('t020')}
               </button>
-            ))}
-          </div>
+            ))}</div>
 
           {viewType === 'period' && (
             <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 px-2">
@@ -512,25 +518,21 @@ export default function HairSalesStatisticsPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold outline-none"
+                onChange={(e) => setStartDate(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none"
               />
               <span className="text-slate-300 font-bold">~</span>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold outline-none"
+                onChange={(e) => setEndDate(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none"
               />
             </div>
-          )}
-
-          <button
+          )}<button
             onClick={exportCsv}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
           >
             <Download size={18} />
-            보고서 출력
+            {pt('t021')}
           </button>
         </div>
       </div>
@@ -543,7 +545,7 @@ export default function HairSalesStatisticsPage() {
             </div>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 매출액</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t010')}</p>
             <h3 className="text-2xl font-black text-slate-900">{formatCurrency(summary.totalSales)}</h3>
           </div>
         </div>
@@ -555,8 +557,8 @@ export default function HairSalesStatisticsPage() {
             </div>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 시술 건수</p>
-            <h3 className="text-2xl font-black text-slate-900">{summary.totalCount}건</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t011')}</p>
+            <h3 className="text-2xl font-black text-slate-900">{summary.totalCount}{pt('t030')}</h3>
           </div>
         </div>
       </div>
@@ -566,7 +568,7 @@ export default function HairSalesStatisticsPage() {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <TrendingUp size={18} className="text-primary" />
-              매출 추이 분석
+              {pt('t022')}
             </h3>
           </div>
           <div className="h-[350px] w-full">
@@ -590,11 +592,10 @@ export default function HairSalesStatisticsPage() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                  tickFormatter={(value) => `₩${Math.round(value / 10000).toLocaleString()}만`}
+                  tickFormatter={(value) => `₩${Math.round(value / 10000).toLocaleString()}${pt('t031')}`}
                 />
                 <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
-                  labelFormatter={(label) => `날짜: ${label}`}
+                  formatter={(value: number) => formatCurrency(value)} labelFormatter={(label) => `${pt('t032')} ${label}`}
                   contentStyle={{
                     backgroundColor: '#fff',
                     borderRadius: '12px',
@@ -613,7 +614,7 @@ export default function HairSalesStatisticsPage() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
           <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Scissors size={18} className="text-pink-500" />
-            카테고리별 비중
+            {pt('t023')}
           </h3>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -629,8 +630,7 @@ export default function HairSalesStatisticsPage() {
                 >
                   {categorySales.map((entry) => (
                     <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
+                  ))}</Pie>
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
               </PieChart>
             </ResponsiveContainer>
@@ -649,11 +649,9 @@ export default function HairSalesStatisticsPage() {
                   </span>
                 </div>
               </div>
-            ))}
-            {categorySales.length === 0 && (
-              <p className="text-xs text-slate-400 font-bold">조회 기간에 해당하는 시술 데이터가 없습니다.</p>
-            )}
-          </div>
+            ))} {categorySales.length === 0 && (
+              <p className="text-xs text-slate-400 font-bold">{pt('t009')}</p>
+            )}</div>
         </div>
       </div>
 
@@ -662,7 +660,7 @@ export default function HairSalesStatisticsPage() {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <Users size={18} className="text-blue-500" />
-              매니저별 성과 지표 (매출 & 건수)
+              {pt('t024')}
             </h3>
           </div>
           <div className="h-[300px] w-full">
@@ -680,7 +678,7 @@ export default function HairSalesStatisticsPage() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: '#0ea5e9' }}
-                  tickFormatter={(val) => `${Math.round(val / 10000)}만`}
+                  tickFormatter={(val) => `${Math.round(val / 10000)}${pt('t031')}`}
                 />
                 <YAxis
                   yAxisId="right"
@@ -688,7 +686,7 @@ export default function HairSalesStatisticsPage() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: '#10b981' }}
-                  tickFormatter={(val) => `${val}건`}
+                  tickFormatter={(val) => `${val}${pt('t030')}`}
                 />
                 <Tooltip
                   cursor={{ fill: '#f8fafc' }}
@@ -700,8 +698,8 @@ export default function HairSalesStatisticsPage() {
                   iconType="circle"
                   wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingBottom: '10px' }}
                 />
-                <Bar yAxisId="left" dataKey="sales" name="매출액" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={30} />
-                <Bar yAxisId="right" dataKey="count" name="시술건수" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar yAxisId="left" dataKey="sales" name={pt('t025')} fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar yAxisId="right" dataKey="count" name={pt('t033')} fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -710,14 +708,13 @@ export default function HairSalesStatisticsPage() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
           <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <CreditCard size={18} className="text-emerald-500" />
-            인기 시술 TOP 5
+            {pt('t026')}
           </h3>
           <div className="space-y-4">
             {popularProcedures.map((proc, idx) => (
               <div key={proc.id} className="flex items-center gap-4 group cursor-pointer">
                 <div className="size-8 bg-slate-50 rounded-lg flex items-center justify-center text-xs font-black text-slate-400 group-hover:bg-primary group-hover:text-white transition-all">
-                  {pad2(idx + 1)}
-                </div>
+                  {pad2(idx + 1)}</div>
                 <div className="flex-1">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-bold text-slate-900">{proc.name}</span>
@@ -733,23 +730,21 @@ export default function HairSalesStatisticsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-black text-slate-900">{proc.count}건</p>
+                  <p className="text-xs font-black text-slate-900">{proc.count}{pt('t030')}</p>
                   <p className="text-[10px] font-bold text-slate-400">
-                    {proc.growthRate == null ? '비교 데이터 없음' : `전기간 대비 ${proc.growthRate >= 0 ? '+' : ''}${proc.growthRate.toFixed(1)}%`}
+                    {proc.growthRate == null ? pt('t027') : `${pt('t028')} ${proc.growthRate >= 0 ? '+' : ''}${proc.growthRate.toFixed(1)}%`}
                   </p>
                 </div>
               </div>
-            ))}
-            {popularProcedures.length === 0 && (
-              <p className="text-xs text-slate-400 font-bold">조회 기간에 해당하는 시술 데이터가 없습니다.</p>
-            )}
-          </div>
+            ))} {popularProcedures.length === 0 && (
+              <p className="text-xs text-slate-400 font-bold">{pt('t009')}</p>
+            )}</div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-lg font-black text-slate-900">상세 매출 데이터</h3>
+          <h3 className="text-lg font-black text-slate-900">{pt('t005')}</h3>
           <div className="flex items-center gap-2">
             <button className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors" aria-label="filter">
               <Filter size={18} />
@@ -767,13 +762,13 @@ export default function HairSalesStatisticsPage() {
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
-                <th className="py-4 px-6">날짜</th>
-                <th className="py-4 px-6">시술 건수</th>
-                <th className="py-4 px-6">총 매출액</th>
-                <th className="py-4 px-6">할인 금액</th>
-                <th className="py-4 px-6">실수납액</th>
-                <th className="py-4 px-6">객단가</th>
-                <th className="py-4 px-6">성장률</th>
+                <th className="py-4 px-6">{pt('t002')}</th>
+                <th className="py-4 px-6">{pt('t007')}</th>
+                <th className="py-4 px-6">{pt('t010')}</th>
+                <th className="py-4 px-6">{pt('t012')}</th>
+                <th className="py-4 px-6">{pt('t008')}</th>
+                <th className="py-4 px-6">{pt('t001')}</th>
+                <th className="py-4 px-6">{pt('t006')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -783,7 +778,7 @@ export default function HairSalesStatisticsPage() {
                 return (
                   <tr key={row.date} className="hover:bg-slate-50 transition-colors group">
                     <td className="py-4 px-6 text-sm font-bold text-slate-900">{row.date}</td>
-                    <td className="py-4 px-6 text-sm font-bold text-slate-600">{row.count}건</td>
+                    <td className="py-4 px-6 text-sm font-bold text-slate-600">{row.count}{pt('t030')}</td>
                     <td className="py-4 px-6 text-sm font-bold text-slate-400 line-through">{formatCurrency(row.grossAmount)}</td>
                     <td className="py-4 px-6 text-sm font-bold text-red-400">-{formatCurrency(row.discountAmount)}</td>
                     <td className="py-4 px-6 text-sm font-black text-slate-900">{formatCurrency(row.netAmount)}</td>
@@ -796,19 +791,16 @@ export default function HairSalesStatisticsPage() {
                           {isUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                           {`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`}
                         </div>
-                      )}
-                    </td>
+                      )}</td>
                   </tr>
                 );
-              })}
-              {dailyStats.length === 0 && (
+              })} {dailyStats.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-20 text-center text-slate-400 font-bold">
-                    조회 조건에 맞는 데이터가 없습니다.
+                    {pt('t029')}
                   </td>
                 </tr>
-              )}
-            </tbody>
+              )}</tbody>
           </table>
         </div>
       </div>

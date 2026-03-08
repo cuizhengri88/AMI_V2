@@ -21,6 +21,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type MenuType = 'MAIN' | 'SUB';
 type LangKey = 'ko' | 'en' | 'zh';
@@ -132,6 +133,7 @@ function buildTree(rows: MenuRow[]): MenuNode[] {
 }
 
 export default function MenuManagementPage() {
+  const pt = usePageText('system_menu_management');
   const { i18n } = useTranslation();
   const [menuData, setMenuData] = useState<MenuNode[]>([]);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
@@ -159,7 +161,7 @@ export default function MenuManagementPage() {
   );
   const getSystemTypeName = (code: string) => {
     const normalized = normalizeSystemTypeCode(code);
-    if (normalized === DEFAULT_SYSTEM_TYPE_CODE) return '공통';
+    if (normalized === DEFAULT_SYSTEM_TYPE_CODE) return pt('t003');
     return systemTypeNameMap.get(normalized) || normalized;
   };
 
@@ -207,7 +209,7 @@ export default function MenuManagementPage() {
       setMenuData(tree);
       setExpandedIds(tree.map((m) => m.id));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '메뉴 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t025'));
     } finally {
       setIsLoading(false);
     }
@@ -246,19 +248,19 @@ export default function MenuManagementPage() {
 
   const handleSaveMenu = async () => {
     if (!formData.names.ko.trim() || !formData.names.en.trim() || !formData.names.zh.trim()) {
-      alert('한국어/영어/중국어 메뉴명을 모두 입력해주세요.');
+      alert(pt('t021'));
       return;
     }
     if (!formData.systemTypeCode.trim()) {
-      alert('SYSTEM_TYPE 코드를 선택해주세요.');
+      alert(pt('t024'));
       return;
     }
     if (!formData.path.trim()) {
-      alert('메뉴 경로(path)를 입력해주세요.');
+      alert(pt('t004'));
       return;
     }
     if (formData.type === 'SUB' && !formData.parentId) {
-      alert('하위 메뉴는 상위 메뉴를 선택해야 합니다.');
+      alert(pt('t018'));
       return;
     }
 
@@ -288,16 +290,16 @@ export default function MenuManagementPage() {
       }
       setIsModalOpen(false);
       window.dispatchEvent(new Event('menu-management-updated'));
-      alert(formData.id ? '메뉴 수정이 완료되었습니다.' : '메뉴 추가가 완료되었습니다.');
+      alert(formData.id ? pt('t026') : pt('t027'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '메뉴 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t028'));
     } finally {
       setIsMutating(false);
     }
   };
 
   const handleDeleteMenu = async (menuId: number) => {
-    if (!window.confirm('선택한 메뉴를 삭제하시겠습니까? 하위 메뉴도 함께 삭제됩니다.')) return;
+    if (!window.confirm(pt('t013'))) return;
     try {
       setIsMutating(true);
       const result = await invokeDbCommand<{ success: boolean; message: string }>('delete_menu_management', {
@@ -307,7 +309,7 @@ export default function MenuManagementPage() {
       window.dispatchEvent(new Event('menu-management-updated'));
       alert(result.message);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '메뉴 삭제에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t029'));
     } finally {
       setIsMutating(false);
     }
@@ -319,8 +321,8 @@ export default function MenuManagementPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">메뉴 관리</h1>
-          <p className="text-slate-500 mt-1">메뉴를 DB에서 조회하고 추가/수정/삭제합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t030')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t005')}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -330,7 +332,7 @@ export default function MenuManagementPage() {
             className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-            {isLoading ? '불러오는 중...' : 'DB 새로고침'}
+            {isLoading ? pt('t031') : pt('t032')}
           </button>
           <button
             onClick={openCreateModal}
@@ -338,7 +340,7 @@ export default function MenuManagementPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
           >
             <Plus size={18} />
-            메뉴 추가
+            {pt('t033')}
           </button>
         </div>
       </div>
@@ -347,19 +349,19 @@ export default function MenuManagementPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider w-1/3">메뉴명</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">시스템 타입</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">경로</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">정렬</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">상태</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider w-1/3">{pt('t006')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t014')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t015')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t034')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {menuData.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
-                  등록된 메뉴가 없습니다.
+                  {pt('t036')}
                 </td>
               </tr>
             ) : (
@@ -374,12 +376,10 @@ export default function MenuManagementPage() {
                               <ChevronDown size={16} className="text-slate-600" />
                             ) : (
                               <ChevronRight size={16} className="text-slate-400" />
-                            )}
-                          </button>
+                            )}</button>
                         ) : (
                           <div className="w-6" />
-                        )}
-                        <div className="size-8 rounded bg-slate-100 flex items-center justify-center text-primary">
+                        )}<div className="size-8 rounded bg-slate-100 flex items-center justify-center text-primary">
                           <LayoutGrid size={16} />
                         </div>
                         <span className="text-sm font-bold text-slate-900">{getMenuName(menu)}</span>
@@ -387,8 +387,7 @@ export default function MenuManagementPage() {
                     </td>
                     <td className="py-4 px-6 text-center">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {getSystemTypeName(menu.system_type_code)}
-                      </span>
+                        {getSystemTypeName(menu.system_type_code)}</span>
                     </td>
                     <td className="py-4 px-6 text-sm font-mono text-slate-500">{menu.path}</td>
                     <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">{menu.order}</td>
@@ -400,14 +399,12 @@ export default function MenuManagementPage() {
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => openEditModal(menu)}
-                          className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                          onClick={() => openEditModal(menu)} className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
                         <button
-                          onClick={() => handleDeleteMenu(menu.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                          onClick={() => handleDeleteMenu(menu.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -435,8 +432,7 @@ export default function MenuManagementPage() {
                           </td>
                           <td className="py-3 px-6 text-center">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              {getSystemTypeName(child.system_type_code)}
-                            </span>
+                              {getSystemTypeName(child.system_type_code)}</span>
                           </td>
                           <td className="py-3 px-6 text-xs font-mono text-slate-400">{child.path}</td>
                           <td className="py-3 px-6 text-xs text-center font-medium text-slate-500">{child.order}</td>
@@ -448,26 +444,22 @@ export default function MenuManagementPage() {
                           <td className="py-3 px-6 text-center">
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => openEditModal(child)}
-                                className="p-1 text-slate-400 hover:text-primary transition-colors"
+                                onClick={() => openEditModal(child)} className="p-1 text-slate-400 hover:text-primary transition-colors"
                               >
                                 <Edit2 size={12} />
                               </button>
                               <button
-                                onClick={() => handleDeleteMenu(child.id)}
-                                className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                                onClick={() => handleDeleteMenu(child.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors"
                               >
                                 <Trash2 size={12} />
                               </button>
                             </div>
                           </td>
                         </motion.tr>
-                      ))}
-                  </AnimatePresence>
+                      ))}</AnimatePresence>
                 </React.Fragment>
               ))
-            )}
-          </tbody>
+            )}</tbody>
         </table>
       </div>
 
@@ -479,7 +471,7 @@ export default function MenuManagementPage() {
             className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
           >
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="text-lg font-bold text-slate-900">{formData.id ? '메뉴 수정' : '메뉴 추가'}</h3>
+              <h3 className="text-lg font-bold text-slate-900">{formData.id ? pt('t037') : pt('t033')}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
@@ -488,89 +480,80 @@ export default function MenuManagementPage() {
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <button
-                  onClick={() => setFormData((prev) => ({ ...prev, type: 'MAIN', parentId: '' }))}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  onClick={() => setFormData((prev) => ({ ...prev, type: 'MAIN', parentId: '' }))} className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
                     formData.type === 'MAIN'
                       ? 'border-primary bg-primary/5 text-primary'
                       : 'border-slate-100 text-slate-400 hover:border-slate-200'
                   }`}
                 >
                   <LayoutGrid size={18} />
-                  <span className="font-bold text-sm">상위 메뉴</span>
+                  <span className="font-bold text-sm">{pt('t010')}</span>
                 </button>
                 <button
-                  onClick={() => setFormData((prev) => ({ ...prev, type: 'SUB' }))}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  onClick={() => setFormData((prev) => ({ ...prev, type: 'SUB' }))} className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
                     formData.type === 'SUB'
                       ? 'border-primary bg-primary/5 text-primary'
                       : 'border-slate-100 text-slate-400 hover:border-slate-200'
                   }`}
                 >
                   <ListIcon size={18} />
-                  <span className="font-bold text-sm">하위 메뉴</span>
+                  <span className="font-bold text-sm">{pt('t017')}</span>
                 </button>
               </div>
 
               {formData.type === 'SUB' && (
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">상위 메뉴 선택</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t011')}</label>
                   <select
                     value={formData.parentId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, parentId: e.target.value }))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onChange={(e) => setFormData((prev) => ({ ...prev, parentId: e.target.value }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="">상위 메뉴를 선택하세요</option>
+                    <option value="">{pt('t012')}</option>
                     {selectableMainMenus.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {getMenuName(m)}
-                      </option>
-                    ))}
-                  </select>
+                        {getMenuName(m)}</option>
+                    ))}</select>
                 </div>
-              )}
-
-              <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <label className="block text-xs font-bold text-slate-500 uppercase">메뉴명 (다국어)</label>
+              )}<div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <label className="block text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
                 <div>
-                  <label className="text-xs text-slate-500">한국어</label>
+                  <label className="text-xs text-slate-500">{pt('t019')}</label>
                   <input
                     type="text"
                     value={formData.names.ko}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, names: { ...prev.names, ko: e.target.value } }))
                     }
-                    placeholder="한국어 메뉴명"
-                    className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={pt('t020')} className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500">English</label>
+                  <label className="text-xs text-slate-500">{pt('t022')}</label>
                   <input
                     type="text"
                     value={formData.names.en}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, names: { ...prev.names, en: e.target.value } }))
                     }
-                    placeholder="English menu name"
-                    className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={pt('t023')} className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500">中文(简体)</label>
+                  <label className="text-xs text-slate-500">{pt('t038')}</label>
                   <input
                     type="text"
                     value={formData.names.zh}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, names: { ...prev.names, zh: e.target.value } }))
                     }
-                    placeholder="中文菜单名称"
+                    placeholder={pt('t039')}
                     className="w-full mt-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SYSTEM_TYPE</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t040')}</label>
                 <select
                   value={formData.systemTypeCode}
                   onChange={(e) =>
@@ -594,45 +577,41 @@ export default function MenuManagementPage() {
                   }
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value={DEFAULT_SYSTEM_TYPE_CODE}>공통(ALL)</option>
+                  <option value={DEFAULT_SYSTEM_TYPE_CODE}>{pt('t003')}</option>
                   {systemTypeOptions.map((option) => (
                     <option key={option.code} value={option.code}>
                       {option.name} ({option.code})
                     </option>
-                  ))}
-                </select>
+                  ))}</select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">경로(Path)</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t002')}</label>
                 <input
                   type="text"
                   value={formData.path}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, path: e.target.value }))}
-                  placeholder="/system/menu"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, path: e.target.value }))} placeholder="/system/menu"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">정렬 순서</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t016')}</label>
                   <input
                     type="number"
                     value={formData.order}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, order: parseInt(e.target.value, 10) || 1 }))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onChange={(e) => setFormData((prev) => ({ ...prev, order: parseInt(e.target.value, 10) || 1 }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">상태</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t034')}</label>
                   <select
                     value={formData.status}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="사용중">사용중</option>
-                    <option value="미사용">미사용</option>
+                    <option value="사용중">{pt('t009')}</option>
+                    <option value="미사용">{pt('t008')}</option>
                   </select>
                 </div>
               </div>
@@ -640,22 +619,20 @@ export default function MenuManagementPage() {
 
             <div className="p-6 bg-slate-50 flex gap-3">
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-100 transition-colors"
+                onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-100 transition-colors"
               >
-                취소
+                {pt('t041')}
               </button>
               <button
                 onClick={handleSaveMenu}
                 disabled={isMutating}
                 className="flex-1 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {formData.id ? '수정' : '추가'}
+                {formData.id ? pt('t042') : pt('t043')}
               </button>
             </div>
           </motion.div>
         </div>
-      )}
-    </motion.div>
+      )}</motion.div>
   );
 }

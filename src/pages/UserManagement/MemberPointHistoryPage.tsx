@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, Filter, History, User, RotateCcw, X } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type MemberOption = {
   id: number;
@@ -39,6 +40,7 @@ function formatDateTime(raw: string) {
 }
 
 export default function MemberPointHistoryPage() {
+  const pt = usePageText('user_management_member_point_history');
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [members, setMembers] = useState<MemberOption[]>([]);
@@ -176,7 +178,7 @@ export default function MemberPointHistoryPage() {
     if (!cancelTarget) return;
     const reason = cancelReason.trim();
     if (!reason) {
-      alert('취소 사유를 입력해주세요.');
+      alert(pt('t017'));
       return;
     }
 
@@ -202,8 +204,8 @@ export default function MemberPointHistoryPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">회원포인트 내역</h1>
-          <p className="text-slate-500 mt-1">회원별 충전/사용 이력을 상세 조회하고 충전을 취소할 수 있습니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t022')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t021')}</p>
         </div>
       </div>
 
@@ -213,7 +215,7 @@ export default function MemberPointHistoryPage() {
             <History size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">조회 건수</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t011')}</p>
             <p className="text-2xl font-black text-slate-900">{filteredHistories.length}건</p>
           </div>
         </div>
@@ -222,7 +224,7 @@ export default function MemberPointHistoryPage() {
             <User size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">충전 내역</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t013')}</p>
             <p className="text-2xl font-black text-slate-900">{summary.rechargeCount}건</p>
           </div>
         </div>
@@ -231,7 +233,7 @@ export default function MemberPointHistoryPage() {
             <RotateCcw size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">취소 처리</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t018')}</p>
             <p className="text-2xl font-black text-slate-900">{summary.cancelledCount}건</p>
           </div>
         </div>
@@ -243,25 +245,21 @@ export default function MemberPointHistoryPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="회원명/전화번호/시술명/메모/취소사유 검색..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={pt('t020')} value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
 
           <select
             value={selectedMemberId}
-            onChange={(e) => setSelectedMemberId(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+            onChange={(e) => setSelectedMemberId(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
           >
-            <option value="all">전체 회원</option>
+            <option value="all">{pt('t010')}</option>
             {members.map((member) => (
               <option key={member.id} value={member.id}>
                 {member.name}
               </option>
-            ))}
-          </select>
+            ))}</select>
 
           <select
             value={actionFilter}
@@ -270,26 +268,26 @@ export default function MemberPointHistoryPage() {
             }
             className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
           >
-            <option value="all">전체 유형</option>
-            <option value="RECHARGE">충전</option>
-            <option value="RECHARGE_CANCELLED">충전 취소</option>
-            <option value="USE">사용</option>
+            <option value="all">{pt('t009')}</option>
+            <option value="RECHARGE">{pt('t012')}</option>
+            <option value="RECHARGE_CANCELLED">{pt('t014')}</option>
+            <option value="USE">{pt('t005')}</option>
           </select>
         </div>
 
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">일시</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">유형</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">회원</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t008')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t019')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">전화번호</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">시술</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">횟수</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">금액</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">결제수단</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">메모/취소사유</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">관리</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t023')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t003')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t002')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -331,8 +329,7 @@ export default function MemberPointHistoryPage() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                           사용
                         </span>
-                      )}
-                    </td>
+                      )}</td>
                     <td className="py-4 px-6 text-sm font-semibold text-slate-800">{item.userName}</td>
                     <td className="py-4 px-6 text-sm text-slate-600 font-mono">{item.userPhone || '-'}</td>
                     <td className="py-4 px-6 text-sm text-slate-600">{item.serviceName || '-'}</td>
@@ -351,26 +348,22 @@ export default function MemberPointHistoryPage() {
                         <div className="text-rose-600 mt-1">
                           취소사유: {item.cancelReason || '-'} ({formatDateTime(item.cancelledAt || '')})
                         </div>
-                      )}
-                    </td>
+                      )}</td>
                     <td className="py-4 px-6 text-center">
                       {item.actionType === 'RECHARGE' && !item.isCancelled ? (
                         <button
                           type="button"
-                          onClick={() => openCancelModal(item)}
-                          className="px-2.5 py-1 text-[11px] font-bold rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
+                          onClick={() => openCancelModal(item)} className="px-2.5 py-1 text-[11px] font-bold rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
                         >
                           취소
                         </button>
                       ) : (
                         <span className="text-xs text-slate-300">-</span>
-                      )}
-                    </td>
+                      )}</td>
                   </tr>
                 );
               })
-            )}
-          </tbody>
+            )}</tbody>
         </table>
       </div>
 
@@ -384,7 +377,7 @@ export default function MemberPointHistoryPage() {
               className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden"
             >
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-900">충전 취소</h3>
+                <h3 className="text-lg font-bold text-slate-900">{pt('t014')}</h3>
                 <button onClick={closeCancelModal} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500">
                   <X size={18} />
                 </button>
@@ -395,13 +388,11 @@ export default function MemberPointHistoryPage() {
                   <span className="font-semibold text-slate-900">{cancelTarget?.serviceName || '-'}</span>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">취소 사유</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t015')}</label>
                   <textarea
                     value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value)}
-                    rows={4}
-                    placeholder="취소 사유를 입력하세요."
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none resize-none"
+                    onChange={(e) => setCancelReason(e.target.value)} rows={4}
+                    placeholder={pt('t016')} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
                 </div>
                 <div className="flex gap-3 pt-2">
@@ -424,8 +415,7 @@ export default function MemberPointHistoryPage() {
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }

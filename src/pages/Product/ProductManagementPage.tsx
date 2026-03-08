@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
+import { usePageText } from '../../i18n/usePageText';
 import { 
   Plus, 
   Search, 
@@ -29,6 +30,7 @@ const initialProducts = [
 const sizes = ['XS', 'S', 'M', 'L', 'XL'];
 
 export default function ProductManagementPage() {
+  const pt = usePageText('product_product_management');
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -37,7 +39,7 @@ export default function ProductManagementPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('신규 상품이 등록되었습니다.');
+    alert(pt('t002'));
     setIsNewModalOpen(false);
   };
 
@@ -48,7 +50,7 @@ export default function ProductManagementPage() {
 
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('상품 정보가 수정되었습니다.');
+    alert(pt('t001'));
     setIsEditModalOpen(false);
   };
 
@@ -65,12 +67,10 @@ export default function ProductManagementPage() {
         </div>
         
         <button 
-          onClick={() => setIsNewModalOpen(true)}
-          className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"
+          onClick={() => setIsNewModalOpen(true)} className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"
         >
           <Plus size={18} />
-          {t('common.add')}
-        </button>
+          {t('common.add')}</button>
       </div>
 
       {/* Stats Overview */}
@@ -110,10 +110,8 @@ export default function ProductManagementPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder={t('product.search_placeholder')} 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={t('product.search_placeholder')} value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           
@@ -126,8 +124,7 @@ export default function ProductManagementPage() {
             </select>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50">
               <Filter size={16} />
-              {t('common.filter')}
-            </button>
+              {t('common.filter')}</button>
           </div>
         </div>
 
@@ -163,8 +160,7 @@ export default function ProductManagementPage() {
                   </span>
                 </td>
                 <td className="py-4 px-6 text-sm text-right font-bold text-slate-900">
-                  ₩{product.price.toLocaleString()}
-                </td>
+                  ₩{product.price.toLocaleString()}</td>
                 <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">
                   {product.stock}
                 </td>
@@ -176,14 +172,12 @@ export default function ProductManagementPage() {
                   }`}>
                     {product.status === '판매중' ? t('product.status_selling') : 
                      product.status === '재고부족' ? t('product.status_low_stock') : 
-                     t('product.status_out_of_stock')}
-                  </span>
+                     t('product.status_out_of_stock')}</span>
                 </td>
                 <td className="py-4 px-6 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <button 
-                      onClick={() => handleEditClick(product)}
-                      className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                      onClick={() => handleEditClick(product)} className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
                     >
                       <Edit2 size={14} />
                     </button>
@@ -193,14 +187,12 @@ export default function ProductManagementPage() {
                   </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
+            ))}</tbody>
         </table>
         
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="text-xs text-slate-400 font-medium italic">
-            {t('product.size_info_tip')}
-          </div>
+            {t('product.size_info_tip')}</div>
           <div className="flex items-center gap-2">
             <button className="px-3 py-1 text-xs font-bold text-slate-400 hover:text-slate-600 disabled:opacity-50" disabled>{t('common.previous')}</button>
             <div className="flex items-center gap-1">
@@ -218,9 +210,7 @@ export default function ProductManagementPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('product.modal_add_title')} 
-              onClose={() => setIsNewModalOpen(false)}
-              icon={<Plus size={20} className="text-primary" />}
+              title={t('product.modal_add_title')} onClose={() => setIsNewModalOpen(false)} icon={<Plus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -230,8 +220,7 @@ export default function ProductManagementPage() {
                       type="text" 
                       required
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder={t('product.placeholder_name')}
-                    />
+                      placeholder={t('product.placeholder_name')} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_category')}</label>
@@ -245,8 +234,7 @@ export default function ProductManagementPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_size')}</label>
                     <select className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none">
-                      {sizes.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                      {sizes.map(s => <option key={s} value={s}>{s}</option>)}</select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
@@ -274,32 +262,26 @@ export default function ProductManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsNewModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsNewModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    {t('common.cancel')}
-                  </button>
+                    {t('common.cancel')}</button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    {t('common.save')}
-                  </button>
+                    {t('common.save')}</button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
 
       {/* Edit Product Modal */}
       <AnimatePresence>
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={t('product.modal_edit_title')} 
-              onClose={() => setIsEditModalOpen(false)}
-              icon={<Edit2 size={20} className="text-primary" />}
+              title={t('product.modal_edit_title')} onClose={() => setIsEditModalOpen(false)} icon={<Edit2 size={20} className="text-primary" />}
             >
               <form onSubmit={handleUpdate} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -309,17 +291,14 @@ export default function ProductManagementPage() {
                       type="text" 
                       required
                       value={editProduct?.name}
-                      onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder={t('product.placeholder_name')}
-                    />
+                      onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      placeholder={t('product.placeholder_name')} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_category')}</label>
                     <select 
                       value={editProduct?.category}
-                      onChange={(e) => setEditProduct({ ...editProduct, category: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditProduct({ ...editProduct, category: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       <option value="top">{t('product.category_top')}</option>
                       <option value="bottom">{t('product.category_bottom')}</option>
@@ -331,11 +310,9 @@ export default function ProductManagementPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_size')}</label>
                     <select 
                       value={editProduct?.size}
-                      onChange={(e) => setEditProduct({ ...editProduct, size: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditProduct({ ...editProduct, size: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      {sizes.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                      {sizes.map(s => <option key={s} value={s}>{s}</option>)}</select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
@@ -345,8 +322,7 @@ export default function ProductManagementPage() {
                         type="number" 
                         required
                         value={editProduct?.price}
-                        onChange={(e) => setEditProduct({ ...editProduct, price: parseInt(e.target.value) || 0 })}
-                        className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                        onChange={(e) => setEditProduct({ ...editProduct, price: parseInt(e.target.value) || 0 })} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         placeholder="0"
                       />
                     </div>
@@ -357,8 +333,7 @@ export default function ProductManagementPage() {
                       type="number" 
                       required
                       value={editProduct?.stock}
-                      onChange={(e) => setEditProduct({ ...editProduct, stock: parseInt(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditProduct({ ...editProduct, stock: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       placeholder="0"
                     />
                   </div>
@@ -366,8 +341,7 @@ export default function ProductManagementPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_status')}</label>
                     <select 
                       value={editProduct?.status}
-                      onChange={(e) => setEditProduct({ ...editProduct, status: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                      onChange={(e) => setEditProduct({ ...editProduct, status: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       <option value="판매중">{t('product.status_selling')}</option>
                       <option value="재고부족">{t('product.status_low_stock')}</option>
@@ -380,23 +354,19 @@ export default function ProductManagementPage() {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setIsEditModalOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                    onClick={() => setIsEditModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                   >
-                    {t('common.cancel')}
-                  </button>
+                    {t('common.cancel')}</button>
                   <button 
                     type="submit"
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    {t('common.save')}
-                  </button>
+                    {t('common.save')}</button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
@@ -416,8 +386,7 @@ function DraggableModal({ title, children, onClose, icon }: { title: string; chi
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div 
-        onPointerDown={(e) => dragControls.start(e)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(e) => dragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}

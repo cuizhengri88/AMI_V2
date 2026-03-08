@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { usePageText } from '../../i18n/usePageText';
 import { 
   TrendingUp, 
   Calendar, 
@@ -61,11 +62,18 @@ const categoryData = [
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 
 export default function SalesStatisticsPage() {
+  const pt = usePageText('sales_sales_statistics');
   const [period, setPeriod] = useState<'daily' | 'monthly' | 'custom'>('daily');
   const [startDate, setStartDate] = useState('2024-03-01');
   const [endDate, setEndDate] = useState('2024-03-07');
 
   const activeData = period === 'monthly' ? monthlyData : dailyData;
+  const refundReasonLabelMap: Record<string, string> = {
+    단순변심: pt('t025'),
+    사이즈부적합: pt('t026'),
+    배송지연: pt('t027'),
+    상품불량: pt('t028'),
+  };
 
   return (
     <motion.div 
@@ -75,29 +83,26 @@ export default function SalesStatisticsPage() {
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">매출 통계</h1>
-          <p className="text-slate-500 mt-1">판매액, 수량, 환불 현황을 종합 분석합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t001')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t011')}</p>
         </div>
         
         <div className="flex flex-wrap gap-2">
           <div className="flex bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
             <button 
-              onClick={() => setPeriod('daily')}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'daily' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+              onClick={() => setPeriod('daily')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'daily' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
             >
-              일간
+              {pt('t019')}
             </button>
             <button 
-              onClick={() => setPeriod('monthly')}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'monthly' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+              onClick={() => setPeriod('monthly')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'monthly' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
             >
-              월간
+              {pt('t020')}
             </button>
             <button 
-              onClick={() => setPeriod('custom')}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'custom' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+              onClick={() => setPeriod('custom')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${period === 'custom' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
             >
-              기간 선택
+              {pt('t021')}
             </button>
           </div>
           
@@ -106,22 +111,18 @@ export default function SalesStatisticsPage() {
               <input 
                 type="date" 
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="text-xs font-bold text-slate-600 outline-none bg-transparent"
+                onChange={(e) => setStartDate(e.target.value)} className="text-xs font-bold text-slate-600 outline-none bg-transparent"
               />
               <span className="text-slate-300">~</span>
               <input 
                 type="date" 
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="text-xs font-bold text-slate-600 outline-none bg-transparent"
+                onChange={(e) => setEndDate(e.target.value)} className="text-xs font-bold text-slate-600 outline-none bg-transparent"
               />
             </div>
-          )}
-
-          <button className="bg-white border border-slate-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95">
+          )}<button className="bg-white border border-slate-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95">
             <Download size={18} />
-            엑셀 다운로드
+            {pt('t022')}
           </button>
         </div>
       </div>
@@ -134,15 +135,15 @@ export default function SalesStatisticsPage() {
             <DollarSign size={80} />
           </div>
           <div className="relative z-10">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">총 판매 현황</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{pt('t008')}</p>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-slate-500 mb-1">총 판매금액</p>
+                <p className="text-sm text-slate-500 mb-1">{pt('t009')}</p>
                 <p className="text-3xl font-black text-slate-900">₩18,900,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <span className="text-sm text-slate-500">총 판매수량</span>
-                <span className="text-lg font-black text-primary">510 <span className="text-xs font-medium text-slate-400">pcs</span></span>
+                <span className="text-sm text-slate-500">{pt('t010')}</span>
+                <span className="text-lg font-black text-primary">510 <span className="text-xs font-medium text-slate-400">{pt('t018')}</span></span>
               </div>
             </div>
           </div>
@@ -154,15 +155,15 @@ export default function SalesStatisticsPage() {
             <RotateCcw size={80} className="text-rose-500" />
           </div>
           <div className="relative z-10">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">환불 현황</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{pt('t015')}</p>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-slate-500 mb-1">환불 금액</p>
+                <p className="text-sm text-slate-500 mb-1">{pt('t012')}</p>
                 <p className="text-3xl font-black text-rose-600">₩1,450,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <span className="text-sm text-slate-500">환불 수량</span>
-                <span className="text-lg font-black text-rose-600">38 <span className="text-xs font-medium text-slate-400">pcs</span></span>
+                <span className="text-sm text-slate-500">{pt('t014')}</span>
+                <span className="text-lg font-black text-rose-600">38 <span className="text-xs font-medium text-slate-400">{pt('t018')}</span></span>
               </div>
             </div>
           </div>
@@ -174,15 +175,15 @@ export default function SalesStatisticsPage() {
             <TrendingUp size={80} className="text-emerald-500" />
           </div>
           <div className="relative z-10">
-            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-4">순 판매 현황 (Net)</p>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-4">{pt('t003')}</p>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-slate-500 mb-1">순 판매금액</p>
+                <p className="text-sm text-slate-500 mb-1">{pt('t004')}</p>
                 <p className="text-3xl font-black text-emerald-600">₩17,450,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-emerald-100">
-                <span className="text-sm text-slate-500">순 판매수량</span>
-                <span className="text-lg font-black text-emerald-600">472 <span className="text-xs font-medium text-slate-400">pcs</span></span>
+                <span className="text-sm text-slate-500">{pt('t005')}</span>
+                <span className="text-lg font-black text-emerald-600">472 <span className="text-xs font-medium text-slate-400">{pt('t018')}</span></span>
               </div>
             </div>
           </div>
@@ -195,20 +196,20 @@ export default function SalesStatisticsPage() {
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
               <TrendingUp size={16} className="text-primary" />
-              {period === 'monthly' ? '월간 매출 및 수량 종합 추이' : '일간 매출 및 수량 종합 추이'}
+              {period === 'monthly' ? pt('t023') : pt('t024')}
             </h3>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-1.5">
                 <div className="size-2.5 rounded bg-blue-500" />
-                <span className="text-[11px] font-bold text-slate-500 uppercase">총 판매금액</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase">{pt('t009')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="size-2.5 rounded bg-emerald-500" />
-                <span className="text-[11px] font-bold text-slate-500 uppercase">순 판매금액</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase">{pt('t004')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="size-2.5 rounded bg-rose-500" />
-                <span className="text-[11px] font-bold text-slate-500 uppercase">환불금액</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase">{pt('t016')}</span>
               </div>
             </div>
           </div>
@@ -235,7 +236,7 @@ export default function SalesStatisticsPage() {
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fontSize: 11, fill: '#94a3b8' }} 
-                  tickFormatter={(value) => `${value}pcs`}
+                  tickFormatter={(value) => `${value}${pt('t018')}`}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -248,12 +249,12 @@ export default function SalesStatisticsPage() {
                 />
                 <Legend verticalAlign="top" height={36} iconType="rect" wrapperStyle={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }} />
                 
-                <Bar yAxisId="left" name="총 판매금액" dataKey="totalSales" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={30} />
-                <Bar yAxisId="left" name="순 판매금액" dataKey="netSales" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
-                <Bar yAxisId="left" name="환불금액" dataKey="refunds" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar yAxisId="left" name={pt('t009')} dataKey="totalSales" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar yAxisId="left" name={pt('t004')} dataKey="netSales" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar yAxisId="left" name={pt('t016')} dataKey="refunds" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={30} />
                 
-                <Line yAxisId="right" type="monotone" name="총 판매수량" dataKey="totalQty" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1' }} />
-                <Line yAxisId="right" type="monotone" name="순 판매수량" dataKey="netQty" stroke="#059669" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: '#059669' }} />
+                <Line yAxisId="right" type="monotone" name={pt('t010')} dataKey="totalQty" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1' }} />
+                <Line yAxisId="right" type="monotone" name={pt('t005')} dataKey="netQty" stroke="#059669" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: '#059669' }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -264,7 +265,7 @@ export default function SalesStatisticsPage() {
         {/* Refund Quantity Distribution */}
         <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 grid-shadow overflow-hidden">
           <div className="p-4 border-b border-slate-200 bg-slate-50">
-            <h3 className="text-sm font-bold text-slate-700">환불 사유 및 수량 통계</h3>
+            <h3 className="text-sm font-bold text-slate-700">{pt('t013')}</h3>
           </div>
           <div className="p-6 h-[350px] flex flex-col">
             <div className="flex-1">
@@ -272,10 +273,10 @@ export default function SalesStatisticsPage() {
                 <PieChart>
                   <Pie
                     data={[
-                      { name: '단순변심', value: 40 },
-                      { name: '사이즈부적합', value: 35 },
-                      { name: '배송지연', value: 15 },
-                      { name: '상품불량', value: 10 },
+                      { name: pt('t025'), value: 40 },
+                      { name: pt('t026'), value: 35 },
+                      { name: pt('t027'), value: 15 },
+                      { name: pt('t028'), value: 10 },
                     ]}
                     cx="50%"
                     cy="50%"
@@ -286,18 +287,17 @@ export default function SalesStatisticsPage() {
                   >
                     {categoryData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
+                    ))}</Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-4 space-y-2">
               {[
-                { name: '단순변심', value: 40, color: COLORS[0] },
-                { name: '사이즈부적합', value: 35, color: COLORS[1] },
-                { name: '배송지연', value: 15, color: COLORS[2] },
-                { name: '상품불량', value: 10, color: COLORS[3] },
+                { name: pt('t025'), value: 40, color: COLORS[0] },
+                { name: pt('t026'), value: 35, color: COLORS[1] },
+                { name: pt('t027'), value: 15, color: COLORS[2] },
+                { name: pt('t028'), value: 10, color: COLORS[3] },
               ].map((item) => (
                 <div key={item.name} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -306,8 +306,7 @@ export default function SalesStatisticsPage() {
                   </div>
                   <span className="text-[11px] font-bold text-slate-900">{item.value}%</span>
                 </div>
-              ))}
-            </div>
+              ))}</div>
           </div>
         </div>
       </div>
@@ -317,19 +316,19 @@ export default function SalesStatisticsPage() {
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
             <RotateCcw size={16} className="text-rose-500" />
-            최근 환불 발생 내역
+            {pt('t029')}
           </h3>
-          <button className="text-xs text-primary font-bold hover:underline">전체보기</button>
+          <button className="text-xs text-primary font-bold hover:underline">{pt('t006')}</button>
         </div>
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">주문번호</th>
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">상품명</th>
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">환불수량</th>
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-right">환불금액</th>
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">사유</th>
-              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">처리일시</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t030')}</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t031')}</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t017')}</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t016')}</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t002')}</th>
+              <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t007')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -346,13 +345,12 @@ export default function SalesStatisticsPage() {
                 <td className="py-3 px-6 text-sm text-right font-bold text-rose-600">₩{item.amount.toLocaleString()}</td>
                 <td className="py-3 px-6 text-center">
                   <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-600 border border-slate-200">
-                    {item.reason}
+                    {refundReasonLabelMap[item.reason] || item.reason}
                   </span>
                 </td>
                 <td className="py-3 px-6 text-center text-xs text-slate-400">{item.date}</td>
               </tr>
-            ))}
-          </tbody>
+            ))}</tbody>
         </table>
       </div>
     </motion.div>

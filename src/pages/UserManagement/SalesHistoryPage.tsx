@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type Member = { id: number; name: string; phone: string; balance: number };
 type Manager = { id: number; name: string; role: string };
@@ -152,6 +153,7 @@ function csvEscape(value: string | number) {
 }
 
 export default function SalesHistoryPage() {
+  const pt = usePageText('user_management_sales_history');
   const [members, setMembers] = useState<Member[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
@@ -431,8 +433,8 @@ export default function SalesHistoryPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">매출 내역 조회</h1>
-          <p className="text-slate-500 mt-1">다양한 조건으로 시술 및 결제 내역을 조회합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t008')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t004')}</p>
         </div>
         <button onClick={exportCsv} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
           <Download size={18} />
@@ -443,11 +445,11 @@ export default function SalesHistoryPage() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2 text-slate-800 font-bold"><Filter size={18} className="text-primary" />상세 필터</div>
-          <button onClick={resetFilters} className="text-xs font-bold text-slate-400 hover:text-primary flex items-center gap-1"><RefreshCw size={12} /> 필터 초기화</button>
+          <button onClick={resetFilters} className="text-xs font-bold text-slate-400 hover:text-primary flex items-center gap-1"><RefreshCw size={12} />{pt('t033')}</button>
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2 lg:col-span-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Calendar size={12} /> 조회 기간</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Calendar size={12} />{pt('t021')}</label>
             <div className="flex items-center gap-2">
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
               <span className="text-slate-300 font-bold">~</span>
@@ -455,47 +457,43 @@ export default function SalesHistoryPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><User size={12} /> 회원명/전화번호</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><User size={12} />{pt('t035')}</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input type="text" placeholder="검색어 입력..." value={searchMember} onChange={(e) => setSearchMember(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
+              <input type="text" placeholder={pt('t002')} value={searchMember} onChange={(e) => setSearchMember(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><TrendingUp size={12} /> 담당 매니저</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><TrendingUp size={12} />{pt('t006')}</label>
             <select value={selectedManager} onChange={(e) => setSelectedManager(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
-              <option value="">전체 매니저</option>
-              {managers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.role})</option>)}
-            </select>
+              <option value="">{pt('t018')}</option>
+              {managers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.role})</option>)}</select>
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Tag size={12} /> 카테고리</label>
             <select value={selectedCategory} onChange={(e) => { setSelectedCategory(e.target.value); setSelectedProcedure(''); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
               <option value="">전체 카테고리</option>
-              {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-            </select>
+              {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Scissors size={12} /> 시술별 조회</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Scissors size={12} />{pt('t011')}</label>
             <select value={selectedProcedure} onChange={(e) => setSelectedProcedure(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
-              <option value="">전체 시술</option>
-              {procedures.filter((entry) => selectedCategory === '' || entry.categoryName === selectedCategory).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-            </select>
+              <option value="">{pt('t019')}</option>
+              {procedures.filter((entry) => selectedCategory === '' || entry.categoryName === selectedCategory).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><CreditCard size={12} /> 지불 방식</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><CreditCard size={12} />{pt('t023')}</label>
             <select value={selectedPayment} onChange={(e) => setSelectedPayment(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
-              <option value="">전체 지불방식</option>
-              {paymentMethods.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}
-            </select>
+              <option value="">{pt('t020')}</option>
+              {paymentMethods.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}</select>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><TrendingUp size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 실매출액</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalSales)}</h3></div></div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center"><Tag size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 할인액</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalDiscount)}</h3></div></div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><Scissors size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 시술 건수</p><h3 className="text-xl font-black text-slate-900">{stats.count}건</h3></div></div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><TrendingUp size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalSales)}</h3></div></div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center"><Tag size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t029')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalDiscount)}</h3></div></div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><Scissors size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t025')}</p><h3 className="text-xl font-black text-slate-900">{stats.count}건</h3></div></div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -506,15 +504,15 @@ export default function SalesHistoryPage() {
           <table className="w-full text-left border-collapse min-w-[1120px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
-                <th className="py-4 px-6">일시</th>
+                <th className="py-4 px-6">{pt('t016')}</th>
                 <th className="py-4 px-6">고객명</th>
                 <th className="py-4 px-6">전화번호</th>
-                <th className="py-4 px-6">담당자</th>
-                <th className="py-4 px-6">시술 항목</th>
-                <th className="py-4 px-6">지불 방식</th>
-                <th className="py-4 px-6">시술 금액</th>
-                <th className="py-4 px-6">실수납액</th>
-                <th className="py-4 px-6">할인/상태</th>
+                <th className="py-4 px-6">{pt('t007')}</th>
+                <th className="py-4 px-6">{pt('t010')}</th>
+                <th className="py-4 px-6">{pt('t023')}</th>
+                <th className="py-4 px-6">{pt('t009')}</th>
+                <th className="py-4 px-6">{pt('t014')}</th>
+                <th className="py-4 px-6">{pt('t034')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -532,8 +530,7 @@ export default function SalesHistoryPage() {
                 return (
                   <tr
                     key={`${entry.entryType}-${entry.id}`}
-                    onDoubleClick={() => setSelectedHistory(entry)}
-                    className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    onDoubleClick={() => setSelectedHistory(entry)} className="hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <td className="py-4 px-6 text-xs font-bold text-slate-500">{formatDateTime(entry.date)}</td>
                     <td className="py-4 px-6">
@@ -551,14 +548,11 @@ export default function SalesHistoryPage() {
                       <div className="flex flex-wrap gap-1">
                         {entry.payments.map((payment, index) => (
                           <span key={`${entry.id}-${index}`} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">
-                            {getPaymentMethodName(payment.method)}
-                          </span>
-                        ))}
-                      </div>
+                            {getPaymentMethodName(payment.method)}</span>
+                        ))}</div>
                     </td>
                     <td className={`py-4 px-6 text-sm font-bold ${entry.entryType === 'POINT_RECHARGE' ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
-                      {formatCurrency(entry.totalAmount)}
-                    </td>
+                      {formatCurrency(entry.totalAmount)}</td>
                     <td className="py-4 px-6 text-sm font-black text-slate-900">{formatCurrency(paid)}</td>
                     <td className="py-4 px-6">
                       {entry.entryType === 'POINT_RECHARGE' ? (
@@ -566,22 +560,19 @@ export default function SalesHistoryPage() {
                       ) : entry.status === 'CANCELLED' ? (
                         <span className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-black">취소</span>
                       ) : entry.status === 'PROCESSING' ? (
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-black">작업중</span>
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-black">{pt('t017')}</span>
                       ) : discount > 0 ? (
                         <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">{discountRate}% ({formatCurrency(discount)})</span>
                       ) : (
                         <span className="text-slate-300 text-[10px]">-</span>
-                      )}
-                    </td>
+                      )}</td>
                   </tr>
                 );
-              })}
-              {filteredHistory.length === 0 && (
+              })} {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-20 text-center text-slate-400 font-bold">조회 조건에 맞는 내역이 없습니다.</td>
+                  <td colSpan={9} className="py-20 text-center text-slate-400 font-bold">{pt('t022')}</td>
                 </tr>
-              )}
-            </tbody>
+              )}</tbody>
           </table>
         </div>
       </div>
@@ -593,8 +584,7 @@ export default function SalesHistoryPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedHistory(null)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setSelectedHistory(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             />
             <motion.div
               drag
@@ -607,8 +597,7 @@ export default function SalesHistoryPage() {
               className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div
-                onPointerDown={(e) => detailDragControls.start(e)}
-                className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10 cursor-move active:cursor-grabbing"
+                onPointerDown={(e) => detailDragControls.start(e)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10 cursor-move active:cursor-grabbing"
               >
                 <div className="flex items-center gap-3">
                   <div className="size-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><Info size={20} /></div>
@@ -628,11 +617,11 @@ export default function SalesHistoryPage() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
                 <div className="grid grid-cols-2 gap-8">
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래 일시</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t001')}</p>
                     <div className="flex items-center gap-2 text-slate-900 font-bold"><Clock size={14} className="text-slate-400" />{formatDateTime(selectedHistory.date)}</div>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">진행 상태</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t024')}</p>
                     <div className={`flex items-center gap-2 font-bold ${selectedHistory.status === 'COMPLETED' ? 'text-emerald-500' : selectedHistory.status === 'CANCELLED' ? 'text-rose-500' : 'text-blue-500'}`}>
                       {selectedHistory.status === 'COMPLETED' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                       {selectedHistory.entryType === 'POINT_RECHARGE'
@@ -648,18 +637,17 @@ export default function SalesHistoryPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 bg-slate-50 rounded-2xl">
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">고객 정보</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{pt('t003')}</p>
                     {selectedHistory.memberId === 'GUEST' ? (
-                      <p className="text-sm font-bold text-slate-900">일반 방문객 (비회원)</p>
+                      <p className="text-sm font-bold text-slate-900">{pt('t015')}</p>
                     ) : (
                       <div>
                         <p className="text-sm font-black text-slate-900">{getMemberInfo(selectedHistory.memberId).name}</p>
                         <p className="text-xs text-slate-500 font-bold">{getMemberInfo(selectedHistory.memberId).phone}</p>
                       </div>
-                    )}
-                  </div>
+                    )}</div>
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">담당 매니저</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{pt('t006')}</p>
                     {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                       <div>
                         <p className="text-sm font-black text-slate-900">-</p>
@@ -670,8 +658,7 @@ export default function SalesHistoryPage() {
                         <p className="text-sm font-black text-slate-900">{managers.find((entry) => entry.id === selectedHistory.managerId)?.name || '-'}</p>
                         <p className="text-xs text-slate-500 font-bold">{managers.find((entry) => entry.id === selectedHistory.managerId)?.role || '-'}</p>
                       </div>
-                    )}
-                  </div>
+                    )}</div>
                 </div>
 
                 <div>
@@ -681,7 +668,7 @@ export default function SalesHistoryPage() {
                   {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                     <div className="p-3 border border-slate-100 rounded-xl bg-emerald-50/40">
                       <p className="text-sm font-bold text-slate-900">{getPointRechargeLabel(selectedHistory)} ({getRechargeTypeDisplayLabel(selectedHistory.rechargeType)})</p>
-                      <p className="text-[10px] text-slate-500 font-bold">실매출 반영 대상</p>
+                      <p className="text-[10px] text-slate-500 font-bold">{pt('t013')}</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -696,52 +683,46 @@ export default function SalesHistoryPage() {
                               <div className="flex items-center gap-2">
                                 <p className="text-sm font-bold text-slate-900">{procedure?.name || '미등록 시술'}</p>
                                 {isCouponProcedure && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">쿠폰결재</span>
-                                )}
-                              </div>
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">{pt('t032')}</span>
+                                )}</div>
                               <p className="text-[10px] text-slate-400 font-bold">{procedure?.categoryName || '-'} | {procedure?.time || 0}분</p>
                             </div>
                             <p className="text-sm font-black text-slate-900">{formatCurrency(procedure?.price || 0)}</p>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
-                </div>
+                      })}</div>
+                  )}</div>
 
                 <div className="bg-slate-900 text-white rounded-2xl p-6 space-y-3">
                   {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                     <>
-                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>충전 금액</span><span>{formatCurrency(selectedHistory.totalAmount)}</span></div>
+                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>{pt('t031')}</span><span>{formatCurrency(selectedHistory.totalAmount)}</span></div>
                       <div className="h-px bg-white/10" />
-                      <div className="flex justify-between items-end"><span className="text-sm font-bold text-slate-400">실매출 반영 금액</span><span className="text-2xl font-black text-primary">{formatCurrency(getActualSalesAmount(selectedHistory))}</span></div>
+                      <div className="flex justify-between items-end"><span className="text-sm font-bold text-slate-400">{pt('t012')}</span><span className="text-2xl font-black text-primary">{formatCurrency(getActualSalesAmount(selectedHistory))}</span></div>
                     </>
                   ) : (
                     <>
-                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>총 시술 금액</span><span>{formatCurrency(selectedHistory.totalAmount)}</span></div>
-                      <div className="flex justify-between text-sm font-bold text-red-400"><span>총 할인 금액</span><span>- {formatCurrency(getDiscountAmount(selectedHistory))}</span></div>
+                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>{pt('t026')}</span><span>{formatCurrency(selectedHistory.totalAmount)}</span></div>
+                      <div className="flex justify-between text-sm font-bold text-red-400"><span>{pt('t028')}</span><span>- {formatCurrency(getDiscountAmount(selectedHistory))}</span></div>
                       <div className="h-px bg-white/10" />
-                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>최종 결제 금액</span><span>{formatCurrency(getTotalPaidAmount(selectedHistory))}</span></div>
-                      <div className="flex justify-between items-end"><span className="text-sm font-bold text-slate-400">실매출 반영 금액</span><span className="text-2xl font-black text-primary">{formatCurrency(getActualSalesAmount(selectedHistory))}</span></div>
+                      <div className="flex justify-between text-sm font-bold text-slate-400"><span>{pt('t030')}</span><span>{formatCurrency(getTotalPaidAmount(selectedHistory))}</span></div>
+                      <div className="flex justify-between items-end"><span className="text-sm font-bold text-slate-400">{pt('t012')}</span><span className="text-2xl font-black text-primary">{formatCurrency(getActualSalesAmount(selectedHistory))}</span></div>
                     </>
-                  )}
-                </div>
+                  )}</div>
 
                 {selectedHistory.entryType === 'SETTLEMENT' && selectedHistory.cancelReason && (
                   <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-900 font-medium">
                     취소 사유: {selectedHistory.cancelReason}
                     {selectedHistory.cancelledAt && <p className="text-xs text-rose-700 mt-2">취소일시: {formatDateTime(selectedHistory.cancelledAt)}</p>}
                   </div>
-                )}
-              </div>
+                )}</div>
 
               <div className="p-6 border-t border-slate-100 bg-slate-50">
-                <button onClick={() => setSelectedHistory(null)} className="w-full py-3 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-600 hover:bg-slate-100 transition-all">닫기</button>
+                <button onClick={() => setSelectedHistory(null)} className="w-full py-3 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-600 hover:bg-slate-100 transition-all">{pt('t005')}</button>
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }

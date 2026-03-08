@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { DB_CONNECTION } from '../../config/dbConfig';
 import { invokeDbCommand, invokeDbConnectionTest } from '../../lib/dbClient';
+import { usePageText } from '../../i18n/usePageText';
 import {
   DEFAULT_SYSTEM_TYPE_CODE,
   normalizeSystemTypeCode,
@@ -50,6 +51,7 @@ type StoreOption = {
 };
 
 export default function SystemSettingsPage() {
+  const pt = usePageText('system_system_settings');
   const [windowSize, setWindowSize] = useState('1920x1080');
   const [dbHost, setDbHost] = useState(DB_CONNECTION.host);
   const [dbPort, setDbPort] = useState(String(DB_CONNECTION.port));
@@ -133,11 +135,11 @@ export default function SystemSettingsPage() {
   }, []);
 
   const handleBackup = () => {
-    alert('데이터 백업이 시작되었습니다. (backup_20240305.sql)');
+    alert(pt('t007'));
   };
 
   const handleRestore = () => {
-    alert('백업 파일 불러오기 창이 활성화됩니다.');
+    alert(pt('t013'));
   };
 
   const handleSave = () => {
@@ -147,7 +149,7 @@ export default function SystemSettingsPage() {
     localStorage.setItem(STORE_CODE_STORAGE_KEY, normalizeStoreCode(selectedStoreCode));
     window.dispatchEvent(new Event('system-type-updated'));
     window.dispatchEvent(new Event('store-code-updated'));
-    alert('설정이 저장되었습니다. 페이지를 새로고침하면 적용됩니다.');
+    alert(pt('t021'));
     window.location.reload();
   };
 
@@ -219,8 +221,8 @@ export default function SystemSettingsPage() {
       className="max-w-4xl"
     >
       <div className="mb-8">
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">시스템 설정</h1>
-        <p className="text-slate-500 mt-1">프로그램 환경 및 데이터베이스, 백업 설정을 관리합니다.</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t023')}</h1>
+        <p className="text-slate-500 mt-1">{pt('t031')}</p>
       </div>
 
       <div className="space-y-6">
@@ -228,7 +230,7 @@ export default function SystemSettingsPage() {
         <section className="bg-white rounded-xl border border-slate-200 overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
             <Layout size={18} className="text-primary" />
-            <h2 className="font-bold text-slate-800">브랜드 및 UI 설정</h2>
+            <h2 className="font-bold text-slate-800">{pt('t016')}</h2>
           </div>
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -240,10 +242,8 @@ export default function SystemSettingsPage() {
                 <input 
                   type="text" 
                   value={programName}
-                  onChange={(e) => setProgramName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                  placeholder="프로그램 이름을 입력하세요"
-                />
+                  onChange={(e) => setProgramName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  placeholder={pt('t030')} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
@@ -253,60 +253,53 @@ export default function SystemSettingsPage() {
                 <input 
                   type="text" 
                   value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                  placeholder="이미지 URL을 입력하세요 (비워두면 기본 아이콘)"
-                />
+                  onChange={(e) => setLogoUrl(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  placeholder={pt('t025')} />
               </div>
             </div>
             
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
-              <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">미리보기</p>
+              <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">{pt('t012')}</p>
               <div className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg w-fit min-w-[200px]">
                 <div className="bg-primary p-1.5 rounded-lg text-white size-9 flex items-center justify-center overflow-hidden">
                   {logoUrl ? (
                     <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <Database size={20} />
-                  )}
-                </div>
+                  )}</div>
                 <span className="text-lg font-bold tracking-tight text-slate-900">{programName}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">현재 점포 (STR_CD)</label>
+              <label className="text-sm font-semibold text-slate-700">{pt('t033')}</label>
               <select
                 value={selectedStoreCode}
-                onChange={(e) => setSelectedStoreCode(normalizeStoreCode(e.target.value))}
-                className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                onChange={(e) => setSelectedStoreCode(normalizeStoreCode(e.target.value))} className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               >
                 {storeOptions.length === 0 && <option value={DEFAULT_STORE_CODE}>HAIR_001</option>}
                 {storeOptions.map((option) => (
                   <option key={option.code} value={option.code}>
                     {option.name} ({option.code})
                   </option>
-                ))}
-              </select>
+                ))}</select>
               <p className="text-xs text-slate-400">
                 모든 데이터 저장/조회는 선택한 점포코드 기준으로 처리됩니다.
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">현재 사용 시스템 타입 (SYSTEM_TYPE)</label>
+              <label className="text-sm font-semibold text-slate-700">{pt('t032')}</label>
               <select
                 value={selectedSystemType}
-                onChange={(e) => setSelectedSystemType(normalizeSystemTypeCode(e.target.value))}
-                className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                onChange={(e) => setSelectedSystemType(normalizeSystemTypeCode(e.target.value))} className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               >
-                {systemTypeOptions.length === 0 && <option value={DEFAULT_SYSTEM_TYPE_CODE}>공통(ALL)</option>}
+                {systemTypeOptions.length === 0 && <option value={DEFAULT_SYSTEM_TYPE_CODE}>{pt('t004')}</option>}
                 {systemTypeOptions.map((option) => (
                   <option key={option.code} value={option.code}>
                     {option.name} ({option.code})
                   </option>
-                ))}
-              </select>
+                ))}</select>
               <p className="text-xs text-slate-400">
                 저장 후 사이드바 메뉴가 선택한 시스템 타입 기준으로 필터링됩니다.
               </p>
@@ -318,7 +311,7 @@ export default function SystemSettingsPage() {
         <section className="bg-white rounded-xl border border-slate-200 overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
             <Monitor size={18} className="text-primary" />
-            <h2 className="font-bold text-slate-800">프로그램 실행 설정</h2>
+            <h2 className="font-bold text-slate-800">{pt('t029')}</h2>
           </div>
           <div className="p-6 space-y-4">
             <div className="flex flex-col gap-2">
@@ -328,15 +321,14 @@ export default function SystemSettingsPage() {
               </label>
               <select 
                 value={windowSize}
-                onChange={(e) => setWindowSize(e.target.value)}
-                className="w-full max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                onChange={(e) => setWindowSize(e.target.value)} className="w-full max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               >
-                <option value="1280x720">1280 x 720 (HD)</option>
-                <option value="1600x900">1600 x 900</option>
-                <option value="1920x1080">1920 x 1080 (FHD)</option>
-                <option value="fullscreen">전체 화면 (Full Screen)</option>
+                <option value="1280x720">{pt('t001')}</option>
+                <option value="1600x900">{pt('t002')}</option>
+                <option value="1920x1080">{pt('t003')}</option>
+                <option value="fullscreen">{pt('t026')}</option>
               </select>
-              <p className="text-xs text-slate-400">설정된 크기는 다음 프로그램 실행 시부터 적용됩니다.</p>
+              <p className="text-xs text-slate-400">{pt('t020')}</p>
             </div>
           </div>
         </section>
@@ -345,17 +337,16 @@ export default function SystemSettingsPage() {
         <section className="bg-white rounded-xl border border-slate-200 overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
             <Server size={18} className="text-primary" />
-            <h2 className="font-bold text-slate-800">데이터베이스(DB) 연결 설정</h2>
+            <h2 className="font-bold text-slate-800">{pt('t009')}</h2>
           </div>
           <div className="p-6 space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold text-slate-700">원격 서버(DB) 사용 여부</p>
-                <p className="text-xs text-slate-400">로컬 DB 대신 원격지에 있는 데이터베이스를 사용합니다.</p>
+                <p className="text-sm font-bold text-slate-700">{pt('t024')}</p>
+                <p className="text-xs text-slate-400">{pt('t011')}</p>
               </div>
               <button 
-                onClick={() => setIsRemoteDb(!isRemoteDb)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isRemoteDb ? 'bg-primary' : 'bg-slate-200'}`}
+                onClick={() => setIsRemoteDb(!isRemoteDb)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isRemoteDb ? 'bg-primary' : 'bg-slate-200'}`}
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRemoteDb ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
@@ -364,69 +355,61 @@ export default function SystemSettingsPage() {
             {isRemoteDb && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">서버 호스트 (Host)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t019')}</label>
                   <input 
                     type="text" 
                     value={dbHost}
-                    onChange={(e) => setDbHost(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbHost(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="example.com"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">포트 (Port)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t028')}</label>
                   <input 
                     type="text" 
                     value={dbPort}
-                    onChange={(e) => setDbPort(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbPort(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="5432"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">데이터베이스명 (Database)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
                   <input
                     type="text"
                     value={dbName}
-                    onChange={(e) => setDbName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="postgres"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">사용자명 (User)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t018')}</label>
                   <input
                     type="text"
                     value={dbUser}
-                    onChange={(e) => setDbUser(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbUser(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="postgres"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">비밀번호 (Password)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t017')}</label>
                   <input
                     type="password"
                     value={dbPassword}
-                    onChange={(e) => setDbPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbPassword(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="password"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">스키마 (Schema)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t022')}</label>
                   <input
                     type="text"
                     value={dbSchema}
-                    onChange={(e) => setDbSchema(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(e) => setDbSchema(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="czr_ami"
                   />
                 </div>
               </div>
-            )}
-            
-            <div className="flex justify-end gap-2">
+            )}<div className="flex justify-end gap-2">
               <button
                 onClick={handleRunDbIntegrityCheck}
                 disabled={isRunningIntegrityCheck}
@@ -451,7 +434,7 @@ export default function SystemSettingsPage() {
         <section className="bg-white rounded-xl border border-slate-200 overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
             <Database size={18} className="text-primary" />
-            <h2 className="font-bold text-slate-800">데이터 백업 및 복구</h2>
+            <h2 className="font-bold text-slate-800">{pt('t006')}</h2>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -461,8 +444,8 @@ export default function SystemSettingsPage() {
                     <Download size={20} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">데이터 백업</h3>
-                    <p className="text-xs text-slate-400">현재 DB 상태를 파일로 저장합니다.</p>
+                    <h3 className="text-sm font-bold text-slate-800">{pt('t005')}</h3>
+                    <p className="text-xs text-slate-400">{pt('t034')}</p>
                   </div>
                 </div>
                 <button 
@@ -479,8 +462,8 @@ export default function SystemSettingsPage() {
                     <Upload size={20} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">데이터 복구</h3>
-                    <p className="text-xs text-slate-400">백업 파일을 불러와 데이터를 복원합니다.</p>
+                    <h3 className="text-sm font-bold text-slate-800">{pt('t008')}</h3>
+                    <p className="text-xs text-slate-400">{pt('t014')}</p>
                   </div>
                 </div>
                 <button 
@@ -494,8 +477,8 @@ export default function SystemSettingsPage() {
             <div className="mt-6 p-4 rounded-lg bg-blue-50 border border-blue-100 flex items-start gap-3">
               <ShieldCheck className="text-blue-500 mt-0.5" size={18} />
               <div>
-                <p className="text-xs font-bold text-blue-800">보안 권장사항</p>
-                <p className="text-[11px] text-blue-600 mt-0.5">정기적인 백업은 데이터 유실을 방지하는 가장 좋은 방법입니다. 백업 파일은 외부 저장소에 보관하는 것을 권장합니다.</p>
+                <p className="text-xs font-bold text-blue-800">{pt('t015')}</p>
+                <p className="text-[11px] text-blue-600 mt-0.5">{pt('t027')}</p>
               </div>
             </div>
           </div>

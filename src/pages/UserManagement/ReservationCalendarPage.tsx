@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type CodeOption = {
   code: string;
@@ -284,6 +285,7 @@ function createEmptyForm(
 }
 
 export default function ReservationCalendarPage() {
+  const pt = usePageText('user_management_reservation_calendar');
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
@@ -642,12 +644,12 @@ export default function ReservationCalendarPage() {
 
   const addSelectedService = () => {
     if (!selectedService) {
-      alert('시술 항목을 선택해 주세요.');
+      alert(pt('t011'));
       return;
     }
 
     if (form.services.some((service) => service.serviceId === selectedService.id)) {
-      alert('이미 추가된 시술 항목입니다.');
+      alert(pt('t023'));
       return;
     }
 
@@ -682,19 +684,19 @@ export default function ReservationCalendarPage() {
     event.preventDefault();
 
     if (!form.reservationDate || !form.startTime) {
-      alert('예약 날짜와 시간을 입력해 주세요.');
+      alert(pt('t017'));
       return;
     }
     if (!form.customerName.trim() || !form.designerName.trim()) {
-      alert('고객명과 디자이너를 입력해 주세요.');
+      alert(pt('t002'));
       return;
     }
     if (!form.status) {
-      alert('예약 상태를 선택해 주세요.');
+      alert(pt('t018'));
       return;
     }
     if (form.services.length === 0) {
-      alert('시술 항목을 1건 이상 추가해 주세요.');
+      alert(pt('t010'));
       return;
     }
 
@@ -733,7 +735,7 @@ export default function ReservationCalendarPage() {
 
   // 예약 삭제: 헤더를 삭제하면 시술 라인도 CASCADE로 함께 정리된다.
   const deleteReservation = async (reservationId: number) => {
-    if (!window.confirm('선택한 예약을 삭제하시겠습니까?')) return;
+    if (!window.confirm(pt('t006'))) return;
 
     try {
       setIsMutating(true);
@@ -766,28 +768,25 @@ export default function ReservationCalendarPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">예약 캘린더 관리</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t019')}</h1>
           <p className="text-slate-500 mt-1">
             예약 등록/수정/상태 변경을 팝업에서 처리하고, 캘린더와 일별 리스트를 함께 관리합니다.
           </p>
         </div>
         <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1">
           <button
-            onClick={() => setViewMode('calendar')}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            onClick={() => setViewMode('calendar')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             Calendar
           </button>
           <button
-            onClick={() => setViewMode('list')}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            onClick={() => setViewMode('list')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             List
           </button>
         </div>
         <button
-          onClick={() => openCreateModal(selectedDate)}
-          disabled={isDbBusy}
+          onClick={() => openCreateModal(selectedDate)} disabled={isDbBusy}
           className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-60"
         >
           <PlusCircle size={16} />
@@ -802,23 +801,20 @@ export default function ReservationCalendarPage() {
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CalendarDays size={16} className="text-primary" />
-              <h2 className="text-sm font-bold text-slate-700">월간 예약 캘린더</h2>
+              <h2 className="text-sm font-bold text-slate-700">{pt('t022')}</h2>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => moveMonth(-1)}
-                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                onClick={() => moveMonth(-1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
                 aria-label="previous-month"
               >
                 <ChevronLeft size={16} />
               </button>
               <div className="w-28 text-center text-sm font-bold text-slate-800">
-                {formatMonthLabel(monthCursor)}
-              </div>
+                {formatMonthLabel(monthCursor)}</div>
               <button
-                onClick={() => moveMonth(1)}
-                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                onClick={() => moveMonth(1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
                 aria-label="next-month"
               >
                 <ChevronRight size={16} />
@@ -844,8 +840,7 @@ export default function ReservationCalendarPage() {
               >
                 {weekday}
               </div>
-            ))}
-          </div>
+            ))}</div>
 
           <div className="grid grid-cols-7">
             {calendarCells.map((cell) => {
@@ -856,8 +851,7 @@ export default function ReservationCalendarPage() {
               return (
                 <button
                   key={cell.isoDate}
-                  onClick={() => setSelectedDate(cell.isoDate)}
-                  className={`min-h-[126px] border-r border-b border-slate-200 p-2 align-top text-left transition-colors ${cell.inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'} ${isSelected ? 'ring-2 ring-primary/40 ring-inset' : ''}`}
+                  onClick={() => setSelectedDate(cell.isoDate)} className={`min-h-[126px] border-r border-b border-slate-200 p-2 align-top text-left transition-colors ${cell.inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'} ${isSelected ? 'ring-2 ring-primary/40 ring-inset' : ''}`}
                 >
                   <div className="flex items-center justify-between">
                     <span className={`text-xs font-semibold ${isToday ? 'text-primary' : ''}`}>{cell.date.getDate()}</span>
@@ -865,8 +859,7 @@ export default function ReservationCalendarPage() {
                       <span className="text-[10px] font-semibold text-slate-400">
                         {dayReservations.length}건
                       </span>
-                    )}
-                  </div>
+                    )}</div>
 
                   <div className="mt-1 space-y-1">
                     {dayReservations.slice(0, 3).map((reservation) => {
@@ -885,28 +878,24 @@ export default function ReservationCalendarPage() {
                           {reservation.startTime} {reservation.customerName}
                         </button>
                       );
-                    })}
-                    {dayReservations.length > 3 && (
+                    })} {dayReservations.length > 3 && (
                       <p className="text-[10px] text-slate-400 font-semibold pl-1">
                         +{dayReservations.length - 3}건 더보기
                       </p>
-                    )}
-                  </div>
+                    )}</div>
                 </button>
               );
-            })}
-          </div>
+            })}</div>
         </section>
 
         <section className="hidden xl:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-700">선택일 예약 목록</h2>
+              <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
               <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate)}</p>
             </div>
             <button
-              onClick={() => openCreateModal(selectedDate)}
-              disabled={isDbBusy}
+              onClick={() => openCreateModal(selectedDate)} disabled={isDbBusy}
               className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary/90 disabled:opacity-60"
             >
               선택일 등록
@@ -917,11 +906,11 @@ export default function ReservationCalendarPage() {
             <table className="w-full border-collapse text-left min-w-[760px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">시간</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">고객</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">디자이너</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">시술</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">예상금액</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t008')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">상태</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">작업</th>
                 </tr>
@@ -948,11 +937,9 @@ export default function ReservationCalendarPage() {
                         </td>
                         <td className="py-3 px-4 text-sm text-slate-600">{reservation.designerName}</td>
                         <td className="py-3 px-4 text-sm text-slate-600">
-                          {reservation.services.map((service) => service.serviceName).join(', ')}
-                        </td>
+                          {reservation.services.map((service) => service.serviceName).join(', ')}</td>
                         <td className="py-3 px-4 text-sm text-right font-semibold text-slate-700">
-                          {formatCurrency(getExpectedAmount(reservation.services))}
-                        </td>
+                          {formatCurrency(getExpectedAmount(reservation.services))}</td>
                         <td className="py-3 px-4 text-center">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>
                             {statusLabel}
@@ -961,16 +948,14 @@ export default function ReservationCalendarPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => openEditModal(reservation)}
-                              disabled={isDbBusy}
+                              onClick={() => openEditModal(reservation)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
                               title="수정"
                             >
                               <Edit2 size={14} />
                             </button>
                             <button
-                              onClick={() => deleteReservation(reservation.id)}
-                              disabled={isDbBusy}
+                              onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                               title="삭제"
                             >
@@ -981,8 +966,7 @@ export default function ReservationCalendarPage() {
                       </tr>
                     );
                   })
-                )}
-              </tbody>
+                )}</tbody>
             </table>
           </div>
         </section>
@@ -993,18 +977,15 @@ export default function ReservationCalendarPage() {
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2 md:order-2">
             <button
-              onClick={() => moveMonth(-1)}
-              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+              onClick={() => moveMonth(-1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
               aria-label="previous-month"
             >
               <ChevronLeft size={16} />
             </button>
             <div className="w-28 text-center text-sm font-bold text-slate-800">
-              {formatMonthLabel(monthCursor)}
-            </div>
+              {formatMonthLabel(monthCursor)}</div>
             <button
-              onClick={() => moveMonth(1)}
-              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+              onClick={() => moveMonth(1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
               aria-label="next-month"
             >
               <ChevronRight size={16} />
@@ -1025,7 +1006,7 @@ export default function ReservationCalendarPage() {
 
         <div className="p-4 space-y-4">
           {dailyReservationGroups.length === 0 ? (
-            <p className="text-sm text-slate-400">해당 월에 예약이 없습니다.</p>
+            <p className="text-sm text-slate-400">{pt('t026')}</p>
           ) : (
             dailyReservationGroups.map((group) => (
               <div key={group.date} className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1038,11 +1019,11 @@ export default function ReservationCalendarPage() {
                   <table className="w-full border-collapse text-left min-w-[900px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-200">
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">시간</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">고객</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">디자이너</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">예상시간</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">예상금액</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">상태</th>
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">비고</th>
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">작업</th>
@@ -1061,8 +1042,7 @@ export default function ReservationCalendarPage() {
                               {getExpectedMinutes(reservation.services)}분
                             </td>
                             <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">
-                              {formatCurrency(getExpectedAmount(reservation.services))}
-                            </td>
+                              {formatCurrency(getExpectedAmount(reservation.services))}</td>
                             <td className="py-2.5 px-4 text-center">
                               <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>
                                 {statusLabel}
@@ -1072,16 +1052,14 @@ export default function ReservationCalendarPage() {
                             <td className="py-2.5 px-4">
                               <div className="flex items-center justify-center gap-2">
                                 <button
-                                  onClick={() => openEditModal(reservation)}
-                                  disabled={isDbBusy}
+                                  onClick={() => openEditModal(reservation)} disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
                                   title="수정"
                                 >
                                   <Edit2 size={14} />
                                 </button>
                                 <button
-                                  onClick={() => deleteReservation(reservation.id)}
-                                  disabled={isDbBusy}
+                                  onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                   title="삭제"
                                 >
@@ -1091,18 +1069,14 @@ export default function ReservationCalendarPage() {
                             </td>
                           </tr>
                         );
-                      })}
-                    </tbody>
+                      })}</tbody>
                   </table>
                 </div>
               </div>
             ))
-          )}
-        </div>
+          )}</div>
       </section>
-      )}
-
-      {isModalOpen && (
+      )} {isModalOpen && (
         <div
           className="fixed inset-0 z-[80] bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4"
           onClick={closeModal}
@@ -1115,11 +1089,9 @@ export default function ReservationCalendarPage() {
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             className="w-full max-w-5xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
-            onClick={(event) => event.stopPropagation()}
-          >
+            onClick={(event) => event.stopPropagation()} >
             <div
-              onPointerDown={(event) => modalDragControls.start(event)}
-              className="px-5 py-4 border-b border-slate-200 flex items-center justify-between cursor-move active:cursor-grabbing"
+              onPointerDown={(event) => modalDragControls.start(event)} className="px-5 py-4 border-b border-slate-200 flex items-center justify-between cursor-move active:cursor-grabbing"
             >
               <div>
                 <h3 className="text-lg font-black text-slate-900">
@@ -1145,7 +1117,7 @@ export default function ReservationCalendarPage() {
             <form onSubmit={saveReservation} className="max-h-[calc(90vh-80px)] overflow-y-auto p-5 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">예약일</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t021')}</label>
                   <input
                     type="date"
                     value={form.reservationDate}
@@ -1157,53 +1129,46 @@ export default function ReservationCalendarPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">시간</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
                   <input
                     type="time"
                     value={form.startTime}
-                    onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">예약상태</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t020')}</label>
                   <select
                     value={form.status}
-                    onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   >
                     {statusOptions.map((status) => (
                       <option key={status.code} value={status.code}>
                         {status.label}
                       </option>
-                    ))}
-                  </select>
+                    ))}</select>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">고객명</label>
                   <input
                     value={form.customerName}
-                    onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
-                    list="reservation-customer-options"
-                    placeholder="회원 선택 또는 직접 입력"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))} list="reservation-customer-options"
+                    placeholder={pt('t027')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                   {/* 고객명은 회원 목록 추천 + 직접 입력을 동시에 허용하기 위해 datalist를 사용한다. */}
                   <datalist id="reservation-customer-options">
                     {memberNames.map((name) => (
                       <option key={name} value={name} />
-                    ))}
-                  </datalist>
+                    ))}</datalist>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">디자이너</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t004')}</label>
                   <select
                     value={form.designerName}
-                    onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
+                    onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
                   >
                     <option value="">
                       {designerNames.length > 0 ? '디자이너를 선택해 주세요' : '직원 테이블에 디자이너가 없습니다'}
@@ -1212,23 +1177,19 @@ export default function ReservationCalendarPage() {
                       <option key={name} value={name}>
                         {name}
                       </option>
-                    ))}
-                    {/* 기존 예약 수정 시, 현재 직원 목록에 없는 이름도 값 유지를 위해 임시 옵션으로 노출한다. */}
+                    ))} {/* 기존 예약 수정 시, 현재 직원 목록에 없는 이름도 값 유지를 위해 임시 옵션으로 노출한다. */}
                     {form.designerName && !designerNames.includes(form.designerName) && (
                       <option value={form.designerName}>
                         {form.designerName} (기존값)
                       </option>
-                    )}
-                  </select>
+                    )}</select>
                 </div>
 
                 <div className="space-y-1 md:col-span-2 lg:col-span-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
                   <input
                     value={form.note}
-                    onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-                    placeholder="특이사항 입력"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))} placeholder={pt('t025')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
               </div>
@@ -1262,12 +1223,11 @@ export default function ReservationCalendarPage() {
                           <option key={category.code} value={category.code}>
                             {category.label}
                           </option>
-                        ))}
-                      </select>
+                        ))}</select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">시술 항목</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t009')}</label>
                       <select
                         value={form.selectedServiceId}
                         onChange={(event) =>
@@ -1276,15 +1236,14 @@ export default function ReservationCalendarPage() {
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 outline-none"
                       >
                         {categoryServices.length === 0 ? (
-                          <option value="">등록된 시술이 없습니다</option>
+                          <option value="">{pt('t003')}</option>
                         ) : (
                           categoryServices.map((service) => (
                             <option key={service.id} value={String(service.id)}>
                               {service.serviceName} ({service.durationMinutes}분 / {formatCurrency(service.unitPrice)})
                             </option>
                           ))
-                        )}
-                      </select>
+                        )}</select>
                     </div>
 
                     {selectedService && (
@@ -1293,9 +1252,7 @@ export default function ReservationCalendarPage() {
                         <p>예상시간: {selectedService.durationMinutes}분</p>
                         <p>단가: {formatCurrency(selectedService.unitPrice)}</p>
                       </div>
-                    )}
-
-                    <button
+                    )}<button
                       type="button"
                       onClick={addSelectedService}
                       disabled={!selectedService || isDbBusy}
@@ -1308,15 +1265,15 @@ export default function ReservationCalendarPage() {
                 </section>
 
                 <section className="lg:col-span-7 border border-slate-200 rounded-xl p-4">
-                  <h4 className="text-sm font-bold text-slate-700 mb-3">추가된 시술 내역</h4>
+                  <h4 className="text-sm font-bold text-slate-700 mb-3">{pt('t024')}</h4>
 
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left min-w-[620px]">
                       <thead>
                         <tr className="bg-slate-900 text-slate-200">
                           <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">카테고리</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">시술명</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">예상시간</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t012')}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t016')}</th>
                           <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">단가</th>
                           <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-center">삭제</th>
                         </tr>
@@ -1335,13 +1292,11 @@ export default function ReservationCalendarPage() {
                               <td className="py-2.5 px-3 text-sm font-semibold text-slate-700">{service.serviceName}</td>
                               <td className="py-2.5 px-3 text-sm text-right text-slate-600">{service.durationMinutes}분</td>
                               <td className="py-2.5 px-3 text-sm text-right font-semibold text-slate-700">
-                                {formatCurrency(service.unitPrice)}
-                              </td>
+                                {formatCurrency(service.unitPrice)}</td>
                               <td className="py-2.5 px-3 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => removeService(service.lineId)}
-                                  disabled={isDbBusy}
+                                  onClick={() => removeService(service.lineId)} disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                 >
                                   <Trash2 size={14} />
@@ -1349,8 +1304,7 @@ export default function ReservationCalendarPage() {
                               </td>
                             </tr>
                           ))
-                        )}
-                      </tbody>
+                        )}</tbody>
                     </table>
                   </div>
                 </section>
@@ -1359,11 +1313,11 @@ export default function ReservationCalendarPage() {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
                 <div className="flex flex-wrap gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                    <p className="text-xs font-bold text-slate-500 uppercase">예상 작업시간</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t014')}</p>
                     <p className="font-black text-slate-900 mt-1">{formExpectedMinutes}분</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                    <p className="text-xs font-bold text-slate-500 uppercase">예상 금액</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t013')}</p>
                     <p className="font-black text-slate-900 mt-1">{formatCurrency(formExpectedAmount)}</p>
                   </div>
                 </div>
@@ -1390,7 +1344,6 @@ export default function ReservationCalendarPage() {
             </form>
           </motion.div>
         </div>
-      )}
-    </motion.div>
+      )}</motion.div>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import { usePageText } from '../../i18n/usePageText';
 
 type CategoryCode = string;
 
@@ -53,13 +54,6 @@ type ModalProps = {
 
 const CATEGORY_GROUP_ID = 'T_CATEGORY';
 
-const FALLBACK_SERVICE_CATEGORIES: ServiceCategory[] = [
-  { code: 'CUT', label: '커트' },
-  { code: 'PERM', label: '파마' },
-  { code: 'COLOR', label: '염색' },
-  { code: 'ETC', label: '기타' },
-];
-
 const EMPTY_FORM: ServiceForm = {
   category: '',
   serviceName: '',
@@ -92,8 +86,7 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
       className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
     >
       <div
-        onPointerDown={(event) => dragControls.start(event)}
-        className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
+        onPointerDown={(event) => dragControls.start(event)} className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 cursor-move active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           {icon}
@@ -112,6 +105,16 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
 }
 
 export default function ServiceCatalogPage() {
+  const pt = usePageText('system_service_catalog');
+  const fallbackServiceCategories = useMemo<ServiceCategory[]>(
+    () => [
+      { code: 'CUT', label: pt('t041') },
+      { code: 'PERM', label: pt('t042') },
+      { code: 'COLOR', label: pt('t043') },
+      { code: 'ETC', label: pt('t044') },
+    ],
+    [pt],
+  );
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [items, setItems] = useState<ServiceItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -167,7 +170,7 @@ export default function ServiceCatalogPage() {
         .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code))
         .map((detail) => ({ code: detail.code, label: detail.name }));
 
-      const nextCategories = loadedCategories.length > 0 ? loadedCategories : FALLBACK_SERVICE_CATEGORIES;
+      const nextCategories = loadedCategories.length > 0 ? loadedCategories : fallbackServiceCategories;
       setCategories(nextCategories);
 
       setNewForm((prev) => {
@@ -179,10 +182,10 @@ export default function ServiceCatalogPage() {
         return { ...prev, category: nextCategories[0]?.code || '' };
       });
     } catch (error) {
-      setCategories(FALLBACK_SERVICE_CATEGORIES);
+      setCategories(fallbackServiceCategories);
       setNewForm((prev) => ({
         ...prev,
-        category: prev.category || FALLBACK_SERVICE_CATEGORIES[0].code,
+        category: prev.category || fallbackServiceCategories[0].code,
       }));
       console.error('Failed to load T_CATEGORY common codes:', error);
     }
@@ -223,7 +226,7 @@ export default function ServiceCatalogPage() {
       setIsLoading(true);
       await Promise.all([loadCategories(), loadServiceItems()]);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '시술 항목 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t014'));
     } finally {
       setIsLoading(false);
     }
@@ -260,10 +263,10 @@ export default function ServiceCatalogPage() {
     const unitPrice = Number(form.unitPrice);
     const durationMinutes = Number(form.durationMinutes);
 
-    if (!form.category) return `공통코드 그룹 ${CATEGORY_GROUP_ID}에 카테고리를 먼저 등록해 주세요.`;
-    if (!form.serviceName.trim()) return '시술명을 입력해 주세요.';
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return '단가는 0보다 큰 숫자로 입력해 주세요.';
-    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return '작업 시간은 0보다 큰 숫자로 입력해 주세요.';
+    if (!form.category) return pt('t034', { group: CATEGORY_GROUP_ID });
+    if (!form.serviceName.trim()) return pt('t035');
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return pt('t036');
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return pt('t037');
 
     return null;
   };
@@ -297,9 +300,9 @@ export default function ServiceCatalogPage() {
       await loadServiceItems();
       resetNewForm();
       setIsNewModalOpen(false);
-      alert(result.message || '신규 시술이 등록되었습니다.');
+      alert(result.message || pt('t015'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '시술 항목 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t016'));
     } finally {
       setIsMutating(false);
     }
@@ -335,16 +338,16 @@ export default function ServiceCatalogPage() {
       await loadServiceItems();
       resetEditState();
       setIsEditModalOpen(false);
-      alert(result.message || '시술 정보가 수정되었습니다.');
+      alert(result.message || pt('t017'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '시술 항목 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t016'));
     } finally {
       setIsMutating(false);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('이 시술 항목을 삭제하시겠습니까?')) return;
+    if (!window.confirm(pt('t009'))) return;
 
     try {
       setIsMutating(true);
@@ -356,9 +359,9 @@ export default function ServiceCatalogPage() {
         setIsEditModalOpen(false);
         resetEditState();
       }
-      alert(result.message || '시술 항목이 삭제되었습니다.');
+      alert(result.message || pt('t018'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '시술 항목 삭제에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t019'));
     } finally {
       setIsMutating(false);
     }
@@ -370,8 +373,8 @@ export default function ServiceCatalogPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">시술 등록 및 관리</h1>
-          <p className="text-slate-500 mt-1">미용실에서 제공하는 시술 항목과 단가, 소요 시간을 관리합니다.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t003')}</h1>
+          <p className="text-slate-500 mt-1">{pt('t002')}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -381,7 +384,7 @@ export default function ServiceCatalogPage() {
             className="bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold px-4 py-2 rounded-lg border border-slate-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-            새로고침
+            {pt('t020')}
           </button>
           <button
             onClick={() => {
@@ -392,7 +395,7 @@ export default function ServiceCatalogPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
           >
             <Plus size={18} />
-            시술 추가
+            {pt('t021')}
           </button>
         </div>
       </div>
@@ -403,22 +406,20 @@ export default function ServiceCatalogPage() {
             <Scissors size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">전체 시술</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t012')}</p>
             <p className="text-2xl font-black text-slate-900">{items.length}</p>
           </div>
         </div>
         {categoryStats.map((category) => (
           <div key={category.code} className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
             <div className="size-12 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center font-bold">
-              {category.label.slice(0, 1)}
-            </div>
+              {category.label.slice(0, 1)}</div>
             <div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category.label}</p>
               <p className="text-2xl font-black text-slate-900">{category.count}</p>
             </div>
           </div>
-        ))}
-      </div>
+        ))}</div>
 
       <div className="bg-white rounded-xl border border-slate-200 grid-shadow overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -426,26 +427,22 @@ export default function ServiceCatalogPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="시술명, 코드, 카테고리 검색..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder={pt('t006')} value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
 
           <div className="flex items-center gap-2">
             <select
               value={selectedCategory}
-              onChange={(event) => setSelectedCategory(event.target.value as 'all' | CategoryCode)}
-              className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20"
+              onChange={(event) => setSelectedCategory(event.target.value as 'all' | CategoryCode)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="all">전체 카테고리</option>
+              <option value="all">{pt('t022')}</option>
               {categories.map((category) => (
                 <option key={category.code} value={category.code}>
                   {category.label}
                 </option>
-              ))}
-            </select>
+              ))}</select>
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -454,7 +451,7 @@ export default function ServiceCatalogPage() {
               className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50"
             >
               <Filter size={16} />
-              필터 초기화
+              {pt('t023')}
             </button>
           </div>
         </div>
@@ -463,20 +460,20 @@ export default function ServiceCatalogPage() {
           <table className="w-full text-left border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">코드</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">시술명</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">카테고리</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">단가 (₩)</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업시간</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">상태</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t013')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t024')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t001')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t025')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t026')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
-                    조건에 맞는 시술 항목이 없습니다.
+                    {pt('t027')}
                   </td>
                 </tr>
               ) : (
@@ -501,7 +498,7 @@ export default function ServiceCatalogPage() {
                       <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">
                         <div className="flex items-center justify-center gap-1">
                           <Clock size={14} className="text-slate-400" />
-                          {item.durationMinutes}분
+                          {item.durationMinutes}{pt('t028')}
                         </div>
                       </td>
                       <td className="py-4 px-6 text-center">
@@ -512,21 +509,19 @@ export default function ServiceCatalogPage() {
                               : 'bg-slate-100 text-slate-500 border-slate-200'
                           }`}
                         >
-                          {item.useYn === 'Y' ? '사용중' : '미사용'}
+                          {item.useYn === 'Y' ? pt('t029') : pt('t030')}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button
-                            onClick={() => handleEditClick(item)}
-                            disabled={isMutating}
+                            onClick={() => handleEditClick(item)} disabled={isMutating}
                             className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
                           >
                             <Edit2 size={14} />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id)}
-                            disabled={isMutating}
+                            onClick={() => handleDelete(item.id)} disabled={isMutating}
                             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           >
                             <Trash2 size={14} />
@@ -536,8 +531,7 @@ export default function ServiceCatalogPage() {
                     </tr>
                   );
                 })
-              )}
-            </tbody>
+              )}</tbody>
           </table>
         </div>
       </div>
@@ -546,64 +540,56 @@ export default function ServiceCatalogPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title="신규 시술 등록"
-              onClose={() => setIsNewModalOpen(false)}
-              icon={<Plus size={20} className="text-primary" />}
+              title={pt('t007')} onClose={() => setIsNewModalOpen(false)} icon={<Plus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSaveNew} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">시술명</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005')}</label>
                     <input
                       type="text"
                       required
                       value={newForm.serviceName}
-                      onChange={(event) => setNewForm((prev) => ({ ...prev, serviceName: event.target.value }))}
-                      disabled={isMutating}
+                      onChange={(event) => setNewForm((prev) => ({ ...prev, serviceName: event.target.value }))} disabled={isMutating}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder="예: 남성 디자인 컷"
-                    />
+                      placeholder={pt('t008')} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024')}</label>
                     <select
                       value={newForm.category}
-                      onChange={(event) => setNewForm((prev) => ({ ...prev, category: event.target.value }))}
-                      disabled={isMutating}
+                      onChange={(event) => setNewForm((prev) => ({ ...prev, category: event.target.value }))} disabled={isMutating}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       {categories.map((category) => (
                         <option key={category.code} value={category.code}>
                           {category.label}
                         </option>
-                      ))}
-                    </select>
+                      ))}</select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">작업 시간 (분)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
                     <div className="relative">
                       <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required
                         value={newForm.durationMinutes}
-                        onChange={(event) => setNewForm((prev) => ({ ...prev, durationMinutes: event.target.value }))}
-                        disabled={isMutating}
+                        onChange={(event) => setNewForm((prev) => ({ ...prev, durationMinutes: event.target.value }))} disabled={isMutating}
                         className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         placeholder="30"
                       />
                     </div>
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">단가 (₩)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required
                         value={newForm.unitPrice}
-                        onChange={(event) => setNewForm((prev) => ({ ...prev, unitPrice: event.target.value }))}
-                        disabled={isMutating}
+                        onChange={(event) => setNewForm((prev) => ({ ...prev, unitPrice: event.target.value }))} disabled={isMutating}
                         className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                         placeholder="0"
                       />
@@ -614,32 +600,29 @@ export default function ServiceCatalogPage() {
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsNewModalOpen(false)}
-                    disabled={isMutating}
+                    onClick={() => setIsNewModalOpen(false)} disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-60"
                   >
-                    취소
+                    {pt('t031')}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    저장
+                    {pt('t032')}
                   </button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
 
       <AnimatePresence>
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title="시술 정보 수정"
-              onClose={() => {
+              title={pt('t004')} onClose={() => {
                 setIsEditModalOpen(false);
                 resetEditState();
               }}
@@ -648,55 +631,50 @@ export default function ServiceCatalogPage() {
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">시술명</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005')}</label>
                     <input
                       type="text"
                       required
                       value={editForm.serviceName}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, serviceName: event.target.value }))}
-                      disabled={isMutating}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, serviceName: event.target.value }))} disabled={isMutating}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024')}</label>
                     <select
                       value={editForm.category}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, category: event.target.value }))}
-                      disabled={isMutating}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, category: event.target.value }))} disabled={isMutating}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
                       {categories.map((category) => (
                         <option key={category.code} value={category.code}>
                           {category.label}
                         </option>
-                      ))}
-                    </select>
+                      ))}</select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">작업 시간 (분)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
                     <div className="relative">
                       <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required
                         value={editForm.durationMinutes}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, durationMinutes: event.target.value }))}
-                        disabled={isMutating}
+                        onChange={(event) => setEditForm((prev) => ({ ...prev, durationMinutes: event.target.value }))} disabled={isMutating}
                         className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       />
                     </div>
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">단가 (₩)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required
                         value={editForm.unitPrice}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, unitPrice: event.target.value }))}
-                        disabled={isMutating}
+                        onChange={(event) => setEditForm((prev) => ({ ...prev, unitPrice: event.target.value }))} disabled={isMutating}
                         className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                       />
                     </div>
@@ -713,21 +691,20 @@ export default function ServiceCatalogPage() {
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-60"
                   >
-                    취소
+                    {pt('t031')}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    수정 완료
+                    {pt('t033')}
                   </button>
                 </div>
               </form>
             </DraggableModal>
           </div>
-        )}
-      </AnimatePresence>
+        )}</AnimatePresence>
     </motion.div>
   );
 }
