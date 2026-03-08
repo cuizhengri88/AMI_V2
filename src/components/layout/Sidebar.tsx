@@ -416,8 +416,8 @@ export default function Sidebar() {
           </div>
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">Enterprise Admin</p>
-              <p className="text-xs text-slate-500">v2.4.0</p>
+              <p className="text-sm font-semibold truncate">CZR System</p>
+              <p className="text-xs text-slate-500">v1.0.0</p>
             </div>
           )}
         </div>

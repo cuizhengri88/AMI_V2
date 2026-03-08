@@ -38,6 +38,7 @@ type MenuRow = {
   menu_type: string;
   path: string;
   system_type_code: string;
+  is_start_menu: boolean;
   order: number;
   status: string;
   names: MenuNames;
@@ -49,6 +50,7 @@ type MenuNode = {
   menu_type: MenuType;
   path: string;
   system_type_code: string;
+  is_start_menu: boolean;
   order: number;
   status: string;
   names: MenuNames;
@@ -62,6 +64,7 @@ type MenuForm = {
   names: MenuNames;
   path: string;
   systemTypeCode: string;
+  isStartMenu: boolean;
   order: number;
   status: string;
 };
@@ -87,6 +90,7 @@ const EMPTY_FORM: MenuForm = {
   names: { ko: '', en: '', zh: '' },
   path: '',
   systemTypeCode: DEFAULT_SYSTEM_TYPE_CODE,
+  isStartMenu: false,
   order: 1,
   status: '사용중',
 };
@@ -105,6 +109,7 @@ function buildTree(rows: MenuRow[]): MenuNode[] {
       menu_type: normalizeType(row.menu_type),
       path: row.path,
       system_type_code: normalizeSystemTypeCode(row.system_type_code),
+      is_start_menu: Boolean(row.is_start_menu),
       order: Number(row.order) || 1,
       status: row.status || '사용중',
       names: {
@@ -240,6 +245,7 @@ export default function MenuManagementPage() {
       names: { ...menu.names },
       path: menu.path,
       systemTypeCode: normalizeSystemTypeCode(menu.system_type_code),
+      isStartMenu: Boolean(menu.is_start_menu),
       order: menu.order,
       status: menu.status || '사용중',
     });
@@ -272,6 +278,7 @@ export default function MenuManagementPage() {
         menu_type: formData.type,
         path: formData.path.trim(),
         system_type_code: normalizeSystemTypeCode(formData.systemTypeCode),
+        is_start_menu: formData.type === 'SUB' ? formData.isStartMenu : false,
         order: Number(formData.order) || 1,
         status: formData.status || '사용중',
         names: {
@@ -354,13 +361,14 @@ export default function MenuManagementPage() {
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t015')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t034')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">시작메뉴</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {menuData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
+                <td colSpan={7} className="py-12 text-center text-slate-400 text-sm">
                   {pt('t036')}
                 </td>
               </tr>
@@ -395,6 +403,15 @@ export default function MenuManagementPage() {
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         {menu.status}
                       </span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      {menu.is_start_menu ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          시작
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">-</span>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -442,6 +459,15 @@ export default function MenuManagementPage() {
                             </span>
                           </td>
                           <td className="py-3 px-6 text-center">
+                            {child.is_start_menu ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                시작
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-300">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-6 text-center">
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => openEditModal(child)} className="p-1 text-slate-400 hover:text-primary transition-colors"
@@ -480,7 +506,7 @@ export default function MenuManagementPage() {
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <button
-                  onClick={() => setFormData((prev) => ({ ...prev, type: 'MAIN', parentId: '' }))} className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  onClick={() => setFormData((prev) => ({ ...prev, type: 'MAIN', parentId: '', isStartMenu: false }))} className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
                     formData.type === 'MAIN'
                       ? 'border-primary bg-primary/5 text-primary'
                       : 'border-slate-100 text-slate-400 hover:border-slate-200'
@@ -608,12 +634,34 @@ export default function MenuManagementPage() {
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{pt('t034')}</label>
                   <select
                     value={formData.status}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        status: e.target.value,
+                        isStartMenu: e.target.value === '사용중' ? prev.isStartMenu : false,
+                      }))
+                    } className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="사용중">{pt('t009')}</option>
                     <option value="미사용">{pt('t008')}</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.isStartMenu}
+                    disabled={formData.type !== 'SUB' || formData.status !== '사용중'}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, isStartMenu: e.target.checked }))}
+                    className="size-4 rounded border-slate-300"
+                  />
+                  프로그램 시작 시 첫 화면으로 사용
+                </label>
+                <p className="text-xs text-slate-500 mt-1">
+                  점포/시스템타입별로 1개의 하위 메뉴만 시작메뉴로 지정됩니다.
+                </p>
               </div>
             </div>
 

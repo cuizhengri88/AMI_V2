@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tokio_postgres::{Client, NoTls};
@@ -183,6 +184,7 @@ struct MenuRowPayload {
     menu_type: String,
     path: String,
     system_type_code: Option<String>,
+    is_start_menu: Option<bool>,
     order: i32,
     status: String,
     names: MenuNamesPayload,
@@ -230,6 +232,7 @@ struct MenuDto {
     menu_type: String,
     path: String,
     system_type_code: String,
+    is_start_menu: bool,
     order: i32,
     status: String,
     names: MenuNamesPayload,
@@ -334,6 +337,38 @@ struct CommonCodeDataResult {
     message: String,
     groups: Vec<CommonCodeGroupDto>,
     details: Vec<CommonCodeDetailDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoreBindingStatusPayload {
+    connection: DbConnectionPayload,
+}
+
+#[derive(Debug, Serialize)]
+struct StoreBindingStatusResult {
+    success: bool,
+    message: String,
+    hwid: String,
+    cpu_id: String,
+    bound_store_code: Option<String>,
+    registered_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifyStoreBindingPayload {
+    connection: DbConnectionPayload,
+    store_code: String,
+}
+
+#[derive(Debug, Serialize)]
+struct VerifyStoreBindingResult {
+    success: bool,
+    message: String,
+    store_code: String,
+    hwid: String,
+    cpu_id: String,
+    registered_at: String,
+    is_new_registration: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -933,11 +968,161 @@ fn normalize_store_code(value: Option<&str>) -> String {
     }
 }
 
-async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
-    if code == DEFAULT_STORE_CODE {
-        return Ok(());
+fn sanitize_hardware_token(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let sanitized: String = trimmed
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
+        .collect();
+    if sanitized.is_empty() {
+        None
+    } else {
+        Some(sanitized.to_uppercase())
+    }
+}
+
+fn extract_non_empty_lines(raw: &str) -> Vec<String> {
+    raw.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect()
+}
+
+fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    if stdout.trim().is_empty() {
+        return None;
+    }
+    Some(stdout)
+}
+
+fn read_windows_machine_guid() -> Option<String> {
+    if !cfg!(target_os = "windows") {
+        return None;
     }
 
+    let raw = run_command_output(
+        "reg",
+        &[
+            "query",
+            r"HKLM\SOFTWARE\Microsoft\Cryptography",
+            "/v",
+            "MachineGuid",
+        ],
+    )?;
+
+    let lines = extract_non_empty_lines(&raw);
+    for line in lines {
+        if !line.to_ascii_uppercase().contains("MACHINEGUID") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if let Some(last) = parts.last() {
+            if let Some(token) = sanitize_hardware_token(last) {
+                return Some(token);
+            }
+        }
+    }
+
+    None
+}
+
+fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
+    if !cfg!(target_os = "windows") {
+        return None;
+    }
+
+    let output = run_command_output("wmic", &[alias, "get", column])?;
+    let lines = extract_non_empty_lines(&output);
+    for line in lines {
+        if line.eq_ignore_ascii_case(column) {
+            continue;
+        }
+        if let Some(token) = sanitize_hardware_token(&line) {
+            return Some(token);
+        }
+    }
+    None
+}
+
+fn detect_host_name() -> String {
+    std::env::var("COMPUTERNAME")
+        .ok()
+        .and_then(|value| sanitize_hardware_token(&value))
+        .or_else(|| {
+            std::env::var("HOSTNAME")
+                .ok()
+                .and_then(|value| sanitize_hardware_token(&value))
+        })
+        .unwrap_or_else(|| "UNKNOWN_HOST".to_string())
+}
+
+fn detect_cpu_id() -> String {
+    read_windows_wmic_value("cpu", "ProcessorId")
+        .or_else(|| {
+            std::env::var("PROCESSOR_IDENTIFIER")
+                .ok()
+                .and_then(|value| sanitize_hardware_token(&value))
+        })
+        .unwrap_or_else(|| "UNKNOWN_CPU".to_string())
+}
+
+fn detect_hwid() -> String {
+    let machine_guid = read_windows_machine_guid();
+    let uuid = read_windows_wmic_value("csproduct", "UUID");
+    let cpu_id = detect_cpu_id();
+    let host = detect_host_name();
+
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(value) = machine_guid {
+        parts.push(format!("MG:{value}"));
+    }
+    if let Some(value) = uuid {
+        parts.push(format!("UUID:{value}"));
+    }
+    parts.push(format!("CPU:{cpu_id}"));
+    parts.push(format!("HOST:{host}"));
+
+    let mut joined = parts.join("|");
+    if joined.len() > 500 {
+        joined.truncate(500);
+    }
+    joined
+}
+
+async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
+    client
+        .batch_execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS security_store_binding (
+                id BIGSERIAL PRIMARY KEY,
+                store_code VARCHAR(100) NOT NULL,
+                hwid VARCHAR(500) NOT NULL,
+                cpu_id VARCHAR(255) NOT NULL,
+                host_name VARCHAR(255) NOT NULL,
+                registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (store_code),
+                UNIQUE (hwid)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_security_store_binding_verified
+            ON security_store_binding (last_verified_at DESC);
+            "#,
+        )
+        .await
+        .map_err(|e| format!("보안 인증 테이블 생성 실패: {e}"))
+}
+
+async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<(), String> {
     ensure_common_code_tables(client).await?;
 
     let exists = client
@@ -964,9 +1149,56 @@ async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> 
     Ok(())
 }
 
+async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
+    if code == DEFAULT_STORE_CODE {
+        return Ok(());
+    }
+
+    validate_store_code_in_str_cd(client, code).await
+}
+
+async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), String> {
+    ensure_store_binding_table(client).await?;
+
+    let hwid = detect_hwid();
+    let row = client
+        .query_opt(
+            "SELECT store_code FROM security_store_binding WHERE hwid = $1",
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("보안 인증 조회 실패: {e}"))?;
+
+    let Some(row) = row else {
+        return Err(
+            "현재 PC는 점포 인증이 되어있지 않습니다. 프로그램 시작 시 점포코드를 먼저 등록해 주세요."
+                .to_string(),
+        );
+    };
+
+    let bound_store_code: String = row.get(0);
+    if !bound_store_code.trim().eq_ignore_ascii_case(store_code) {
+        return Err(format!(
+            "현재 PC는 점포코드 {} 로 이미 인증되어 있습니다.",
+            bound_store_code.trim()
+        ));
+    }
+
+    client
+        .execute(
+            "UPDATE security_store_binding SET last_verified_at = NOW() WHERE hwid = $1",
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("보안 인증 갱신 실패: {e}"))?;
+
+    Ok(())
+}
+
 async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<String, String> {
     let store_code = normalize_store_code(value);
     validate_store_code(client, &store_code).await?;
+    assert_store_binding(client, &store_code).await?;
     Ok(store_code)
 }
 
@@ -1019,6 +1251,7 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
                 menu_name_zh TEXT NOT NULL,
                 system_type_code VARCHAR(100) NOT NULL DEFAULT 'ALL',
                 store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+                is_start_menu BOOLEAN NOT NULL DEFAULT FALSE,
                 menu_order INTEGER NOT NULL DEFAULT 1,
                 menu_status VARCHAR(20) NOT NULL DEFAULT '사용중',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1060,6 +1293,22 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             ON menu_management (store_code);
 
             ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS is_start_menu BOOLEAN;
+
+            UPDATE menu_management
+               SET is_start_menu = FALSE
+             WHERE is_start_menu IS NULL;
+
+            ALTER TABLE menu_management
+            ALTER COLUMN is_start_menu SET DEFAULT FALSE;
+
+            ALTER TABLE menu_management
+            ALTER COLUMN is_start_menu SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_menu_management_store_system_start
+            ON menu_management (store_code, system_type_code, is_start_menu);
+
+            ALTER TABLE menu_management
             DROP CONSTRAINT IF EXISTS menu_management_menu_path_key;
 
             CREATE UNIQUE INDEX IF NOT EXISTS uq_menu_management_store_path
@@ -1070,9 +1319,37 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("menu_management 테이블 생성 실패: {e}"))
 }
 
+async fn ensure_menu_start_menu_column(client: &Client) -> Result<(), String> {
+    client
+        .batch_execute(
+            r#"
+            ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS is_start_menu BOOLEAN;
+
+            UPDATE menu_management
+               SET is_start_menu = FALSE
+             WHERE is_start_menu IS NULL;
+
+            ALTER TABLE menu_management
+            ALTER COLUMN is_start_menu SET DEFAULT FALSE;
+
+            ALTER TABLE menu_management
+            ALTER COLUMN is_start_menu SET NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_menu_management_store_system_start
+            ON menu_management (store_code, system_type_code, is_start_menu);
+            "#,
+        )
+        .await
+        .map_err(|e| format!("menu_management 시작메뉴 컬럼 보정 실패: {e}"))
+}
+
 async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
     let row = client
-        .query_one("SELECT COALESCE(MAX(menu_id), 0) + 1 FROM menu_management", &[])
+        .query_one(
+            "SELECT COALESCE(MAX(menu_id), 0) + 1 FROM menu_management",
+            &[],
+        )
         .await
         .map_err(|e| format!("next menu_id query failed: {e}"))?;
     Ok(row.get::<_, i64>(0))
@@ -1800,7 +2077,9 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
 }
 
 #[tauri::command]
-async fn run_db_integrity_check(payload: DbIntegrityCheckPayload) -> Result<MutationResult, String> {
+async fn run_db_integrity_check(
+    payload: DbIntegrityCheckPayload,
+) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     let full_check_key = build_full_db_integrity_check_key(&payload.connection);
 
@@ -1825,9 +2104,166 @@ async fn run_db_integrity_check(payload: DbIntegrityCheckPayload) -> Result<Muta
 }
 
 #[tauri::command]
+async fn get_store_binding_status(
+    payload: StoreBindingStatusPayload,
+) -> Result<StoreBindingStatusResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_store_binding_table(&client).await?;
+
+    let hwid = detect_hwid();
+    let cpu_id = detect_cpu_id();
+    let row = client
+        .query_opt(
+            r#"
+            SELECT store_code, registered_at::TEXT
+              FROM security_store_binding
+             WHERE hwid = $1
+            "#,
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("보안 인증 상태 조회 실패: {e}"))?;
+
+    let (bound_store_code, registered_at, message) = if let Some(row) = row {
+        (
+            Some(row.get::<_, String>(0)),
+            Some(row.get::<_, String>(1)),
+            "현재 장치에 등록된 점포코드를 확인했습니다.".to_string(),
+        )
+    } else {
+        (
+            None,
+            None,
+            "현재 장치는 아직 점포코드 인증이 완료되지 않았습니다.".to_string(),
+        )
+    };
+
+    Ok(StoreBindingStatusResult {
+        success: true,
+        message,
+        hwid,
+        cpu_id,
+        bound_store_code,
+        registered_at,
+    })
+}
+
+#[tauri::command]
+async fn verify_or_register_store_binding(
+    payload: VerifyStoreBindingPayload,
+) -> Result<VerifyStoreBindingResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    ensure_store_binding_table(&client).await?;
+
+    let store_code = payload.store_code.trim().to_uppercase();
+    if store_code.is_empty() {
+        return Err("점포코드를 입력해 주세요.".to_string());
+    }
+
+    validate_store_code_in_str_cd(&client, &store_code).await?;
+
+    let hwid = detect_hwid();
+    let cpu_id = detect_cpu_id();
+    let host_name = detect_host_name();
+
+    if let Some(row) = client
+        .query_opt(
+            r#"
+            SELECT store_code, registered_at::TEXT
+              FROM security_store_binding
+             WHERE hwid = $1
+            "#,
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("현재 장치 인증정보 조회 실패: {e}"))?
+    {
+        let existing_store: String = row.get(0);
+        let registered_at: String = row.get(1);
+        if existing_store.trim().eq_ignore_ascii_case(&store_code) {
+            client
+                .execute(
+                    r#"
+                    UPDATE security_store_binding
+                       SET cpu_id = $2,
+                           host_name = $3,
+                           last_verified_at = NOW()
+                     WHERE hwid = $1
+                    "#,
+                    &[&hwid, &cpu_id, &host_name],
+                )
+                .await
+                .map_err(|e| format!("점포 인증 갱신 실패: {e}"))?;
+
+            return Ok(VerifyStoreBindingResult {
+                success: true,
+                message: "점포 인증이 확인되었습니다.".to_string(),
+                store_code,
+                hwid,
+                cpu_id,
+                registered_at,
+                is_new_registration: false,
+            });
+        }
+
+        return Err(format!(
+            "현재 장치는 이미 점포코드 {} 로 등록되어 있어 변경할 수 없습니다.",
+            existing_store.trim()
+        ));
+    }
+
+    if let Some(row) = client
+        .query_opt(
+            r#"
+            SELECT hwid, registered_at::TEXT
+              FROM security_store_binding
+             WHERE store_code = $1
+            "#,
+            &[&store_code],
+        )
+        .await
+        .map_err(|e| format!("점포코드 중복 확인 실패: {e}"))?
+    {
+        let existing_hwid: String = row.get(0);
+        let registered_at: String = row.get(1);
+        return Err(format!(
+            "점포코드 {store_code} 는 이미 다른 장치(HWID: {existing_hwid})에 등록되어 있습니다. 등록일시: {registered_at}"
+        ));
+    }
+
+    let registered_at = client
+        .query_one(
+            r#"
+            INSERT INTO security_store_binding (
+                store_code,
+                hwid,
+                cpu_id,
+                host_name
+            ) VALUES ($1, $2, $3, $4)
+            RETURNING registered_at::TEXT
+            "#,
+            &[&store_code, &hwid, &cpu_id, &host_name],
+        )
+        .await
+        .map_err(|e| format!("점포 인증 등록 실패: {e}"))?
+        .get::<_, String>(0);
+
+    Ok(VerifyStoreBindingResult {
+        success: true,
+        message: "점포코드 인증이 완료되었습니다.".to_string(),
+        store_code,
+        hwid,
+        cpu_id,
+        registered_at,
+        is_new_registration: true,
+    })
+}
+
+#[tauri::command]
 async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    ensure_menu_start_menu_column(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let transaction = client
@@ -1836,7 +2272,10 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
         .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
     transaction
-        .execute("DELETE FROM menu_management WHERE store_code = $1", &[&store_code])
+        .execute(
+            "DELETE FROM menu_management WHERE store_code = $1",
+            &[&store_code],
+        )
         .await
         .map_err(|e| format!("기존 메뉴 데이터 초기화 실패: {e}"))?;
 
@@ -1845,6 +2284,8 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
 
     for menu in &menus {
         let system_type_code = normalize_system_type_code(menu.system_type_code.as_deref());
+        let is_start_menu = menu.is_start_menu.unwrap_or(false)
+            && menu.menu_type.trim().eq_ignore_ascii_case("SUB");
         transaction
             .execute(
                 r#"
@@ -1858,9 +2299,10 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                     menu_name_zh,
                     system_type_code,
                     store_code,
+                    is_start_menu,
                     menu_order,
                     menu_status
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                 "#,
                 &[
                     &menu.id,
@@ -1872,6 +2314,7 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                     &menu.names.zh,
                     &system_type_code,
                     &store_code,
+                    &is_start_menu,
                     &menu.order,
                     &menu.status,
                 ],
@@ -1896,9 +2339,11 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
 async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    ensure_menu_start_menu_column(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
-    let selected_system_type = normalize_optional_system_type_code(payload.system_type_code.as_deref());
+    let selected_system_type =
+        normalize_optional_system_type_code(payload.system_type_code.as_deref());
     let rows = if let Some(system_type_code) = selected_system_type {
         if system_type_code == DEFAULT_SYSTEM_TYPE_CODE {
             client
@@ -1912,6 +2357,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                            menu_name_en,
                            menu_name_zh,
                            system_type_code,
+                           is_start_menu,
                            menu_order,
                            menu_status
                       FROM menu_management
@@ -1933,6 +2379,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                            menu_name_en,
                            menu_name_zh,
                            system_type_code,
+                           is_start_menu,
                            menu_order,
                            menu_status
                       FROM menu_management
@@ -1956,6 +2403,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                        menu_name_en,
                        menu_name_zh,
                        system_type_code,
+                       is_start_menu,
                        menu_order,
                        menu_status
                   FROM menu_management
@@ -1981,8 +2429,9 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                 zh: row.get::<_, String>(6),
             },
             system_type_code: row.get::<_, String>(7),
-            order: row.get::<_, i32>(8),
-            status: row.get::<_, String>(9),
+            is_start_menu: row.get::<_, bool>(8),
+            order: row.get::<_, i32>(9),
+            status: row.get::<_, String>(10),
         })
         .collect::<Vec<_>>();
 
@@ -1997,6 +2446,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
 async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
+    ensure_menu_start_menu_column(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let menu = payload.menu;
@@ -2027,6 +2477,14 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
             s.to_string()
         }
     };
+    let requested_start_menu = menu.is_start_menu.unwrap_or(false);
+    if requested_start_menu && menu_type != "SUB" {
+        return Err("시작메뉴는 하위 메뉴(SUB)만 지정할 수 있습니다.".to_string());
+    }
+    if requested_start_menu && status != "사용중" {
+        return Err("시작메뉴는 상태가 '사용중'인 메뉴만 지정할 수 있습니다.".to_string());
+    }
+    let is_start_menu = requested_start_menu && menu_type == "SUB";
 
     let order = if menu.order <= 0 { 1 } else { menu.order };
     let menu_id = if menu.id <= 0 {
@@ -2088,9 +2546,10 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 menu_name_zh,
                 system_type_code,
                 store_code,
+                is_start_menu,
                 menu_order,
                 menu_status
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             ON CONFLICT (menu_id)
             DO UPDATE SET
                 parent_menu_id = EXCLUDED.parent_menu_id,
@@ -2101,6 +2560,7 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 menu_name_zh = EXCLUDED.menu_name_zh,
                 system_type_code = EXCLUDED.system_type_code,
                 store_code = EXCLUDED.store_code,
+                is_start_menu = EXCLUDED.is_start_menu,
                 menu_order = EXCLUDED.menu_order,
                 menu_status = EXCLUDED.menu_status,
                 updated_at = NOW()
@@ -2115,12 +2575,31 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
                 &zh,
                 &system_type_code,
                 &store_code,
+                &is_start_menu,
                 &order,
                 &status,
             ],
         )
         .await
         .map_err(|e| format!("menu upsert failed: {e}"))?;
+
+    if is_start_menu {
+        client
+            .execute(
+                r#"
+                UPDATE menu_management
+                   SET is_start_menu = FALSE,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND system_type_code = $2
+                   AND menu_id <> $3
+                   AND is_start_menu = TRUE
+                "#,
+                &[&store_code, &system_type_code, &menu_id],
+            )
+            .await
+            .map_err(|e| format!("기존 시작메뉴 정리 실패: {e}"))?;
+    }
 
     Ok(MutationResult {
         success: true,
@@ -2175,7 +2654,9 @@ async fn sync_common_code_management_to_db(
 
     let mut detail_count_map: HashMap<&str, i32> = HashMap::new();
     for detail in &payload.details {
-        *detail_count_map.entry(detail.group_id.as_str()).or_insert(0) += 1;
+        *detail_count_map
+            .entry(detail.group_id.as_str())
+            .or_insert(0) += 1;
     }
 
     let mut groups = payload.groups;
@@ -2801,7 +3282,9 @@ async fn get_employee_management_data(
 }
 
 #[tauri::command]
-async fn upsert_employee_management(payload: UpsertEmployeePayload) -> Result<MutationResult, String> {
+async fn upsert_employee_management(
+    payload: UpsertEmployeePayload,
+) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_employee_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -3047,7 +3530,9 @@ async fn upsert_service_catalog_item(
         .map_err(|e| format!("카테고리 코드 확인 실패: {e}"))?;
 
     if category_exists.is_none() {
-        return Err("T_CATEGORY 공통코드에 존재하는 사용중 카테고리만 선택할 수 있습니다.".to_string());
+        return Err(
+            "T_CATEGORY 공통코드에 존재하는 사용중 카테고리만 선택할 수 있습니다.".to_string(),
+        );
     }
 
     if let Some(service_id) = item.service_id {
@@ -3339,7 +3824,9 @@ async fn upsert_reservation_calendar_item(
                 .eq_ignore_ascii_case(status_code.as_str())
         });
         if !status_exists {
-            return Err("선택한 예약 상태코드가 RESERVATION_STATUS 공통코드에 없습니다.".to_string());
+            return Err(
+                "선택한 예약 상태코드가 RESERVATION_STATUS 공통코드에 없습니다.".to_string(),
+            );
         }
     }
 
@@ -3396,7 +3883,10 @@ async fn upsert_reservation_calendar_item(
 
     for service_id in &unique_service_ids {
         if !service_snapshot_map.contains_key(service_id) {
-            return Err("예약에 포함된 시술 항목 중 존재하지 않거나 사용중이 아닌 항목이 있습니다.".to_string());
+            return Err(
+                "예약에 포함된 시술 항목 중 존재하지 않거나 사용중이 아닌 항목이 있습니다."
+                    .to_string(),
+            );
         }
     }
 
@@ -3641,9 +4131,21 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
                 remarks = EXCLUDED.remarks,
                 updated_at = NOW()
         "#;
-        log_sql!(sql, id, &store_code, &name, &email, &phone, &address, &remarks);
+        log_sql!(
+            sql,
+            id,
+            &store_code,
+            &name,
+            &email,
+            &phone,
+            &address,
+            &remarks
+        );
         client
-            .execute(sql, &[&id, &store_code, &name, &email, &phone, &address, &remarks])
+            .execute(
+                sql,
+                &[&id, &store_code, &name, &email, &phone, &address, &remarks],
+            )
             .await
             .map_err(|e| format!("회원 저장 실패: {e}"))?;
     } else {
@@ -3653,7 +4155,10 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
         "#;
         log_sql!(sql, &store_code, &name, &email, &phone, &address, &remarks);
         client
-            .execute(sql, &[&store_code, &name, &email, &phone, &address, &remarks])
+            .execute(
+                sql,
+                &[&store_code, &name, &email, &phone, &address, &remarks],
+            )
             .await
             .map_err(|e| format!("회원 등록 실패: {e}"))?;
     }
@@ -4193,7 +4698,7 @@ async fn cancel_member_point_recharge(
 
     let affected = tx
         .execute(
-        r#"
+            r#"
         UPDATE member_point_history
            SET status_code = 'CANCELLED',
                cancel_reason = $3,
@@ -4202,10 +4707,10 @@ async fn cancel_member_point_recharge(
            AND store_code = $2
            AND (status_code IS NULL OR status_code <> 'CANCELLED')
         "#,
-        &[&payload.history_id, &store_code, &cancel_reason],
-    )
-    .await
-    .map_err(|e| format!("충전 이력 상태 취소 처리 실패: {e}"))?;
+            &[&payload.history_id, &store_code, &cancel_reason],
+        )
+        .await
+        .map_err(|e| format!("충전 이력 상태 취소 처리 실패: {e}"))?;
 
     if affected == 0 {
         return Err("취소 대상 충전 이력이 없거나 이미 취소되었습니다.".to_string());
@@ -4542,9 +5047,9 @@ async fn restore_sales_settlement_coupon_usage(
     for row in usage_rows {
         let usage_id = row.get::<_, i64>(0);
         let user_id = row.get::<_, i64>(1);
-        let service_id = row
-            .get::<_, Option<i64>>(2)
-            .ok_or_else(|| format!("정산 쿠폰 사용 이력의 시술 정보가 없습니다. (usage_id={usage_id})"))?;
+        let service_id = row.get::<_, Option<i64>>(2).ok_or_else(|| {
+            format!("정산 쿠폰 사용 이력의 시술 정보가 없습니다. (usage_id={usage_id})")
+        })?;
         if service_id <= 0 {
             return Err(format!(
                 "정산 쿠폰 사용 이력의 시술 정보가 올바르지 않습니다. (usage_id={usage_id})"
@@ -4652,7 +5157,9 @@ async fn apply_sales_settlement_coupon_usage(
 }
 
 #[tauri::command]
-async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Result<MutationResult, String> {
+async fn upsert_sales_settlement(
+    payload: UpsertSalesSettlementPayload,
+) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_sales_settlement_management_tables(&client).await?;
     ensure_member_point_management_tables(&client).await?;
@@ -4810,7 +5317,10 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
             return Err("결제수단 코드는 필수입니다.".to_string());
         }
         let Some(method_name) = payment_method_map.get(&code) else {
-            return Err("PAYMENT_METHOD 공통코드에 등록된 사용중 결제수단만 사용할 수 있습니다.".to_string());
+            return Err(
+                "PAYMENT_METHOD 공통코드에 등록된 사용중 결제수단만 사용할 수 있습니다."
+                    .to_string(),
+            );
         };
 
         if payment.amount < 0 {
@@ -4832,14 +5342,18 @@ async fn upsert_sales_settlement(payload: UpsertSalesSettlementPayload) -> Resul
                 .copied()
                 .unwrap_or(0);
             if selected_count <= 0 {
-                return Err("쿠폰 결제 시술은 이번 정산의 시술 항목에 포함되어야 합니다.".to_string());
+                return Err(
+                    "쿠폰 결제 시술은 이번 정산의 시술 항목에 포함되어야 합니다.".to_string(),
+                );
             }
             let next_coupon_count = coupon_usage_count_map
                 .entry(coupon_service_id)
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
             if *next_coupon_count > selected_count {
-                return Err("동일 시술에 대한 쿠폰 사용 횟수가 시술 건수를 초과했습니다.".to_string());
+                return Err(
+                    "동일 시술에 대한 쿠폰 사용 횟수가 시술 건수를 초과했습니다.".to_string(),
+                );
             }
             coupon_service_ids.insert(coupon_service_id);
             Some(coupon_service_id)
@@ -5247,7 +5761,12 @@ async fn cancel_sales_settlement(
              WHERE settlement_id = $1
                AND store_code = $2
             "#,
-            &[&payload.settlement_id, &store_code, &cancel_type, &cancel_reason],
+            &[
+                &payload.settlement_id,
+                &store_code,
+                &cancel_type,
+                &cancel_reason,
+            ],
         )
         .await
         .map_err(|e| format!("정산 취소 처리 실패: {e}"))?;
@@ -5398,9 +5917,12 @@ async fn reset_salon_data(payload: ResetSalonDataPayload) -> Result<MutationResu
             .map_err(|e| format!("시술항목 데이터 초기화 실패: {e}"))?;
         }
         ResetSalonDataTarget::Member => {
-            tx.execute("DELETE FROM user_management WHERE store_code = $1", &[&store_code])
-                .await
-                .map_err(|e| format!("회원데이터 초기화 실패: {e}"))?;
+            tx.execute(
+                "DELETE FROM user_management WHERE store_code = $1",
+                &[&store_code],
+            )
+            .await
+            .map_err(|e| format!("회원데이터 초기화 실패: {e}"))?;
         }
         ResetSalonDataTarget::Employee => {
             let sales_ref_count = tx
@@ -5474,6 +5996,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             test_db_connection,
             run_db_integrity_check,
+            get_store_binding_status,
+            verify_or_register_store_binding,
             sync_menu_management_to_db,
             get_menu_management_data,
             upsert_menu_management,

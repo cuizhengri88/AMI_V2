@@ -92,6 +92,7 @@ export default function SystemSettingsPage() {
     normalizeStoreCode(localStorage.getItem(STORE_CODE_STORAGE_KEY)),
   );
   const [resettingTarget, setResettingTarget] = useState<ResetSalonDataTarget | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const resetActions: Array<{
     target: ResetSalonDataTarget;
@@ -210,15 +211,34 @@ export default function SystemSettingsPage() {
     alert(pt('t013'));
   };
 
-  const handleSave = () => {
-    localStorage.setItem('programName', programName);
-    localStorage.setItem('logoUrl', logoUrl);
-    localStorage.setItem(SYSTEM_TYPE_STORAGE_KEY, normalizeSystemTypeCode(selectedSystemType));
-    localStorage.setItem(STORE_CODE_STORAGE_KEY, normalizeStoreCode(selectedStoreCode));
-    window.dispatchEvent(new Event('system-type-updated'));
-    window.dispatchEvent(new Event('store-code-updated'));
-    alert(pt('t021'));
-    window.location.reload();
+  const handleSave = async () => {
+    try {
+      setIsSavingSettings(true);
+      const resolvedStoreCode = normalizeStoreCode(selectedStoreCode);
+      await invokeDbCommand<{
+        success: boolean;
+        message: string;
+      }>('verify_or_register_store_binding', {
+        store_code: resolvedStoreCode,
+      });
+
+      localStorage.setItem('programName', programName);
+      localStorage.setItem('logoUrl', logoUrl);
+      localStorage.setItem(SYSTEM_TYPE_STORAGE_KEY, normalizeSystemTypeCode(selectedSystemType));
+      localStorage.setItem(STORE_CODE_STORAGE_KEY, resolvedStoreCode);
+      window.dispatchEvent(new Event('system-type-updated'));
+      window.dispatchEvent(new Event('store-code-updated'));
+      alert(pt('t021'));
+      window.location.reload();
+    } catch (error: any) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error?.message || '점포코드 인증에 실패하여 저장할 수 없습니다.';
+      alert(message);
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const handleTestDbConnection = async () => {
@@ -627,10 +647,11 @@ export default function SystemSettingsPage() {
           </button>
           <button 
             onClick={handleSave}
-            className="px-6 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20 active:scale-95"
+            disabled={isSavingSettings}
+            className="px-6 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Save size={18} />
-            설정 저장
+            {isSavingSettings ? '저장중...' : '설정 저장'}
           </button>
         </div>
       </div>

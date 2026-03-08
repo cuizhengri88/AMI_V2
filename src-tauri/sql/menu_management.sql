@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS menu_management (
     menu_name_zh TEXT NOT NULL,
     system_type_code VARCHAR(100) NOT NULL DEFAULT 'ALL',
     store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
+    is_start_menu BOOLEAN NOT NULL DEFAULT FALSE,
     menu_order INTEGER NOT NULL DEFAULT 1,
     menu_status VARCHAR(20) NOT NULL DEFAULT '사용중',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -38,6 +39,7 @@ SELECT
     menu_name_zh,
     system_type_code,
     store_code,
+    is_start_menu,
     menu_order,
     menu_status
 FROM menu_management
@@ -54,9 +56,10 @@ INSERT INTO menu_management (
     menu_name_zh,
     system_type_code,
     store_code,
+    is_start_menu,
     menu_order,
     menu_status
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT (menu_id)
 DO UPDATE SET
     parent_menu_id = EXCLUDED.parent_menu_id,
@@ -67,6 +70,7 @@ DO UPDATE SET
     menu_name_zh = EXCLUDED.menu_name_zh,
     system_type_code = EXCLUDED.system_type_code,
     store_code = EXCLUDED.store_code,
+    is_start_menu = EXCLUDED.is_start_menu,
     menu_order = EXCLUDED.menu_order,
     menu_status = EXCLUDED.menu_status,
     updated_at = NOW();
