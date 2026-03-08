@@ -159,9 +159,24 @@ function getActualSalesAmount(entry: Settlement) {
     .reduce((sum, payment) => sum + payment.amount, 0);
 }
 
-function getDiscountAmount(entry: Settlement) {
+function getCouponCoveredAmount(entry: Settlement, procedurePriceById: Map<number, number>) {
+  if (entry.entryType !== 'SETTLEMENT') return 0;
+  return entry.payments
+    .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
+    .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
+}
+
+function getDiscountAmount(entry: Settlement, procedurePriceById: Map<number, number>) {
   if (entry.entryType !== 'SETTLEMENT' || entry.status !== 'COMPLETED') return 0;
-  return Math.max(0, entry.totalAmount - getTotalPaidAmount(entry));
+  const nonCouponPaidAmount = entry.payments
+    .filter((payment) => !isCouponPaymentMethod(payment.method))
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const couponPaidAmount = entry.payments
+    .filter((payment) => isCouponPaymentMethod(payment.method))
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const couponCoveredAmount = Math.min(getCouponCoveredAmount(entry, procedurePriceById), entry.totalAmount);
+  const effectiveCouponPaid = couponCoveredAmount > 0 ? couponCoveredAmount : couponPaidAmount;
+  return Math.max(0, entry.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid));
 }
 
 function normalizeRechargeType(value?: string) {
@@ -383,6 +398,10 @@ export default function SalesHistoryPage() {
     () => new Map(paymentMethods.map((entry) => [entry.code.toUpperCase(), entry.name])),
     [paymentMethods],
   );
+  const procedurePriceById = useMemo(
+    () => new Map(procedures.map((entry) => [entry.id, entry.price])),
+    [procedures],
+  );
 
   const getPaymentMethodName = (code: string) => {
     const normalizedCode = normalizePaymentMethodCode(code);
@@ -425,12 +444,12 @@ export default function SalesHistoryPage() {
       if (entry.status === 'CANCELLED') return acc;
       acc.totalSales += getActualSalesAmount(entry);
       if (entry.entryType === 'SETTLEMENT') {
-        acc.totalDiscount += getDiscountAmount(entry);
+        acc.totalDiscount += getDiscountAmount(entry, procedurePriceById);
         acc.count += 1;
       }
       return acc;
     }, { totalSales: 0, totalDiscount: 0, count: 0 });
-  }, [filteredHistory]);
+  }, [filteredHistory, procedurePriceById]);
 
   const resetFilters = () => {
     setStartDate(monthStartIso());
@@ -482,7 +501,7 @@ export default function SalesHistoryPage() {
         statusLabel,
         entry.totalAmount,
         getActualSalesAmount(entry),
-        getDiscountAmount(entry),
+        getDiscountAmount(entry, procedurePriceById),
       ];
     });
     const csv = `\uFEFF${[csvHeader, ...rows].map((line) => line.map(csvEscape).join(',')).join('\n')}`;
@@ -595,7 +614,7 @@ export default function SalesHistoryPage() {
                   ? getPointRechargeLabel(entry)
                   : entry.procedureIds.map((id) => procedures.find((procedure) => procedure.id === id)?.name).filter(Boolean).join(', ');
                 const paid = getActualSalesAmount(entry);
-                const discount = getDiscountAmount(entry);
+                const discount = getDiscountAmount(entry, procedurePriceById);
                 const discountRate = entry.totalAmount > 0 ? Math.round((discount / entry.totalAmount) * 100) : 0;
                 return (
                   <tr
@@ -769,7 +788,7 @@ export default function SalesHistoryPage() {
                   ) : (
                     <>
                       <div className="flex justify-between text-sm font-bold text-slate-400"><span>{pt('t026')}</span><span>{formatCurrency(selectedHistory.totalAmount)}</span></div>
-                      <div className="flex justify-between text-sm font-bold text-red-400"><span>{pt('t028')}</span><span>- {formatCurrency(getDiscountAmount(selectedHistory))}</span></div>
+                      <div className="flex justify-between text-sm font-bold text-red-400"><span>{pt('t028')}</span><span>- {formatCurrency(getDiscountAmount(selectedHistory, procedurePriceById))}</span></div>
                       <div className="h-px bg-white/10" />
                       <div className="flex justify-between text-sm font-bold text-slate-400"><span>{pt('t030')}</span><span>{formatCurrency(getTotalPaidAmount(selectedHistory))}</span></div>
                       <div className="flex justify-between items-end"><span className="text-sm font-bold text-slate-400">{pt('t012')}</span><span className="text-2xl font-black text-primary">{formatCurrency(getActualSalesAmount(selectedHistory))}</span></div>

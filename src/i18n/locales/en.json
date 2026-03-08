@@ -540,7 +540,9 @@
       "t034": "Cancel",
       "t035": "Selected History",
       "t036": "Close",
-      "t037": "Confirm Cancel"
+      "t037": "Confirm Cancel",
+      "t038": "Start Date",
+      "t039": "End Date"
     },
     "user_management_point_recharge": {
       "t001": "Payment Method",

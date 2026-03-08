@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, History, User, RotateCcw, X } from 'lucide-react';
+import { Search, Filter, History, User, RotateCcw, X, Calendar } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
@@ -39,6 +39,15 @@ function formatDateTime(raw: string) {
   return parsed.toLocaleString();
 }
 
+function toDateOnly(raw: string) {
+  if (!raw) return '';
+  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
+  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
 export default function MemberPointHistoryPage() {
   const pt = usePageText('user_management_member_point_history');
   const [isLoading, setIsLoading] = useState(false);
@@ -48,6 +57,8 @@ export default function MemberPointHistoryPage() {
   const [selectedMemberId, setSelectedMemberId] = useState('all');
   const [actionFilter, setActionFilter] = useState<'all' | 'RECHARGE' | 'USE' | 'RECHARGE_CANCELLED'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PointHistoryItem | null>(null);
@@ -127,6 +138,9 @@ export default function MemberPointHistoryPage() {
   const filteredHistories = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
     return histories.filter((item) => {
+      const day = toDateOnly(item.createdAt);
+      if (startDate && (!day || day < startDate)) return false;
+      if (endDate && (!day || day > endDate)) return false;
       if (selectedMemberId !== 'all' && String(item.userId) !== selectedMemberId) return false;
       if (actionFilter === 'RECHARGE' && (item.actionType !== 'RECHARGE' || item.isCancelled)) return false;
       if (actionFilter === 'USE' && item.actionType !== 'USE') return false;
@@ -147,7 +161,7 @@ export default function MemberPointHistoryPage() {
         (item.cancelReason || '').toLowerCase().includes(keyword)
       );
     });
-  }, [actionFilter, histories, searchTerm, selectedMemberId]);
+  }, [actionFilter, endDate, histories, searchTerm, selectedMemberId, startDate]);
 
   const summary = useMemo(() => {
     return filteredHistories.reduce(
@@ -240,8 +254,8 @@ export default function MemberPointHistoryPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 grid-shadow overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 grid grid-cols-1 lg:grid-cols-4 gap-3">
-          <div className="relative lg:col-span-2">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 grid grid-cols-1 lg:grid-cols-12 gap-3">
+          <div className="relative lg:col-span-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
@@ -250,9 +264,35 @@ export default function MemberPointHistoryPage() {
             />
           </div>
 
+          <div className="lg:col-span-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                max={endDate || undefined}
+                aria-label={pt('t038')}
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+            <span className="text-slate-300 text-sm font-bold">~</span>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || undefined}
+                aria-label={pt('t039')}
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+          </div>
+
           <select
             value={selectedMemberId}
-            onChange={(e) => setSelectedMemberId(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+            onChange={(e) => setSelectedMemberId(e.target.value)} className="lg:col-span-2 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
           >
             <option value="all">{pt('t010')}</option>
             {members.map((member) => (
@@ -266,7 +306,7 @@ export default function MemberPointHistoryPage() {
             onChange={(e) =>
               setActionFilter(e.target.value as 'all' | 'RECHARGE' | 'USE' | 'RECHARGE_CANCELLED')
             }
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+            className="lg:col-span-2 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
           >
             <option value="all">{pt('t009')}</option>
             <option value="RECHARGE">{pt('t012')}</option>

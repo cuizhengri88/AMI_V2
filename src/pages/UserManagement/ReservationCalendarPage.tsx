@@ -183,6 +183,15 @@ function formatDateLabel(isoDate: string, weekdayLabels: string[]) {
   return `${isoDate} (${dayOfWeek})`;
 }
 
+function normalizeTimeValue(raw: string) {
+  if (!raw) return '';
+  const match = raw.match(/^(\d{2}:\d{2})/);
+  if (match) return match[1];
+  const parsed = new Date(`1970-01-01T${raw}`);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
+}
+
 function buildCalendarCells(monthCursor: Date) {
   const firstDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
   const startOffset = firstDay.getDay();
@@ -248,7 +257,7 @@ function mapReservationRowToRecord(row: ReservationRow): ReservationRecord {
   return {
     id: row.reservation_id,
     reservationDate: row.reservation_date,
-    startTime: row.start_time,
+    startTime: normalizeTimeValue(row.start_time),
     customerName: row.customer_name,
     designerName: row.designer_name,
     status: row.status,
@@ -747,7 +756,7 @@ export default function ReservationCalendarPage() {
           item: {
             reservation_id: modalMode === 'edit' ? editingId : undefined,
             reservation_date: form.reservationDate,
-            start_time: form.startTime,
+            start_time: normalizeTimeValue(form.startTime),
             customer_name: form.customerName.trim(),
             designer_name: form.designerName.trim(),
             status: form.status,
@@ -803,7 +812,7 @@ export default function ReservationCalendarPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
-      <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} />
+      <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} zIndex={90} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
@@ -1153,7 +1162,7 @@ export default function ReservationCalendarPage() {
               </div>
             </div>
 
-            <form onSubmit={saveReservation} className="max-h-[calc(90vh-80px)] overflow-y-auto p-5 space-y-5">
+            <form noValidate onSubmit={saveReservation} className="max-h-[calc(90vh-80px)] overflow-y-auto p-5 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t021')}</label>
@@ -1171,6 +1180,7 @@ export default function ReservationCalendarPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
                   <input
                     type="time"
+                    step={60}
                     value={form.startTime}
                     onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />

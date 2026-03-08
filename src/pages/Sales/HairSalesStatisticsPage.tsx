@@ -224,9 +224,19 @@ export default function HairSalesStatisticsPage() {
 
       setEmployees(employeeResult.employees || []);
       setServices((serviceResult.items || []).filter((item) => item.use_yn === 'Y'));
+      const servicePriceById = new Map((serviceResult.items || []).map((item) => [item.service_id, Number(item.unit_price || 0)]));
 
       const summaryRows = (settlementResult.settlements || []).map((row) => {
-        const totalPaid = (row.payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const nonCouponPaid = (row.payments || [])
+          .filter((payment) => !isCouponPaymentMethod(payment.payment_method_code))
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const couponPaid = (row.payments || [])
+          .filter((payment) => isCouponPaymentMethod(payment.payment_method_code))
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const couponCovered = (row.payments || [])
+          .filter((payment) => isCouponPaymentMethod(payment.payment_method_code) && typeof payment.coupon_service_id === 'number')
+          .reduce((sum, payment) => sum + (servicePriceById.get(payment.coupon_service_id as number) || 0), 0);
+        const effectiveCouponPaid = couponCovered > 0 ? couponCovered : couponPaid;
         const netPaid = (row.payments || [])
           .filter((payment) => !isCouponPaymentMethod(payment.payment_method_code))
           .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -236,7 +246,7 @@ export default function HairSalesStatisticsPage() {
           managerId: row.manager_employee_id ?? null,
           serviceIds: row.service_ids || [],
           grossAmount: Number(row.total_amount || 0),
-          discountAmount: Math.max(0, Number(row.total_amount || 0) - totalPaid),
+          discountAmount: Math.max(0, Number(row.total_amount || 0) - (nonCouponPaid + effectiveCouponPaid)),
           netAmount: netPaid,
           status: toSettlementStatus(row.status),
         } as SettlementSummary;

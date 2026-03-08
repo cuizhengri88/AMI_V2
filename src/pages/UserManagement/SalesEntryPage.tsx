@@ -131,6 +131,10 @@ function toSettlementStatus(value: string): SettlementStatus {
   return 'PROCESSING';
 }
 
+function isCouponPaymentMethod(method: string) {
+  return method?.trim().toUpperCase() === 'COUPON';
+}
+
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {
   const dragControls = useDragControls();
 
@@ -233,6 +237,10 @@ export default function SalesEntryPage() {
     );
     return labels.length > 0 ? labels : [pt('t084'), pt('t085'), pt('t086'), pt('t087')];
   }, [procedures, pt]);
+  const procedurePriceById = useMemo(
+    () => new Map(procedures.map((procedure) => [procedure.id, procedure.price])),
+    [procedures],
+  );
 
   // [로직] 화면 진입 시 필요한 모든 기준 데이터/정산 데이터를 DB에서 조회
   const loadData = useCallback(async () => {
@@ -880,7 +888,19 @@ export default function SalesEntryPage() {
                   .join(', ');
 
                 const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
-                const discount = settlement.status === 'COMPLETED' ? settlement.totalAmount - paidAmount : 0;
+                const nonCouponPaidAmount = settlement.payments
+                  .filter((payment) => !isCouponPaymentMethod(payment.method))
+                  .reduce((sum, payment) => sum + payment.amount, 0);
+                const couponPaidAmount = settlement.payments
+                  .filter((payment) => isCouponPaymentMethod(payment.method))
+                  .reduce((sum, payment) => sum + payment.amount, 0);
+                const couponCoveredAmount = settlement.payments
+                  .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
+                  .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
+                const effectiveCouponPaid = couponCoveredAmount > 0 ? couponCoveredAmount : couponPaidAmount;
+                const discount = settlement.status === 'COMPLETED'
+                  ? Math.max(0, settlement.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid))
+                  : 0;
                 const discountPercent = settlement.totalAmount > 0 ? Math.round((discount / settlement.totalAmount) * 100) : 0;
                 const statusClass =
                   settlement.status === 'COMPLETED'
