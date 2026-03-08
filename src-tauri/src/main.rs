@@ -1,11 +1,14 @@
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveTime, Utc};
+use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -19,6 +22,8 @@ const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
 const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
 const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
 const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct LocalMigrationCache {
@@ -27,6 +32,9 @@ struct LocalMigrationCache {
 
 static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new();
 static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);
+static HOST_NAME_CACHE: OnceLock<String> = OnceLock::new();
+static CPU_ID_CACHE: OnceLock<String> = OnceLock::new();
+static HWID_CACHE: OnceLock<String> = OnceLock::new();
 
 fn migration_cache_file_path() -> PathBuf {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
@@ -168,6 +176,37 @@ struct DbConnectionResult {
 #[derive(Debug, Deserialize)]
 struct DbIntegrityCheckPayload {
     connection: DbConnectionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DatabaseBackupPayload {
+    connection: DbConnectionPayload,
+    target_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DatabaseBackupResult {
+    success: bool,
+    message: String,
+    output_path: String,
+    table_count: usize,
+    generated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportTextFilePayload {
+    file_name: String,
+    content: String,
+    sub_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ExportTextFileResult {
+    success: bool,
+    cancelled: bool,
+    message: String,
+    output_path: Option<String>,
+    bytes: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -993,7 +1032,13 @@ fn extract_non_empty_lines(raw: &str) -> Vec<String> {
 }
 
 fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(command).args(args).output().ok()?;
+    let mut cmd = Command::new(command);
+    cmd.args(args);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd.output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1054,48 +1099,60 @@ fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
 }
 
 fn detect_host_name() -> String {
-    std::env::var("COMPUTERNAME")
-        .ok()
-        .and_then(|value| sanitize_hardware_token(&value))
-        .or_else(|| {
-            std::env::var("HOSTNAME")
+    HOST_NAME_CACHE
+        .get_or_init(|| {
+            std::env::var("COMPUTERNAME")
                 .ok()
                 .and_then(|value| sanitize_hardware_token(&value))
+                .or_else(|| {
+                    std::env::var("HOSTNAME")
+                        .ok()
+                        .and_then(|value| sanitize_hardware_token(&value))
+                })
+                .unwrap_or_else(|| "UNKNOWN_HOST".to_string())
         })
-        .unwrap_or_else(|| "UNKNOWN_HOST".to_string())
+        .clone()
 }
 
 fn detect_cpu_id() -> String {
-    read_windows_wmic_value("cpu", "ProcessorId")
-        .or_else(|| {
-            std::env::var("PROCESSOR_IDENTIFIER")
-                .ok()
-                .and_then(|value| sanitize_hardware_token(&value))
+    CPU_ID_CACHE
+        .get_or_init(|| {
+            read_windows_wmic_value("cpu", "ProcessorId")
+                .or_else(|| {
+                    std::env::var("PROCESSOR_IDENTIFIER")
+                        .ok()
+                        .and_then(|value| sanitize_hardware_token(&value))
+                })
+                .unwrap_or_else(|| "UNKNOWN_CPU".to_string())
         })
-        .unwrap_or_else(|| "UNKNOWN_CPU".to_string())
+        .clone()
 }
 
 fn detect_hwid() -> String {
-    let machine_guid = read_windows_machine_guid();
-    let uuid = read_windows_wmic_value("csproduct", "UUID");
-    let cpu_id = detect_cpu_id();
-    let host = detect_host_name();
+    HWID_CACHE
+        .get_or_init(|| {
+            let machine_guid = read_windows_machine_guid();
+            let uuid = read_windows_wmic_value("csproduct", "UUID");
+            let cpu_id = detect_cpu_id();
+            let host = detect_host_name();
 
-    let mut parts: Vec<String> = Vec::new();
-    if let Some(value) = machine_guid {
-        parts.push(format!("MG:{value}"));
-    }
-    if let Some(value) = uuid {
-        parts.push(format!("UUID:{value}"));
-    }
-    parts.push(format!("CPU:{cpu_id}"));
-    parts.push(format!("HOST:{host}"));
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(value) = machine_guid {
+                parts.push(format!("MG:{value}"));
+            }
+            if let Some(value) = uuid {
+                parts.push(format!("UUID:{value}"));
+            }
+            parts.push(format!("CPU:{cpu_id}"));
+            parts.push(format!("HOST:{host}"));
 
-    let mut joined = parts.join("|");
-    if joined.len() > 500 {
-        joined.truncate(500);
-    }
-    joined
+            let mut joined = parts.join("|");
+            if joined.len() > 500 {
+                joined.truncate(500);
+            }
+            joined
+        })
+        .clone()
 }
 
 async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
@@ -2073,6 +2130,205 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
         message: "DB 연결 성공".to_string(),
         current_schema,
         server_version,
+    })
+}
+
+#[tauri::command]
+async fn backup_database_to_file(
+    payload: DatabaseBackupPayload,
+) -> Result<DatabaseBackupResult, String> {
+    let client = connect_with_schema(&payload.connection).await?;
+    let safe_schema = get_safe_schema(&payload.connection.schema)?;
+
+    let raw_target_path = payload
+        .target_path
+        .trim()
+        .trim_matches(|ch| ch == '"' || ch == '\'');
+    if raw_target_path.is_empty() {
+        return Err("백업 파일 경로가 비어 있습니다.".to_string());
+    }
+
+    let mut output_path = PathBuf::from(raw_target_path);
+    let looks_like_directory = raw_target_path.ends_with('\\')
+        || raw_target_path.ends_with('/')
+        || output_path.extension().is_none();
+
+    if looks_like_directory || output_path.is_dir() {
+        fs::create_dir_all(&output_path).map_err(|e| format!("백업 폴더 생성 실패: {e}"))?;
+        let file_stamp = Utc::now().format("%Y%m%d_%H%M%S");
+        output_path = output_path.join(format!("ami_backup_{file_stamp}.json"));
+    } else {
+        if output_path.extension().is_none() {
+            output_path.set_extension("json");
+        }
+        if let Some(parent) = output_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| format!("백업 폴더 생성 실패: {e}"))?;
+            }
+        }
+    }
+
+    let table_rows = client
+        .query(
+            r#"
+            SELECT table_name
+              FROM information_schema.tables
+             WHERE table_schema = $1
+               AND table_type = 'BASE TABLE'
+             ORDER BY table_name
+            "#,
+            &[&payload.connection.schema],
+        )
+        .await
+        .map_err(|e| format!("백업 대상 테이블 조회 실패: {e}"))?;
+
+    let mut tables_json = serde_json::Map::new();
+    for row in table_rows {
+        let table_name: String = row.get(0);
+        let safe_table = table_name.replace('\"', "\"\"");
+        let sql = format!(
+            r#"
+            SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb)::TEXT
+              FROM "{safe_schema}"."{safe_table}" t
+            "#
+        );
+        let snapshot_text: String = client
+            .query_one(&sql, &[])
+            .await
+            .map_err(|e| format!("{table_name} 테이블 백업 실패: {e}"))?
+            .get(0);
+
+        let snapshot_json = serde_json::from_str::<serde_json::Value>(&snapshot_text)
+            .map_err(|e| format!("{table_name} 테이블 JSON 변환 실패: {e}"))?;
+        tables_json.insert(table_name, snapshot_json);
+    }
+
+    let generated_at = Utc::now().to_rfc3339();
+    let backup_json = serde_json::json!({
+        "metadata": {
+            "generated_at": generated_at,
+            "host": payload.connection.host,
+            "port": payload.connection.port,
+            "database": payload.connection.database,
+            "schema": payload.connection.schema
+        },
+        "tables": tables_json
+    });
+
+    let serialized =
+        serde_json::to_string_pretty(&backup_json).map_err(|e| format!("백업 JSON 생성 실패: {e}"))?;
+    fs::write(&output_path, serialized).map_err(|e| format!("백업 파일 저장 실패: {e}"))?;
+
+    Ok(DatabaseBackupResult {
+        success: true,
+        message: "DB 백업 파일 생성 완료".to_string(),
+        output_path: output_path.to_string_lossy().to_string(),
+        table_count: backup_json["tables"]
+            .as_object()
+            .map(|tables| tables.len())
+            .unwrap_or(0),
+        generated_at,
+    })
+}
+
+fn resolve_downloads_dir() -> PathBuf {
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        return PathBuf::from(user_profile).join("Downloads");
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join("Downloads");
+    }
+
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn sanitize_sub_directory(raw: &str) -> Option<PathBuf> {
+    let mut path = PathBuf::new();
+    for segment in raw.split(&['/', '\\'][..]) {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
+            continue;
+        }
+
+        let safe: String = trimmed
+            .chars()
+            .map(|ch| match ch {
+                '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+                _ => ch,
+            })
+            .collect();
+        let safe_trimmed = safe.trim();
+        if safe_trimmed.is_empty() {
+            continue;
+        }
+        path.push(safe_trimmed);
+    }
+
+    if path.as_os_str().is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+#[tauri::command]
+async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFileResult, String> {
+    let raw_file_name = payload.file_name.trim();
+    if raw_file_name.is_empty() {
+        return Err("저장할 파일명이 비어 있습니다.".to_string());
+    }
+
+    let file_name = Path::new(raw_file_name)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "유효한 파일명이 아닙니다.".to_string())?;
+
+    let mut initial_dir = resolve_downloads_dir();
+    if let Some(sub_dir) = payload
+        .sub_dir
+        .as_deref()
+        .and_then(|value| sanitize_sub_directory(value))
+    {
+        initial_dir = initial_dir.join(sub_dir);
+    }
+
+    if !initial_dir.exists() {
+        fs::create_dir_all(&initial_dir).map_err(|e| format!("저장 폴더 생성 실패: {e}"))?;
+    }
+
+    let Some(output_path) = FileDialog::new()
+        .set_directory(&initial_dir)
+        .set_file_name(&file_name)
+        .save_file()
+    else {
+        return Ok(ExportTextFileResult {
+            success: false,
+            cancelled: true,
+            message: "파일 저장이 취소되었습니다.".to_string(),
+            output_path: None,
+            bytes: 0,
+        });
+    };
+
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("저장 폴더 생성 실패: {e}"))?;
+        }
+    }
+
+    let bytes = payload.content.as_bytes().len();
+    fs::write(&output_path, payload.content.as_bytes())
+        .map_err(|e| format!("파일 저장 실패: {e}"))?;
+
+    Ok(ExportTextFileResult {
+        success: true,
+        cancelled: false,
+        message: "파일 저장 완료".to_string(),
+        output_path: Some(output_path.to_string_lossy().to_string()),
+        bytes,
     })
 }
 
@@ -5995,6 +6251,8 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             test_db_connection,
+            backup_database_to_file,
+            export_text_file,
             run_db_integrity_check,
             get_store_binding_status,
             verify_or_register_store_binding,

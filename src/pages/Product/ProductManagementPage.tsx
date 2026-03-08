@@ -15,7 +15,7 @@ import {
   X,
   GripHorizontal,
   Tag,
-  DollarSign
+  JapaneseYen
 } from 'lucide-react';
 
 const initialProducts = [
@@ -160,7 +160,7 @@ export default function ProductManagementPage() {
                   </span>
                 </td>
                 <td className="py-4 px-6 text-sm text-right font-bold text-slate-900">
-                  ₩{product.price.toLocaleString()}</td>
+                  ¥{product.price.toLocaleString()}</td>
                 <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">
                   {product.stock}
                 </td>
@@ -239,7 +239,7 @@ export default function ProductManagementPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
                     <div className="relative">
-                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input 
                         type="number" 
                         required
@@ -317,7 +317,7 @@ export default function ProductManagementPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">{t('product.form_price')}</label>
                     <div className="relative">
-                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input 
                         type="number" 
                         required
@@ -406,3 +406,4 @@ function DraggableModal({ title, children, onClose, icon }: { title: string; chi
     </motion.div>
   );
 }
+

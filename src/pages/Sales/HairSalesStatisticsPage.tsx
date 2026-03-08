@@ -27,6 +27,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 
@@ -150,11 +151,7 @@ function isCouponPaymentMethod(method: string) {
 }
 
 function formatCurrency(value: number) {
-  return `₩${Math.round(value).toLocaleString('ko-KR')}`;
-}
-
-function csvEscape(value: string | number) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return `¥${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
 function parseDateSafe(value: string): Date | null {
@@ -463,7 +460,7 @@ export default function HairSalesStatisticsPage() {
     return categorySales.reduce((sum, row) => sum + row.value, 0);
   }, [categorySales]);
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     const rows = dailyStats.map((row) => [
       row.date,
       row.count,
@@ -473,18 +470,15 @@ export default function HairSalesStatisticsPage() {
       row.avgTicket,
       row.growthRate == null ? '-' : `${row.growthRate.toFixed(1)}%`,
     ]);
-    const csv = `\uFEFF${[[pt('t002'), pt('t007'), pt('t010'), pt('t012'), pt('t008'), pt('t001'), pt('t006')], ...rows]
-      .map((line) => line.map(csvEscape).join(','))
-      .join('\n')}`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hair-sales-stats-${todayIso()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const result = await downloadCsvFile({
+      filename: `hair-sales-stats-${todayIso()}.csv`,
+      headers: [pt('t002'), pt('t007'), pt('t010'), pt('t012'), pt('t008'), pt('t001'), pt('t006')],
+      rows,
+    });
+
+    if (!result.success && !result.cancelled) {
+      alert(pt('t013'));
+    }
   };
 
   return (
@@ -538,7 +532,7 @@ export default function HairSalesStatisticsPage() {
               />
             </div>
           )}<button
-            onClick={exportCsv}
+            onClick={() => { void exportCsv(); }}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
           >
             <Download size={18} />
@@ -602,7 +596,7 @@ export default function HairSalesStatisticsPage() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                  tickFormatter={(value) => `₩${Math.round(value / 10000).toLocaleString()}${pt('t031')}`}
+                  tickFormatter={(value) => `¥${Math.round(value / 10000).toLocaleString()}${pt('t031')}`}
                 />
                 <Tooltip
                   formatter={(value: number) => formatCurrency(value)} labelFormatter={(label) => `${pt('t032')} ${label}`}
@@ -761,7 +755,7 @@ export default function HairSalesStatisticsPage() {
             </button>
             <button
               className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
-              onClick={exportCsv}
+              onClick={() => { void exportCsv(); }}
               aria-label="download"
             >
               <Download size={18} />
@@ -817,3 +811,4 @@ export default function HairSalesStatisticsPage() {
     </motion.div>
   );
 }
+

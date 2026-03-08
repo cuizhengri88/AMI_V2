@@ -67,7 +67,7 @@
     "form_name": "Product Name",
     "form_category": "Category",
     "form_size": "Size",
-    "form_price": "Price (₩)",
+    "form_price": "Price (¥)",
     "form_initial_stock": "Initial Stock",
     "form_stock": "Stock Quantity",
     "form_status": "Status",
@@ -377,7 +377,7 @@
       "t015": "View"
     },
     "system_service_catalog": {
-      "t001": "Unit Price (₩)",
+      "t001": "Unit Price (¥)",
       "t002": "Manage service items, pricing, and required time provided by the salon.",
       "t003": "Service Registration & Management",
       "t004": "Edit Service Information",
@@ -546,8 +546,8 @@
     },
     "user_management_point_recharge": {
       "t001": "Payment Method",
-      "t002": "Received Amount (₩)",
-      "t003": "Please enter an amount of at least ₩1.",
+      "t002": "Received Amount (¥)",
+      "t003": "Please enter an amount of at least ¥1.",
       "t004": "No Coupons Available",
       "t005": "Total Coupons Held",
       "t006": "Owned Coupons (Passes)",
@@ -706,7 +706,7 @@
       "t033": "Coupon Deduction",
       "t034": "Discount",
       "t035": "Coupon use available when a member is selected",
-      "t036": "Insufficient prepaid balance. (Available: ₩{{balance}})",
+      "t036": "Insufficient prepaid balance. (Available: ¥{{balance}})",
       "t037": "Settlement saved.",
       "t038": "Failed to save settlement.",
       "t039": "Cancellation completed.",
@@ -733,12 +733,12 @@
       "t061": "Remaining {{count}}",
       "t062": "{{count}} min",
       "t063": "Add",
-      "t064": "Current Balance: ₩{{balance}}",
+      "t064": "Current Balance: ¥{{balance}}",
       "t065": "Insufficient Balance",
-      "t066": "Collected: ₩{{amount}}",
+      "t066": "Collected: ¥{{amount}}",
       "t067": "Payment Complete",
-      "t068": "Outstanding: ₩{{amount}}",
-      "t069": "Overpaid: ₩{{amount}}",
+      "t068": "Outstanding: ¥{{amount}}",
+      "t069": "Overpaid: ¥{{amount}}",
       "t070": "Save In Progress",
       "t071": "Mark as Paid",
       "t072": "Target Settlement: #{{id}} / {{date}}",
@@ -847,3 +847,4 @@
     }
   }
 }
+

@@ -944,13 +944,13 @@ export default function SalesEntryPage() {
                     <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
                     <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
                     <td className="py-4 px-6">
-                      <div className="text-sm font-black text-slate-900">₩{paidAmount.toLocaleString()}</div>
-                      {discount > 0 && <div className="text-[10px] text-slate-400 line-through">₩{settlement.totalAmount.toLocaleString()}</div>}
+                      <div className="text-sm font-black text-slate-900">¥{paidAmount.toLocaleString()}</div>
+                      {discount > 0 && <div className="text-[10px] text-slate-400 line-through">¥{settlement.totalAmount.toLocaleString()}</div>}
                     </td>
                     <td className="py-4 px-6">
                       {discount > 0 ? (
                         <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">
-                          {discountPercent}% (₩{discount.toLocaleString()})
+                          {discountPercent}% (¥{discount.toLocaleString()})
                         </span>
                       ) : (
                         <span className="text-slate-300 text-[10px]">-</span>
@@ -1114,7 +1114,7 @@ export default function SalesEntryPage() {
                         .filter((procedure) => procedure.categoryName === selectedCategory)
                         .map((procedure) => (
                           <option key={procedure.id} value={procedure.id}>
-                            {procedure.name} (₩{procedure.price.toLocaleString()})
+                            {procedure.name} (¥{procedure.price.toLocaleString()})
                           </option>
                         ))}</select>
                   </div>
@@ -1142,7 +1142,7 @@ export default function SalesEntryPage() {
                           <div className="flex flex-col">
                             <span className="text-xs font-bold text-slate-800">{procedure.name}</span>
                             <span className={`text-[10px] font-bold ${isCouponApplied ? 'text-emerald-600' : 'text-slate-500'}`}>
-                              {isCouponApplied ? pt('t058') : `₩${procedure.price.toLocaleString()}`}
+                              {isCouponApplied ? pt('t058') : `¥${procedure.price.toLocaleString()}`}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1187,7 +1187,7 @@ export default function SalesEntryPage() {
                         <Clock size={14} />
                         <span className="text-xs font-bold">{pt('t062', { count: totals.time })}</span>
                       </div>
-                      <div className="text-lg font-black">₩{totals.price.toLocaleString()}</div>
+                      <div className="text-lg font-black">¥{totals.price.toLocaleString()}</div>
                     </div>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</div>
                   </div>
@@ -1195,17 +1195,17 @@ export default function SalesEntryPage() {
                   {couponDiscountAmount > 0 && (
                     <div className="flex justify-between items-center pt-2 border-t border-white/10">
                       <div className="text-[10px] font-black text-emerald-300 uppercase tracking-widest">{pt('t033')}</div>
-                      <div className="text-sm font-black text-emerald-300">- ₩{couponDiscountAmount.toLocaleString()}</div>
+                      <div className="text-sm font-black text-emerald-300">- ¥{couponDiscountAmount.toLocaleString()}</div>
                     </div>
                   )}<div className="flex justify-between items-center pt-2 border-t border-white/10">
                     <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{pt('t022')}</div>
-                    <div className="text-sm font-black text-white">₩{payableAmount.toLocaleString()}</div>
+                    <div className="text-sm font-black text-white">¥{payableAmount.toLocaleString()}</div>
                   </div>
 
                   {paidTotal > 0 && (
                     <div className="flex justify-between items-center pt-1">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t015')}</div>
-                      <div className="text-xs font-bold text-slate-200">₩{paidTotal.toLocaleString()}</div>
+                      <div className="text-xs font-bold text-slate-200">¥{paidTotal.toLocaleString()}</div>
                     </div>
                   )}</div>
 
@@ -1351,3 +1351,4 @@ export default function SalesEntryPage() {
     </motion.div>
   );
 }
+

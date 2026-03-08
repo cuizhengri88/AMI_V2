@@ -7,6 +7,7 @@ import {
   Clock3,
   Edit2,
   GripHorizontal,
+  Loader2,
   PlusCircle,
   Scissors,
   Trash2,
@@ -168,7 +169,7 @@ function shiftDate(iso: string, diffDays: number) {
 }
 
 function formatCurrency(value: number) {
-  return `₩${value.toLocaleString()}`;
+  return `¥${value.toLocaleString()}`;
 }
 
 function formatMonthLabel(date: Date) {
@@ -1382,7 +1383,7 @@ export default function ReservationCalendarPage() {
                     disabled={isDbBusy}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
                   >
-                    <Clock3 size={15} />
+                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
                     {modalMode === 'edit' ? pt('t077') : pt('t060')}
                   </button>
                 </div>
@@ -1393,3 +1394,4 @@ export default function ReservationCalendarPage() {
       )}</motion.div>
   );
 }
+

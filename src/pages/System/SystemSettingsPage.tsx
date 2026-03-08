@@ -10,9 +10,7 @@ import {
   SYSTEM_TYPE_STORAGE_KEY,
 } from '../../constants/systemType';
 import {
-  DEFAULT_STORE_CODE,
   normalizeStoreCode,
-  STORE_CODE_GROUP_ID,
   STORE_CODE_STORAGE_KEY,
 } from '../../constants/store';
 import { 
@@ -52,12 +50,6 @@ type SystemTypeOption = {
   order: number;
 };
 
-type StoreOption = {
-  code: string;
-  name: string;
-  order: number;
-};
-
 type ResetSalonDataTarget =
   | 'SALES'
   | 'RESERVATION'
@@ -79,6 +71,7 @@ export default function SystemSettingsPage() {
   const [isRemoteDb, setIsRemoteDb] = useState(true);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isRunningIntegrityCheck, setIsRunningIntegrityCheck] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
   
   // Brand Settings
   const [programName, setProgramName] = useState(localStorage.getItem('programName') || 'GovData');
@@ -87,7 +80,6 @@ export default function SystemSettingsPage() {
   const [selectedSystemType, setSelectedSystemType] = useState(
     normalizeSystemTypeCode(localStorage.getItem(SYSTEM_TYPE_STORAGE_KEY)),
   );
-  const [storeOptions, setStoreOptions] = useState<StoreOption[]>([]);
   const [selectedStoreCode, setSelectedStoreCode] = useState(
     normalizeStoreCode(localStorage.getItem(STORE_CODE_STORAGE_KEY)),
   );
@@ -169,32 +161,9 @@ export default function SystemSettingsPage() {
           setSelectedSystemType(options[0].code);
         }
       }
-
-      const loadedStores = (result.details || [])
-        .filter((detail) => detail.group === STORE_CODE_GROUP_ID && detail.use_yn === 'Y')
-        .map((detail) => ({
-          code: detail.code,
-          name: detail.name,
-          order: detail.order,
-        }))
-        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
-
-      setStoreOptions(loadedStores);
-
-      if (loadedStores.length > 0) {
-        const normalizedStore = normalizeStoreCode(selectedStoreCode);
-        if (!loadedStores.some((item) => item.code === normalizedStore)) {
-          const hairStore = loadedStores.find((item) => item.code === DEFAULT_STORE_CODE);
-          setSelectedStoreCode(hairStore?.code || loadedStores[0].code);
-        }
-      } else {
-        setSelectedStoreCode(DEFAULT_STORE_CODE);
-      }
     } catch (error) {
       console.error('Failed to load SYSTEM_TYPE common codes:', error);
       setSystemTypeOptions([]);
-      setStoreOptions([]);
-      setSelectedStoreCode(DEFAULT_STORE_CODE);
     }
   };
 
@@ -203,8 +172,46 @@ export default function SystemSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleBackup = () => {
-    alert(pt('t007'));
+  useEffect(() => {
+    const syncStoreCode = () => {
+      setSelectedStoreCode(normalizeStoreCode(localStorage.getItem(STORE_CODE_STORAGE_KEY)));
+    };
+    syncStoreCode();
+    window.addEventListener('store-code-updated', syncStoreCode);
+    return () => {
+      window.removeEventListener('store-code-updated', syncStoreCode);
+    };
+  }, []);
+
+  const handleBackup = async () => {
+    const defaultDirectory = 'C:\\Users\\Public\\Documents\\ESTsoft\\CreatorTemp';
+    const targetDirectory = window.prompt('백업 파일을 저장할 폴더 경로를 입력하세요.', defaultDirectory);
+    if (!targetDirectory || !targetDirectory.trim()) return;
+
+    try {
+      setIsBackingUp(true);
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+        output_path: string;
+        table_count: number;
+        generated_at: string;
+      }>('backup_database_to_file', {
+        target_path: targetDirectory.trim(),
+      });
+
+      alert(
+        `${result.message}\n파일: ${result.output_path}\n테이블 수: ${result.table_count}\n생성 시각: ${result.generated_at}`,
+      );
+    } catch (error: any) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error?.message || '백업 파일 생성 중 오류가 발생했습니다.';
+      alert(message);
+    } finally {
+      setIsBackingUp(false);
+    }
   };
 
   const handleRestore = () => {
@@ -214,27 +221,17 @@ export default function SystemSettingsPage() {
   const handleSave = async () => {
     try {
       setIsSavingSettings(true);
-      const resolvedStoreCode = normalizeStoreCode(selectedStoreCode);
-      await invokeDbCommand<{
-        success: boolean;
-        message: string;
-      }>('verify_or_register_store_binding', {
-        store_code: resolvedStoreCode,
-      });
-
       localStorage.setItem('programName', programName);
       localStorage.setItem('logoUrl', logoUrl);
       localStorage.setItem(SYSTEM_TYPE_STORAGE_KEY, normalizeSystemTypeCode(selectedSystemType));
-      localStorage.setItem(STORE_CODE_STORAGE_KEY, resolvedStoreCode);
       window.dispatchEvent(new Event('system-type-updated'));
-      window.dispatchEvent(new Event('store-code-updated'));
       alert(pt('t021'));
       window.location.reload();
     } catch (error: any) {
       const message =
         typeof error === 'string'
           ? error
-          : error?.message || '점포코드 인증에 실패하여 저장할 수 없습니다.';
+          : error?.message || '설정 저장 중 오류가 발생했습니다.';
       alert(message);
     } finally {
       setIsSavingSettings(false);
@@ -389,19 +386,15 @@ export default function SystemSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">{pt('t033')}</label>
-              <select
-                value={selectedStoreCode}
-                onChange={(e) => setSelectedStoreCode(normalizeStoreCode(e.target.value))} className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                {storeOptions.length === 0 && <option value={DEFAULT_STORE_CODE}>HAIR_001</option>}
-                {storeOptions.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.name} ({option.code})
-                  </option>
-                ))}</select>
+              <label className="text-sm font-semibold text-slate-700">인증 점포코드 (STR_CD)</label>
+              <input
+                type="text"
+                readOnly
+                value={normalizeStoreCode(selectedStoreCode)}
+                className="w-full max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-700"
+              />
               <p className="text-xs text-slate-400">
-                모든 데이터 저장/조회는 선택한 점포코드 기준으로 처리됩니다.
+                점포코드는 프로그램 시작 시 HWID 인증된 코드가 자동 적용됩니다.
               </p>
             </div>
 
@@ -555,7 +548,7 @@ export default function SystemSettingsPage() {
           </div>
           <div className="p-6 space-y-4">
             <div className="p-4 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-sm">
-              선택한 점포코드(<span className="font-bold">{normalizeStoreCode(selectedStoreCode)}</span>) 기준으로
+              인증 점포코드(<span className="font-bold">{normalizeStoreCode(selectedStoreCode)}</span>) 기준으로
               데이터가 즉시 삭제됩니다.
             </div>
 
@@ -607,9 +600,10 @@ export default function SystemSettingsPage() {
                 </div>
                 <button 
                   onClick={handleBackup}
-                  className="w-full py-2 bg-white border border-emerald-200 text-emerald-700 text-sm font-bold rounded-lg hover:bg-emerald-50 transition-colors flex items-center justify-center gap-2"
+                  disabled={isBackingUp}
+                  className="w-full py-2 bg-white border border-emerald-200 text-emerald-700 text-sm font-bold rounded-lg hover:bg-emerald-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  백업 파일 생성
+                  {isBackingUp ? '백업 생성 중...' : '백업 파일 생성'}
                 </button>
               </div>
 

@@ -19,6 +19,7 @@ import {
   GripHorizontal,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 
@@ -130,7 +131,7 @@ function formatDateTime(raw: string) {
 }
 
 function formatCurrency(value: number) {
-  return `₩${value.toLocaleString()}`;
+  return `¥${value.toLocaleString()}`;
 }
 
 function toDateTime(raw: string) {
@@ -191,10 +192,6 @@ function normalizePaymentMethodCode(value: string) {
   const normalized = raw.toUpperCase();
   if (normalized === 'COUPON' || raw === LEGACY_COUPON_PAYMENT_LABEL || raw.includes('쿠폰')) return 'COUPON';
   return normalized;
-}
-
-function csvEscape(value: string | number) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
 export default function SalesHistoryPage() {
@@ -461,7 +458,7 @@ export default function SalesHistoryPage() {
     setSelectedPayment('');
   };
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     const csvHeader = [
       pt('t063'),
       pt('t064'),
@@ -504,16 +501,20 @@ export default function SalesHistoryPage() {
         getDiscountAmount(entry, procedurePriceById),
       ];
     });
-    const csv = `\uFEFF${[csvHeader, ...rows].map((line) => line.map(csvEscape).join(',')).join('\n')}`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sales-history-${todayIso()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const result = await downloadCsvFile({
+      filename: `sales-history-${todayIso()}.csv`,
+      headers: csvHeader,
+      rows,
+    });
+
+    if (!result.success && !result.cancelled) {
+      alert('파일 다운로드에 실패했습니다.');
+      return;
+    }
+
+    if (result.method === 'tauri' && result.outputPath) {
+      alert(`파일 저장 완료\n${result.outputPath}`);
+    }
   };
 
   return (
@@ -525,7 +526,7 @@ export default function SalesHistoryPage() {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t008')}</h1>
           <p className="text-slate-500 mt-1">{pt('t004')}</p>
         </div>
-        <button onClick={exportCsv} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
+        <button onClick={() => { void exportCsv(); }} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
           <Download size={18} />
           {pt('t043')}
         </button>
@@ -811,3 +812,4 @@ export default function SalesHistoryPage() {
     </motion.div>
   );
 }
+

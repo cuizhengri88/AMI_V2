@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { 
   Database, 
   ShoppingBag,
+  Boxes,
   Package,
   History as HistoryIcon,
   ShoppingCart,
   TrendingUp,
   Users,
+  UserCog,
   Briefcase,
   Settings,
   Shield,
@@ -72,7 +74,7 @@ const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
   },
   { 
     id: 200, 
-    icon: Package,
+    icon: Boxes,
     order: 2,
     status: '사용중',
     names: { ko: '상품/재고 관리', en: 'Product/Stock Management', zh: '产品/库存管理' },
@@ -85,7 +87,7 @@ const FALLBACK_MENU_ITEMS: SidebarMenuItem[] = [
   },
   { 
     id: 300, 
-    icon: Users,
+    icon: UserCog,
     order: 3,
     status: '사용중',
     names: { ko: '인사 관리', en: 'HR Management', zh: '人事管理' },
@@ -125,6 +127,8 @@ function normalizeType(value: string): 'MAIN' | 'SUB' {
 function getIconByPath(path: string): LucideIcon {
   if (path === '/sales-stats' || path.startsWith('/sales')) return TrendingUp;
   if (path === '/hair_sales-stats' || path === '/Hair_sales-stats' || path === '/hair-sales-stats') return TrendingUp;
+  if (path.startsWith('/product-stock')) return Boxes;
+  if (path.startsWith('/hr')) return UserCog;
   if (path.startsWith('/purchases')) return ShoppingCart;
   if (path.startsWith('/products')) return ShoppingBag;
   if (path.startsWith('/inventory/history')) return HistoryIcon;

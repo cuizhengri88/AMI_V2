@@ -11,7 +11,7 @@ import {
   Database,
   X,
   GripHorizontal,
-  DollarSign,
+  JapaneseYen,
   Loader2,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
@@ -584,7 +584,7 @@ export default function ServiceCatalogPage() {
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
                     <div className="relative">
-                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required
@@ -669,7 +669,7 @@ export default function ServiceCatalogPage() {
                   <div className="space-y-1 col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
                     <div className="relative">
-                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="number"
                         required

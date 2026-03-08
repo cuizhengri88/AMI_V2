@@ -6,7 +6,7 @@ import {
   Calendar, 
   ArrowUpRight, 
   ArrowDownRight, 
-  DollarSign, 
+  JapaneseYen, 
   ShoppingCart, 
   Users, 
   Download,
@@ -132,14 +132,14 @@ export default function SalesStatisticsPage() {
         {/* Total Sales */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 grid-shadow relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <DollarSign size={80} />
+            <JapaneseYen size={80} />
           </div>
           <div className="relative z-10">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{pt('t008')}</p>
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-slate-500 mb-1">{pt('t009')}</p>
-                <p className="text-3xl font-black text-slate-900">₩18,900,000</p>
+                <p className="text-3xl font-black text-slate-900">¥18,900,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                 <span className="text-sm text-slate-500">{pt('t010')}</span>
@@ -159,7 +159,7 @@ export default function SalesStatisticsPage() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-slate-500 mb-1">{pt('t012')}</p>
-                <p className="text-3xl font-black text-rose-600">₩1,450,000</p>
+                <p className="text-3xl font-black text-rose-600">¥1,450,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                 <span className="text-sm text-slate-500">{pt('t014')}</span>
@@ -179,7 +179,7 @@ export default function SalesStatisticsPage() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-slate-500 mb-1">{pt('t004')}</p>
-                <p className="text-3xl font-black text-emerald-600">₩17,450,000</p>
+                <p className="text-3xl font-black text-emerald-600">¥17,450,000</p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-emerald-100">
                 <span className="text-sm text-slate-500">{pt('t005')}</span>
@@ -228,7 +228,7 @@ export default function SalesStatisticsPage() {
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fontSize: 11, fill: '#64748b' }} 
-                  tickFormatter={(value) => period === 'monthly' ? `₩${value/1000000}M` : `₩${value/10000}W`}
+                  tickFormatter={(value) => period === 'monthly' ? `¥${value/1000000}M` : `¥${value/10000}W`}
                 />
                 <YAxis 
                   yAxisId="right"
@@ -342,7 +342,7 @@ export default function SalesStatisticsPage() {
                 <td className="py-3 px-6 text-sm font-mono font-bold text-slate-500">{item.id}</td>
                 <td className="py-3 px-6 text-sm font-bold text-slate-900">{item.name}</td>
                 <td className="py-3 px-6 text-sm text-center text-slate-600 font-bold">{item.qty}</td>
-                <td className="py-3 px-6 text-sm text-right font-bold text-rose-600">₩{item.amount.toLocaleString()}</td>
+                <td className="py-3 px-6 text-sm text-right font-bold text-rose-600">¥{item.amount.toLocaleString()}</td>
                 <td className="py-3 px-6 text-center">
                   <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-600 border border-slate-200">
                     {refundReasonLabelMap[item.reason] || item.reason}
@@ -356,3 +356,4 @@ export default function SalesStatisticsPage() {
     </motion.div>
   );
 }
+

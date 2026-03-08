@@ -157,8 +157,6 @@ function MenuAwareRedirect() {
 function StoreBindingGate({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<'checking' | 'input' | 'verifying' | 'ready'>('checking');
   const [storeCodeInput, setStoreCodeInput] = useState('');
-  const [hwid, setHwid] = useState('');
-  const [cpuId, setCpuId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
@@ -168,9 +166,6 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
       try {
         const result = await invokeDbCommand<StoreBindingStatusResult>('get_store_binding_status');
         if (!isMounted) return;
-
-        setHwid(result.hwid || '');
-        setCpuId(result.cpu_id || '');
 
         const boundStoreCode = (result.bound_store_code || '').trim();
         if (boundStoreCode) {
@@ -224,50 +219,71 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
   };
 
   if (phase === 'ready') return <>{children}</>;
+  if (phase === 'checking') {
+    return (
+      <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe_0%,#e2e8f0_45%,#f8fafc_100%)] flex items-center justify-center p-6">
+        <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white/85 backdrop-blur-xl shadow-2xl shadow-slate-900/10 px-8 py-10">
+          <div className="absolute -top-20 -right-20 size-40 rounded-full bg-sky-200/40 blur-2xl" />
+          <div className="absolute -bottom-16 -left-10 size-32 rounded-full bg-blue-200/50 blur-2xl" />
+          <div className="relative">
+            <div className="mx-auto size-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center mb-5">
+              <div className="size-6 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 text-center">시스템 인증 중...</h1>
+            <p className="text-sm text-slate-500 text-center mt-2">시스템 정보를 확인하고 있습니다. 잠시만 기다려 주세요.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <h1 className="text-xl font-black text-slate-900">점포코드 인증</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            최초 실행 시 STR_CD(점포관리) 그룹의 상세코드를 입력해 장치를 인증합니다.
-          </p>
+    <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe_0%,#e2e8f0_45%,#f8fafc_100%)] flex items-center justify-center p-6">
+      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white/90 backdrop-blur-xl shadow-2xl shadow-slate-900/10 overflow-hidden">
+        <div className="absolute -top-24 -right-20 size-52 rounded-full bg-sky-200/45 blur-2xl" />
+        <div className="absolute -bottom-24 -left-20 size-56 rounded-full bg-indigo-200/35 blur-2xl" />
+
+        <div className="relative px-7 py-6 border-b border-slate-100/90">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-bold text-sky-700">
+            <span className="size-2 rounded-full bg-sky-500 animate-pulse" />
+            LICENSE SECURITY
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 mt-3 tracking-tight">점포코드 인증</h1>
+          <p className="text-sm text-slate-500 mt-1">최초 실행 시 STR_CD(점포관리) 그룹의 상세코드를 입력해 장치를 인증합니다.</p>
         </div>
-        <div className="px-6 py-5 space-y-4">
-          {phase === 'checking' ? (
-            <p className="text-sm text-slate-500">현재 장치의 점포 인증 상태를 확인 중입니다...</p>
-          ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">점포코드 (STR_CD)</label>
-                <input
-                  type="text"
-                  value={storeCodeInput}
-                  onChange={(e) => setStoreCodeInput(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                  placeholder="예: HAIR_001"
-                  disabled={phase === 'verifying'}
-                />
-              </div>
-              <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg p-3">
-                <p>HWID: {hwid || '확인중'}</p>
-                <p className="mt-1">CPU ID: {cpuId || '확인중'}</p>
-              </div>
-              {errorMessage ? (
-                <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
-                  {errorMessage}
-                </div>
-              ) : null}
-              <button
-                type="submit"
+
+        <div className="relative px-7 py-6">
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-xs font-extrabold tracking-wide text-slate-500 uppercase mb-1">점포코드 (STR_CD)</label>
+              <input
+                type="text"
+                value={storeCodeInput}
+                onChange={(e) => setStoreCodeInput(e.target.value.toUpperCase())}
+                className="w-full h-11 px-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 bg-white/90 focus:ring-2 focus:ring-sky-200 outline-none"
+                placeholder="예: HAIR_001"
                 disabled={phase === 'verifying'}
-                className="w-full py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60"
-              >
-                {phase === 'verifying' ? '인증 중...' : '인증 후 시작'}
-              </button>
-            </form>
-          )}
+              />
+            </div>
+
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
+              시스템정보 확인 완료
+            </div>
+
+            {errorMessage ? (
+              <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={phase === 'verifying'}
+              className="w-full h-11 rounded-xl bg-slate-900 text-white text-sm font-black tracking-wide hover:bg-slate-800 transition-colors disabled:opacity-70"
+            >
+              {phase === 'verifying' ? '시스템 인증 중...' : '인증 후 시작'}
+            </button>
+          </form>
         </div>
       </div>
     </div>

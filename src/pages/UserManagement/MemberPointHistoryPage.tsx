@@ -29,7 +29,7 @@ type PointHistoryItem = {
 };
 
 function formatCurrency(value: number) {
-  return `₩${value.toLocaleString()}`;
+  return `¥${value.toLocaleString()}`;
 }
 
 function formatDateTime(raw: string) {
@@ -462,3 +462,4 @@ export default function MemberPointHistoryPage() {
     </motion.div>
   );
 }
+

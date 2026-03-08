@@ -214,7 +214,7 @@ export default function PurchaseManagementPage() {
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">+8.5%</span>
           </div>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('purchase.stat_today_sales')}</p>
-          <p className="text-2xl font-black text-slate-900 mt-1">₩2,450,000</p>
+          <p className="text-2xl font-black text-slate-900 mt-1">¥2,450,000</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 grid-shadow">
           <div className="flex items-center justify-between mb-4">
@@ -282,7 +282,7 @@ export default function PurchaseManagementPage() {
                   {order.quantity}
                 </td>
                 <td className="py-4 px-6 text-sm text-right font-bold text-slate-900">
-                  ₩{order.total.toLocaleString()}</td>
+                  ¥{order.total.toLocaleString()}</td>
                 <td className="py-4 px-6 text-center text-xs text-slate-400">
                   {order.date}
                 </td>
@@ -382,7 +382,7 @@ export default function PurchaseManagementPage() {
                       value={selectedProduct.name}
                       onChange={(e) => setSelectedProduct(mockProducts.find(p => p.name === e.target.value) || mockProducts[0])} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}</select>
+                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (¥{p.price.toLocaleString()})</option>)}</select>
                   </div>
 
                   <div className="space-y-1">
@@ -410,9 +410,9 @@ export default function PurchaseManagementPage() {
                   <div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-slate-600">{t('purchase.form_total_price')}</span>
-                      <span className="text-xl font-black text-primary">₩{totalPrice.toLocaleString()}</span>
+                      <span className="text-xl font-black text-primary">¥{totalPrice.toLocaleString()}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ₩{selectedProduct.price.toLocaleString()} × {quantity}{t('common.items')}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ¥{selectedProduct.price.toLocaleString()} × {quantity}{t('common.items')}</p>
                   </div>
                 </div>
 
@@ -501,7 +501,7 @@ export default function PurchaseManagementPage() {
                       }}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
-                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (₩{p.price.toLocaleString()})</option>)}</select>
+                      {mockProducts.map(p => <option key={p.name} value={p.name}>{p.name} (¥{p.price.toLocaleString()})</option>)}</select>
                   </div>
 
                   <div className="space-y-1">
@@ -538,9 +538,9 @@ export default function PurchaseManagementPage() {
                   )}<div className="col-span-2 p-4 bg-primary/5 border border-primary/10 rounded-xl mt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-slate-600">{t('purchase.form_total_price')}</span>
-                      <span className="text-xl font-black text-primary">₩{(editOrder?.price * editOrder?.quantity || 0).toLocaleString()}</span>
+                      <span className="text-xl font-black text-primary">¥{(editOrder?.price * editOrder?.quantity || 0).toLocaleString()}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ₩{(editOrder?.price || 0).toLocaleString()} × {editOrder?.quantity || 0}{t('common.items')}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 text-right">{t('purchase.form_unit_price')} ¥{(editOrder?.price || 0).toLocaleString()} × {editOrder?.quantity || 0}{t('common.items')}</p>
                   </div>
                 </div>
 
@@ -599,3 +599,4 @@ function DraggableModal({ title, children, onClose, icon }: { title: string; chi
     </motion.div>
   );
 }
+
