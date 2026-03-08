@@ -48,6 +48,7 @@ type ReservationRecord = {
   reservationDate: string;
   startTime: string;
   customerName: string;
+  customerPhone: string;
   designerName: string;
   status: string;
   note: string;
@@ -96,6 +97,7 @@ type StatusTone = {
 };
 
 type ReservationViewMode = 'calendar' | 'list';
+type ListRangeMode = 'day' | 'month' | 'year';
 
 const STATUS_GROUP_ID = 'RESERVATION_STATUS';
 const CATEGORY_GROUP_ID = 'T_CATEGORY';
@@ -168,6 +170,21 @@ function shiftDate(iso: string, diffDays: number) {
   return toIsoDate(base);
 }
 
+function shiftMonth(iso: string, diffMonths: number) {
+  const base = parseIsoDate(iso);
+  base.setDate(1);
+  base.setMonth(base.getMonth() + diffMonths);
+  return toIsoDate(base);
+}
+
+function shiftYear(iso: string, diffYears: number) {
+  const base = parseIsoDate(iso);
+  base.setDate(1);
+  base.setMonth(0);
+  base.setFullYear(base.getFullYear() + diffYears);
+  return toIsoDate(base);
+}
+
 function formatCurrency(value: number) {
   return `¥${value.toLocaleString()}`;
 }
@@ -191,6 +208,14 @@ function normalizeTimeValue(raw: string) {
   const parsed = new Date(`1970-01-01T${raw}`);
   if (Number.isNaN(parsed.getTime())) return raw;
   return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
+}
+
+function normalizeNameKey(raw: string) {
+  return raw.trim().toLowerCase();
+}
+
+function normalizePhoneDigits(raw?: string | null) {
+  return (raw || '').replace(/\D/g, '');
 }
 
 function buildCalendarCells(monthCursor: Date) {
@@ -254,12 +279,17 @@ function sortReservations(items: ReservationRecord[]) {
 }
 
 // DB 응답(row) 구조를 화면에서 쓰는 예약 구조로 변환한다.
-function mapReservationRowToRecord(row: ReservationRow): ReservationRecord {
+function mapReservationRowToRecord(
+  row: ReservationRow,
+  memberPhoneByName: Map<string, string>,
+): ReservationRecord {
+  const phoneByName = memberPhoneByName.get(normalizeNameKey(row.customer_name)) || '';
   return {
     id: row.reservation_id,
     reservationDate: row.reservation_date,
     startTime: normalizeTimeValue(row.start_time),
     customerName: row.customer_name,
+    customerPhone: phoneByName,
     designerName: row.designer_name,
     status: row.status,
     note: row.note || '',
@@ -324,6 +354,7 @@ export default function ReservationCalendarPage() {
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
   const [memberNames, setMemberNames] = useState<string[]>([]);
+  const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
   const [designerNames, setDesignerNames] = useState<string[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
   const [monthCursor, setMonthCursor] = useState(() => {
@@ -334,6 +365,8 @@ export default function ReservationCalendarPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [viewMode, setViewMode] = useState<ReservationViewMode>('calendar');
+  const [listRangeMode, setListRangeMode] = useState<ListRangeMode>('day');
+  const [listSearchKeyword, setListSearchKeyword] = useState('');
   const modalDragControls = useDragControls();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -398,6 +431,47 @@ export default function ReservationCalendarPage() {
     [reservationsByDate, selectedDate],
   );
 
+  const listReservations = useMemo(() => {
+    const keyword = listSearchKeyword.trim().toLowerCase();
+    const searchPhoneDigits = normalizePhoneDigits(listSearchKeyword);
+    const selectedYear = selectedDate.slice(0, 4);
+    const selectedMonth = selectedDate.slice(0, 7);
+
+    return sortReservations(
+      reservations.filter((reservation) => {
+        if (listRangeMode === 'day' && reservation.reservationDate !== selectedDate) return false;
+        if (listRangeMode === 'month' && !reservation.reservationDate.startsWith(selectedMonth)) return false;
+        if (listRangeMode === 'year' && !reservation.reservationDate.startsWith(selectedYear)) return false;
+
+        if (!keyword && !searchPhoneDigits) return true;
+
+        const customerName = reservation.customerName.toLowerCase();
+        const customerPhone = (reservation.customerPhone || '').toLowerCase();
+        const customerPhoneDigits = normalizePhoneDigits(reservation.customerPhone);
+
+        if (keyword && (customerName.includes(keyword) || customerPhone.includes(keyword))) return true;
+        if (searchPhoneDigits && customerPhoneDigits.includes(searchPhoneDigits)) return true;
+        return false;
+      }),
+    );
+  }, [listRangeMode, listSearchKeyword, reservations, selectedDate]);
+
+  const listYearOptions = useMemo(() => {
+    const years = new Set<string>();
+    reservations.forEach((reservation) => {
+      years.add(reservation.reservationDate.slice(0, 4));
+    });
+    years.add(selectedDate.slice(0, 4));
+    years.add(String(new Date().getFullYear()));
+    return Array.from(years).sort((a, b) => a.localeCompare(b));
+  }, [reservations, selectedDate]);
+
+  const listHeaderLabel = useMemo(() => {
+    if (listRangeMode === 'year') return pt('t096', { year: selectedDate.slice(0, 4) });
+    if (listRangeMode === 'month') return pt('t097', { month: selectedDate.slice(0, 7) });
+    return formatDateLabel(selectedDate, weekdayLabels);
+  }, [listRangeMode, pt, selectedDate, weekdayLabels]);
+
   const categoryServices = useMemo(() => {
     return serviceItems.filter((service) => service.categoryCode === form.selectedCategory);
   }, [serviceItems, form.selectedCategory]);
@@ -451,6 +525,7 @@ export default function ReservationCalendarPage() {
         users: Array<{
           user_id: number;
           name: string;
+          phone: string | null;
         }>;
       }>('get_user_management_data'),
       invokeDbCommand<{
@@ -528,6 +603,13 @@ export default function ReservationCalendarPage() {
     const nextMemberNames = toUniqueSortedNames(
       (memberResult.users || []).map((user) => user.name || ''),
     );
+    const nextMemberPhoneByName = (memberResult.users || []).reduce((map, user) => {
+      const key = normalizeNameKey(user.name || '');
+      const phone = (user.phone || '').trim();
+      if (!key || !phone || map.has(key)) return map;
+      map.set(key, phone);
+      return map;
+    }, new Map<string, string>());
     const nextDesignerNames = toUniqueSortedNames(
       (employeeResult.employees || []).map((employee) => employee.employee_name || ''),
     );
@@ -536,19 +618,23 @@ export default function ReservationCalendarPage() {
     setCategories(nextCategories);
     setServiceItems(loadedServices);
     setMemberNames(nextMemberNames);
+    setMemberPhoneByName(nextMemberPhoneByName);
     setDesignerNames(nextDesignerNames);
+
+    return nextMemberPhoneByName;
   };
 
   // 예약 목록 조회: 헤더 + 시술라인을 화면에서 쓰는 구조로 변환한다.
-  const loadReservations = async () => {
+  const loadReservations = async (phoneMap?: Map<string, string>) => {
     const result = await invokeDbCommand<{
       success: boolean;
       message: string;
       reservations: ReservationRow[];
     }>('get_reservation_calendar_data');
 
+    const safePhoneMap = phoneMap || memberPhoneByName;
     const mappedReservations = sortReservations(
-      (result.reservations || []).map((row) => mapReservationRowToRecord(row)),
+      (result.reservations || []).map((row) => mapReservationRowToRecord(row, safePhoneMap)),
     );
     setReservations(mappedReservations);
     setNextLineId(getNextLineIdSeed(mappedReservations));
@@ -558,12 +644,14 @@ export default function ReservationCalendarPage() {
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
-      await Promise.all([loadLookupData(), loadReservations()]);
+      const phoneMap = await loadLookupData();
+      await loadReservations(phoneMap);
     } catch (error) {
       console.error('Failed to load reservation page data:', error);
       setStatusOptions(FALLBACK_STATUSES);
       setCategories(FALLBACK_CATEGORIES);
       setMemberNames([]);
+      setMemberPhoneByName(new Map());
       setDesignerNames([]);
       setReservations([]);
       alert(
@@ -809,6 +897,18 @@ export default function ReservationCalendarPage() {
     setMonthCursor(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
   };
 
+  const moveListRange = (diff: number) => {
+    if (listRangeMode === 'year') {
+      syncSelectedDate(shiftYear(selectedDate, diff));
+      return;
+    }
+    if (listRangeMode === 'month') {
+      syncSelectedDate(shiftMonth(selectedDate, diff));
+      return;
+    }
+    syncSelectedDate(shiftDate(selectedDate, diff));
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
       <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} zIndex={90} />
@@ -1015,49 +1115,117 @@ export default function ReservationCalendarPage() {
 
       {viewMode === 'list' && (
       <section className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
-            <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate, weekdayLabels)}</p>
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
+              <p className="text-xs text-slate-500 mt-1">{listHeaderLabel}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-1">
+                <button
+                  onClick={() => setListRangeMode('day')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  {pt('t090')}
+                </button>
+                <button
+                  onClick={() => setListRangeMode('month')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'month' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  {pt('t091')}
+                </button>
+                <button
+                  onClick={() => setListRangeMode('year')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'year' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  {pt('t092')}
+                </button>
+              </div>
+
+              <button
+                onClick={() => moveListRange(-1)}
+                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {listRangeMode === 'day' ? (
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    syncSelectedDate(event.target.value);
+                  }}
+                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                />
+              ) : listRangeMode === 'month' ? (
+                <input
+                  type="month"
+                  value={selectedDate.slice(0, 7)}
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    syncSelectedDate(`${event.target.value}-01`);
+                  }}
+                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                />
+              ) : (
+                <select
+                  value={selectedDate.slice(0, 4)}
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    syncSelectedDate(`${event.target.value}-01-01`);
+                  }}
+                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                >
+                  {listYearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <button
+                onClick={() => moveListRange(1)}
+                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                onClick={() => syncSelectedDate(todayIso())}
+                className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
+              >
+                {pt('t047')}
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => syncSelectedDate(shiftDate(selectedDate, -1))}
-              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-              aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
-            >
-              <ChevronLeft size={16} />
-            </button>
+          <div className="flex flex-col md:flex-row md:items-center gap-2">
+            <label className="text-xs font-bold text-slate-500">{pt('t093')}</label>
             <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) => syncSelectedDate(event.target.value)}
-              className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+              type="text"
+              value={listSearchKeyword}
+              onChange={(event) => setListSearchKeyword(event.target.value)}
+              placeholder={pt('t094')}
+              className="w-full md:max-w-sm px-3 py-2 rounded-md text-sm border border-slate-200 text-slate-700 bg-white focus:ring-2 focus:ring-primary/20 outline-none"
             />
-            <button
-              onClick={() => syncSelectedDate(shiftDate(selectedDate, 1))}
-              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-              aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
-            >
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={() => syncSelectedDate(todayIso())}
-              className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
-            >
-              {pt('t047')}
-            </button>
           </div>
         </div>
 
         <div className="p-4">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left min-w-[900px]">
+            <table className="w-full border-collapse text-left min-w-[1040px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t021')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t098')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
@@ -1067,20 +1235,22 @@ export default function ReservationCalendarPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {selectedDateReservations.length === 0 ? (
+                {listReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-sm text-slate-400">
-                      {pt('t053')}
+                    <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
+                      {pt('t099')}
                     </td>
                   </tr>
                 ) : (
-                  selectedDateReservations.map((reservation) => {
+                  listReservations.map((reservation) => {
                     const statusLabel = getStatusLabel(reservation.status);
                     const tone = getStatusTone(reservation.status, statusLabel);
                     return (
                       <tr key={reservation.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-2.5 px-4 text-sm font-medium text-slate-700">{reservation.reservationDate}</td>
                         <td className="py-2.5 px-4 text-sm font-semibold text-slate-700">{reservation.startTime}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-700">{reservation.customerName}</td>
+                        <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.customerPhone || '-'}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">
                           {pt('t058', { count: getExpectedMinutes(reservation.services) })}

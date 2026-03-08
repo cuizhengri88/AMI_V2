@@ -585,7 +585,9 @@
       "t038": "{{name}} Member Balance Recharge",
       "t039": "Current Prepaid Balance: ¥{{amount}}",
       "t040": "Recharge Type",
-      "t041": "Prepaid ¥{{amount}}"
+      "t041": "Prepaid ¥{{amount}}",
+      "t042": "Prepaid Balance",
+      "t043": "Total Coupon Count"
     },
     "user_management_reservation_calendar": {
       "t001": "Customer",
@@ -673,7 +675,16 @@
       "t085": "Color",
       "t086": "Previous Month",
       "t087": "Next Month",
-      "t088": "Close Modal"
+      "t088": "Close Modal",
+      "t090": "Day",
+      "t091": "Month",
+      "t092": "Year",
+      "t093": "Member Name/Phone",
+      "t094": "Search member name or phone...",
+      "t096": "Yearly Reservation List ({{year}})",
+      "t097": "Monthly Reservation List ({{month}})",
+      "t098": "Phone Number",
+      "t099": "No reservations match the current filters."
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",

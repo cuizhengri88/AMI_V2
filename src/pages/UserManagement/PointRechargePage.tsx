@@ -277,6 +277,9 @@ export default function MemberRechargePage() {
     [members],
   );
 
+  const getMemberCouponTotal = (member: Member) =>
+    member.coupons.reduce((sum, coupon) => sum + coupon.count, 0);
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
       <LoadingOverlay visible={isBusy} />
@@ -329,11 +332,12 @@ export default function MemberRechargePage() {
           </button>
         </div>
 
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse min-w-[980px]">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t017')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t023')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t042')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t024')}</th>
             </tr>
@@ -341,7 +345,7 @@ export default function MemberRechargePage() {
           <tbody className="divide-y divide-slate-100">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="py-10 text-center text-sm text-slate-400">
+                <td colSpan={5} className="py-10 text-center text-sm text-slate-400">
                   {pt('t025')}
                 </td>
               </tr>
@@ -356,25 +360,37 @@ export default function MemberRechargePage() {
                       <div>
                         <span className="text-sm font-bold text-slate-900">{member.name}</span>
                         <p className="text-[10px] text-slate-400 font-mono">{`U${member.id}`}</p>
-                        <p className="text-[10px] text-emerald-600 font-bold">{pt('t041', { amount: member.balance.toLocaleString() })}</p>
                       </div>
                     </div>
                   </td>
                   <td className="py-4 px-6 text-sm text-slate-600 font-mono">{member.phone}</td>
                   <td className="py-4 px-6">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="inline-flex flex-col px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50/70">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">{pt('t042')}</p>
+                      <p className="text-base font-black text-emerald-800">¥{member.balance.toLocaleString()}</p>
+                    </div>
+                  </td>
+                  <td className="py-4 px-6">
+                    <div className="space-y-2">
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-amber-700">{pt('t043')}</span>
+                        <span className="text-sm font-black text-amber-800">{pt('t021', { count: getMemberCouponTotal(member) })}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
                       {member.coupons.length > 0 ? (
                         member.coupons.map((coupon) => (
                           <span
                             key={`${member.id}-${coupon.serviceId}`}
-                            className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200"
+                            className="inline-flex items-center px-2.5 py-1 rounded bg-white text-amber-800 text-[11px] font-bold border border-amber-200"
                           >
                             {pt('t026', { name: coupon.name, count: coupon.count })}
                           </span>
                         ))
                       ) : (
                         <span className="text-xs text-slate-300 italic">{pt('t004')}</span>
-                      )}</div>
+                      )}
+                      </div>
+                    </div>
                   </td>
                   <td className="py-4 px-6 text-center">
                     <div className="flex items-center justify-center gap-2">
