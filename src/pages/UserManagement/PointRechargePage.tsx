@@ -25,8 +25,11 @@ type Member = {
   id: number;
   name: string;
   phone: string;
+  balance: number;
   coupons: Coupon[];
 };
+
+type RechargeType = 'BALANCE' | 'COUPON';
 
 type ServiceOption = {
   id: number;
@@ -53,6 +56,7 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   CASH: 't033', // 현금
   CARD: 't034', // 카드
   PREPAID: 't035', // 충전금 차감
+  MEMBERSHIP: 't035', // 충전금 차감
   COUPON: 't036', // 쿠폰 사용
 };
 
@@ -73,6 +77,7 @@ export default function MemberRechargePage() {
   const [amount, setAmount] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState<number>(0);
   const [couponCount, setCouponCount] = useState('');
+  const [rechargeType, setRechargeType] = useState<RechargeType>('COUPON');
   const [paymentMethodCode, setPaymentMethodCode] = useState(FALLBACK_PAYMENT_METHODS[0].code);
 
   const isBusy = isLoading || isMutating;
@@ -91,6 +96,7 @@ export default function MemberRechargePage() {
         user_id: number;
         user_name: string;
         phone: string | null;
+        point_balance: number;
         coupons: Array<{
           service_id: number;
           service_name: string;
@@ -103,6 +109,7 @@ export default function MemberRechargePage() {
       id: member.user_id,
       name: member.user_name,
       phone: member.phone || '-',
+      balance: member.point_balance || 0,
       coupons: (member.coupons || []).map((coupon) => ({
         serviceId: coupon.service_id,
         name: coupon.service_name,
@@ -187,16 +194,17 @@ export default function MemberRechargePage() {
     }
   }, [selectedServiceId, serviceOptions]);
 
-  const resetRechargeForm = () => {
+  const resetRechargeForm = (type: RechargeType) => {
     setAmount('');
     setCouponCount('');
+    setRechargeType(type);
     setSelectedServiceId(serviceOptions[0]?.id || 0);
     setPaymentMethodCode(paymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code);
   };
 
-  const openRechargeModal = (member: Member) => {
+  const openRechargeModal = (member: Member, type: RechargeType) => {
     setSelectedMember(member);
-    resetRechargeForm();
+    resetRechargeForm(type);
     setIsRechargeModalOpen(true);
   };
 
@@ -212,17 +220,19 @@ export default function MemberRechargePage() {
     const parsedAmount = parseInt(amount, 10) || 0;
     const parsedCouponCount = parseInt(couponCount, 10) || 0;
 
-    if (selectedServiceId <= 0) {
-      alert(pt('t009'));
-      return;
-    }
-    if (parsedCouponCount <= 0) {
-      alert(pt('t012'));
-      return;
-    }
     if (parsedAmount <= 0) {
       alert(pt('t003'));
       return;
+    }
+    if (rechargeType === 'COUPON') {
+      if (selectedServiceId <= 0) {
+        alert(pt('t009'));
+        return;
+      }
+      if (parsedCouponCount <= 0) {
+        alert(pt('t012'));
+        return;
+      }
     }
 
     try {
@@ -230,10 +240,10 @@ export default function MemberRechargePage() {
       await invokeDbCommand<{ success: boolean; message: string }>('recharge_member_point', {
         recharge: {
           user_id: selectedMember.id,
-          recharge_type: 'COUPON',
+          recharge_type: rechargeType,
           amount: parsedAmount,
-          service_id: selectedServiceId,
-          coupon_count: parsedCouponCount,
+          service_id: rechargeType === 'COUPON' ? selectedServiceId : null,
+          coupon_count: rechargeType === 'COUPON' ? parsedCouponCount : null,
           payment_method_code: paymentMethodCode,
           memo: null,
         },
@@ -346,6 +356,7 @@ export default function MemberRechargePage() {
                       <div>
                         <span className="text-sm font-bold text-slate-900">{member.name}</span>
                         <p className="text-[10px] text-slate-400 font-mono">{`U${member.id}`}</p>
+                        <p className="text-[10px] text-emerald-600 font-bold">{pt('t041', { amount: member.balance.toLocaleString() })}</p>
                       </div>
                     </div>
                   </td>
@@ -369,7 +380,14 @@ export default function MemberRechargePage() {
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => openRechargeModal(member)} className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
+                        onClick={() => openRechargeModal(member, 'BALANCE')} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                      >
+                        <JapaneseYen size={14} />
+                        {pt('t037')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openRechargeModal(member, 'COUPON')} className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
                       >
                         <Plus size={14} />
                         {pt('t027')}
@@ -386,43 +404,81 @@ export default function MemberRechargePage() {
         {isRechargeModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={pt('t028', { name: selectedMember?.name || '' })}
+              title={
+                rechargeType === 'COUPON'
+                  ? pt('t028', { name: selectedMember?.name || '' })
+                  : pt('t038', { name: selectedMember?.name || '' })
+              }
               onClose={closeRechargeModal}
               icon={<CreditCard size={20} className="text-primary" />}
             >
               <div className="p-6">
                 <form onSubmit={handleRecharge} className="space-y-4">
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
-                      <select
-                        value={selectedServiceId}
-                        onChange={(e) => setSelectedServiceId(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t040')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRechargeType('BALANCE')} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
+                          rechargeType === 'BALANCE'
+                            ? 'border-primary text-primary bg-primary/5'
+                            : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
+                        }`}
                       >
-                        {serviceOptions.length === 0 ? (
-                          <option value={0}>{pt('t008')}</option>
-                        ) : (
-                          serviceOptions.map((service) => (
-                            <option key={service.id} value={service.id}>
-                              {service.name}
-                            </option>
-                          ))
-                        )}</select>
+                        {pt('t037')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRechargeType('COUPON')} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
+                          rechargeType === 'COUPON'
+                            ? 'border-primary text-primary bg-primary/5'
+                            : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
+                        }`}
+                      >
+                        {pt('t027')}
+                      </button>
                     </div>
+                  </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t011')}</label>
-                      <div className="relative">
-                        <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="number"
-                          required
-                          value={couponCount}
-                          onChange={(e) => setCouponCount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
+                  {selectedMember && (
+                    <p className="text-xs text-slate-500">{pt('t039', { amount: selectedMember.balance.toLocaleString() })}</p>
+                  )}
+
+                  <div className="space-y-4">
+                    {rechargeType === 'COUPON' && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
+                          <select
+                            value={selectedServiceId}
+                            onChange={(e) => setSelectedServiceId(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                          >
+                            {serviceOptions.length === 0 ? (
+                              <option value={0}>{pt('t008')}</option>
+                            ) : (
+                              serviceOptions.map((service) => (
+                                <option key={service.id} value={service.id}>
+                                  {service.name}
+                                </option>
+                              ))
+                            )}</select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">{pt('t011')}</label>
+                          <div className="relative">
+                            <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="number"
+                              required={rechargeType === 'COUPON'}
+                              value={couponCount}
+                              onChange={(e) => setCouponCount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">{pt('t002')}</label>

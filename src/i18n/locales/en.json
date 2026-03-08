@@ -560,7 +560,7 @@
       "t013": "Recharge completed.",
       "t014": "Member Point Management",
       "t015": "Search member name or contact...",
-      "t016": "Check and recharge the service coupons and total counts held by members.",
+      "t016": "Check member prepaid balances and coupon holdings, then recharge balance or passes.",
       "t017": "Member Info",
       "t018": "Failed to load member point data.",
       "t019": "Recharge failed.",
@@ -580,7 +580,12 @@
       "t033": "Cash",
       "t034": "Card",
       "t035": "Prepaid Deduction",
-      "t036": "Coupon Use"
+      "t036": "Coupon Use",
+      "t037": "Balance Recharge",
+      "t038": "{{name}} Member Balance Recharge",
+      "t039": "Current Prepaid Balance: ¥{{amount}}",
+      "t040": "Recharge Type",
+      "t041": "Prepaid ¥{{amount}}"
     },
     "user_management_reservation_calendar": {
       "t001": "Customer",
@@ -835,7 +840,11 @@
       "t075": "WeChat Pay",
       "t076": "Alipay",
       "t077": "Prepaid Deduction",
-      "t078": "Coupon Use"
+      "t078": "Coupon Use",
+      "t079": "Excluded from Actual Sales",
+      "t080": "Collection by Payment Method",
+      "t081": "Shows how sales were collected across payment methods.",
+      "t082": " times"
     },
     "user_management_user_management": {
       "t001": "Name and email are required.",

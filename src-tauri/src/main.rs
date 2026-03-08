@@ -23,6 +23,7 @@ const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
 const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
 const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
 const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
+const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -2431,8 +2432,8 @@ async fn backup_database_to_file(
         "tables": tables_json
     });
 
-    let serialized =
-        serde_json::to_string_pretty(&backup_json).map_err(|e| format!("백업 JSON 생성 실패: {e}"))?;
+    let serialized = serde_json::to_string_pretty(&backup_json)
+        .map_err(|e| format!("백업 JSON 생성 실패: {e}"))?;
     fs::write(&output_path, serialized).map_err(|e| format!("백업 파일 저장 실패: {e}"))?;
 
     Ok(DatabaseBackupResult {
@@ -5530,6 +5531,83 @@ fn build_sales_coupon_usage_memo_pattern(settlement_id: i64) -> String {
     format!("{SALES_COUPON_USAGE_MEMO_PREFIX}{settlement_id}:%")
 }
 
+fn build_sales_balance_usage_memo(settlement_id: i64, line_no: i32) -> String {
+    format!("{SALES_BALANCE_USAGE_MEMO_PREFIX}{settlement_id}:{line_no}")
+}
+
+fn build_sales_balance_usage_memo_pattern(settlement_id: i64) -> String {
+    format!("{SALES_BALANCE_USAGE_MEMO_PREFIX}{settlement_id}:%")
+}
+
+fn is_sales_balance_payment_code(code: &str) -> bool {
+    code == "PREPAID" || code == "MEMBERSHIP"
+}
+
+async fn restore_sales_settlement_balance_usage(
+    tx: &tokio_postgres::Transaction<'_>,
+    store_code: &str,
+    settlement_id: i64,
+) -> Result<(), String> {
+    let memo_pattern = build_sales_balance_usage_memo_pattern(settlement_id);
+    let usage_rows = tx
+        .query(
+            r#"
+            SELECT
+                id::BIGINT,
+                user_id::BIGINT,
+                COALESCE(amount, 0)::BIGINT
+              FROM member_point_usage_history
+             WHERE store_code = $1
+               AND use_type = 'BALANCE'
+               AND memo LIKE $2
+             ORDER BY id
+             FOR UPDATE
+            "#,
+            &[&store_code, &memo_pattern],
+        )
+        .await
+        .map_err(|e| format!("정산 충전금 사용 이력 조회 실패: {e}"))?;
+
+    for row in usage_rows {
+        let usage_id = row.get::<_, i64>(0);
+        let user_id = row.get::<_, i64>(1);
+        let amount = row.get::<_, i64>(2);
+        if amount <= 0 {
+            return Err(format!(
+                "정산 충전금 사용 이력의 금액 정보가 올바르지 않습니다. (usage_id={usage_id})"
+            ));
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO member_point_balance (store_code, user_id, point_balance)
+            VALUES ($1,$2,$3)
+            ON CONFLICT (store_code, user_id)
+            DO UPDATE SET
+                point_balance = member_point_balance.point_balance + EXCLUDED.point_balance,
+                updated_at = NOW()
+            "#,
+            &[&store_code, &user_id, &amount],
+        )
+        .await
+        .map_err(|e| format!("정산 충전금 원복 처리 실패: {e}"))?;
+    }
+
+    tx.execute(
+        r#"
+        DELETE FROM member_point_usage_history
+         WHERE store_code = $1
+           AND use_type = 'BALANCE'
+           AND memo LIKE $2
+        "#,
+        &[&store_code, &memo_pattern],
+    )
+    .await
+    .map_err(|e| format!("정산 충전금 사용 이력 정리 실패: {e}"))?;
+
+    Ok(())
+}
+
 async fn restore_sales_settlement_coupon_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
@@ -5663,6 +5741,66 @@ async fn apply_sales_settlement_coupon_usage(
         )
         .await
         .map_err(|e| format!("정산 쿠폰 사용 이력 저장 실패: {e}"))?;
+    }
+
+    Ok(())
+}
+
+async fn apply_sales_settlement_balance_usage(
+    tx: &tokio_postgres::Transaction<'_>,
+    store_code: &str,
+    settlement_id: i64,
+    member_user_id: i64,
+    balance_usage_lines: &[(i32, i64)],
+) -> Result<(), String> {
+    for (line_no, amount) in balance_usage_lines {
+        if *amount <= 0 {
+            return Err("충전금 사용 금액은 1원 이상이어야 합니다.".to_string());
+        }
+
+        let affected = tx
+            .execute(
+                r#"
+                UPDATE member_point_balance
+                   SET point_balance = point_balance - $3,
+                       updated_at = NOW()
+                 WHERE store_code = $1
+                   AND user_id = $2
+                   AND point_balance >= $3
+                "#,
+                &[&store_code, &member_user_id, amount],
+            )
+            .await
+            .map_err(|e| format!("정산 충전금 차감 처리 실패: {e}"))?;
+
+        if affected == 0 {
+            return Err("충전 잔액이 부족하여 결제완료 처리할 수 없습니다.".to_string());
+        }
+
+        let use_type = "BALANCE".to_string();
+        let amount_option: Option<i64> = Some(*amount);
+        let none_service_id: Option<i64> = None;
+        let none_coupon_count: Option<i32> = None;
+        let memo = build_sales_balance_usage_memo(settlement_id, *line_no);
+
+        tx.execute(
+            r#"
+            INSERT INTO member_point_usage_history (
+                store_code, user_id, use_type, amount, service_id, coupon_count, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            "#,
+            &[
+                &store_code,
+                &member_user_id,
+                &use_type,
+                &amount_option,
+                &none_service_id,
+                &none_coupon_count,
+                &memo,
+            ],
+        )
+        .await
+        .map_err(|e| format!("정산 충전금 사용 이력 저장 실패: {e}"))?;
     }
 
     Ok(())
@@ -5838,8 +5976,13 @@ async fn upsert_sales_settlement(
         if payment.amount < 0 {
             return Err("결제 금액은 0 이상이어야 합니다.".to_string());
         }
-        if settlement.member_user_id.is_none() && (code == "PREPAID" || code == "COUPON") {
-            return Err("일반 방문객은 PREPAID 또는 COUPON 결제를 사용할 수 없습니다.".to_string());
+        if settlement.member_user_id.is_none()
+            && (is_sales_balance_payment_code(&code) || code == "COUPON")
+        {
+            return Err(
+                "일반 방문객은 MEMBERSHIP/PREPAID 또는 COUPON 결제를 사용할 수 없습니다."
+                    .to_string(),
+            );
         }
 
         let coupon_service_id = if code == "COUPON" {
@@ -5963,6 +6106,7 @@ async fn upsert_sales_settlement(
             return Err("settlement_id는 1 이상이어야 합니다.".to_string());
         }
 
+        restore_sales_settlement_balance_usage(&tx, &store_code, settlement_id).await?;
         restore_sales_settlement_coupon_usage(&tx, &store_code, settlement_id).await?;
 
         let affected = tx
@@ -6121,20 +6265,45 @@ async fn upsert_sales_settlement(
                 .map(|service_id| ((index + 1) as i32, service_id, 1_i32))
         })
         .collect::<Vec<_>>();
+    let balance_usage_lines = insert_payment_lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, payment)| {
+            if is_sales_balance_payment_code(&payment.payment_method_code) && payment.amount > 0 {
+                Some(((index + 1) as i32, payment.amount))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
-    if status == "COMPLETED" && !coupon_usage_lines.is_empty() {
+    if status == "COMPLETED" && (!coupon_usage_lines.is_empty() || !balance_usage_lines.is_empty())
+    {
         let Some(member_user_id) = settlement.member_user_id else {
-            return Err("쿠폰 결제는 회원 지정이 필요합니다.".to_string());
+            return Err("회원 충전금/쿠폰 결제는 회원 지정이 필요합니다.".to_string());
         };
 
-        apply_sales_settlement_coupon_usage(
-            &tx,
-            &store_code,
-            settlement_id,
-            member_user_id,
-            &coupon_usage_lines,
-        )
-        .await?;
+        if !balance_usage_lines.is_empty() {
+            apply_sales_settlement_balance_usage(
+                &tx,
+                &store_code,
+                settlement_id,
+                member_user_id,
+                &balance_usage_lines,
+            )
+            .await?;
+        }
+
+        if !coupon_usage_lines.is_empty() {
+            apply_sales_settlement_coupon_usage(
+                &tx,
+                &store_code,
+                settlement_id,
+                member_user_id,
+                &coupon_usage_lines,
+            )
+            .await?;
+        }
     }
 
     // 예약 연동 건이면 정산 상태를 예약 상태에도 동기화한다.
@@ -6288,6 +6457,7 @@ async fn cancel_sales_settlement(
     }
 
     if current_status == "COMPLETED" {
+        restore_sales_settlement_balance_usage(&tx, &store_code, payload.settlement_id).await?;
         restore_sales_settlement_coupon_usage(&tx, &store_code, payload.settlement_id).await?;
     }
 

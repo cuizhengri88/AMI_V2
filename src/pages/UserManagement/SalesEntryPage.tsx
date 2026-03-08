@@ -141,6 +141,11 @@ function isCouponPaymentMethod(method: string) {
   return method?.trim().toUpperCase() === 'COUPON';
 }
 
+function isBalancePaymentMethod(method: string) {
+  const normalized = method?.trim().toUpperCase();
+  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
+}
+
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {
   const dragControls = useDragControls();
 
@@ -224,6 +229,7 @@ export default function SalesEntryPage() {
       case 'ALIPAY':
         return pt('t081');
       case 'PREPAID':
+      case 'MEMBERSHIP':
         return pt('t082');
       case 'COUPON':
         return pt('t083');
@@ -714,14 +720,14 @@ export default function SalesEntryPage() {
   // [동작] 일반 방문객은 선불권 사용 불가이므로 PREPAID/COUPON 결제라인 제거
   useEffect(() => {
     if (selectedMemberId !== 'GUEST') return;
-    setPayments((prev) => prev.filter((payment) => payment.method !== 'PREPAID' && payment.method !== 'COUPON'));
+    setPayments((prev) => prev.filter((payment) => !isBalancePaymentMethod(payment.method) && payment.method !== 'COUPON'));
   }, [selectedMemberId]);
 
   // [동작] 잔액만큼 결제수단 라인 1건 자동 추가
   const handleAddPayment = () => {
     if (remainingAmount <= 0) return;
     const defaultMethod =
-      manualPaymentMethods.find((method) => !(selectedMemberId === 'GUEST' && method.code === 'PREPAID'))?.code
+      manualPaymentMethods.find((method) => !(selectedMemberId === 'GUEST' && isBalancePaymentMethod(method.code)))?.code
       || 'CARD';
     setPayments((prev) => [
       ...prev,
@@ -767,7 +773,7 @@ export default function SalesEntryPage() {
     const normalizedPayments = payments.filter((payment) => payment.method !== 'COUPON');
 
     const prepaidTotal = normalizedPayments
-      .filter((payment) => payment.method === 'PREPAID')
+      .filter((payment) => isBalancePaymentMethod(payment.method))
       .reduce((sum, payment) => sum + payment.amount, 0);
 
     if (selectedMember && prepaidTotal > selectedMember.balance) {
@@ -1306,7 +1312,7 @@ export default function SalesEntryPage() {
                               onChange={(event) => updatePayment(index, 'method', event.target.value as PaymentMethodCode)} className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold outline-none"
                             >
                               {manualPaymentMethods.map((method) => {
-                                const isDisabled = method.code === 'PREPAID' && selectedMemberId === 'GUEST';
+                                const isDisabled = isBalancePaymentMethod(method.code) && selectedMemberId === 'GUEST';
                                 return (
                                   <option key={method.code} value={method.code} disabled={isDisabled}>
                                     {getPaymentMethodLabel(method.code, method.name)}
@@ -1323,7 +1329,7 @@ export default function SalesEntryPage() {
                             </button>
                           </div>
 
-                          {payment.method === 'PREPAID' && selectedMember && (
+                          {isBalancePaymentMethod(payment.method) && selectedMember && (
                             <div className="flex items-center justify-between px-2 py-1 bg-emerald-50 rounded text-[10px] font-bold text-emerald-700">
                               <span>{pt('t064', { balance: selectedMember.balance.toLocaleString() })}</span>
                               {selectedMember.balance < payment.amount && (

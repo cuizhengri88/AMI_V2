@@ -92,6 +92,7 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   WECHAT: 't075', // 위챗페이
   ALIPAY: 't076', // 알리페이
   PREPAID: 't077', // 충전금 차감
+  MEMBERSHIP: 't077', // 충전금 차감
   COUPON: 't078', // 쿠폰 사용
 };
 
@@ -149,6 +150,11 @@ function isCouponPaymentMethod(method: string) {
   return method?.trim().toUpperCase() === 'COUPON';
 }
 
+function isBalancePaymentMethod(method: string) {
+  const normalized = method?.trim().toUpperCase();
+  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
+}
+
 function getTotalPaidAmount(entry: Settlement) {
   return entry.payments.reduce((sum, payment) => sum + payment.amount, 0);
 }
@@ -156,7 +162,7 @@ function getTotalPaidAmount(entry: Settlement) {
 function getActualSalesAmount(entry: Settlement) {
   if (entry.entryType === 'POINT_RECHARGE') return getTotalPaidAmount(entry);
   return entry.payments
-    .filter((payment) => !isCouponPaymentMethod(payment.method))
+    .filter((payment) => !isCouponPaymentMethod(payment.method) && !isBalancePaymentMethod(payment.method))
     .reduce((sum, payment) => sum + payment.amount, 0);
 }
 
@@ -192,6 +198,11 @@ function normalizePaymentMethodCode(value: string) {
   const normalized = raw.toUpperCase();
   if (normalized === 'COUPON' || raw === LEGACY_COUPON_PAYMENT_LABEL || raw.includes('쿠폰')) return 'COUPON';
   return normalized;
+}
+
+function isActualSalesExcludedPaymentCode(code: string) {
+  const normalized = code?.trim().toUpperCase();
+  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
 export default function SalesHistoryPage() {
@@ -448,6 +459,55 @@ export default function SalesHistoryPage() {
     }, { totalSales: 0, totalDiscount: 0, count: 0 });
   }, [filteredHistory, procedurePriceById]);
 
+  const paymentStats = useMemo(() => {
+    const totals = new Map<string, number>();
+    const counts = new Map<string, number>();
+
+    filteredHistory.forEach((entry) => {
+      if (entry.status === 'CANCELLED') return;
+
+      entry.payments.forEach((payment) => {
+        const normalizedCode = normalizePaymentMethodCode(payment.method);
+        if (normalizedCode === 'COUPON') {
+          counts.set('COUPON', (counts.get('COUPON') || 0) + 1);
+          return;
+        }
+        totals.set(normalizedCode, (totals.get(normalizedCode) || 0) + payment.amount);
+      });
+    });
+
+    const orderedCodes = paymentMethods
+      .map((entry) => normalizePaymentMethodCode(entry.code))
+      .filter((code, index, source) => source.indexOf(code) === index);
+
+    totals.forEach((_, code) => {
+      if (!orderedCodes.includes(code)) {
+        orderedCodes.push(code);
+      }
+    });
+
+    return orderedCodes.map((code) => {
+      const commonCodeName = paymentMethodNameMap.get(code)?.trim();
+      let name = code;
+      if (commonCodeName) {
+        name = commonCodeName === LEGACY_COUPON_PAYMENT_LABEL ? pt('t071') : commonCodeName;
+      } else {
+        const labelKey = PAYMENT_METHOD_TEXT_KEY_BY_CODE[code];
+        if (labelKey) {
+          name = pt(labelKey);
+        }
+      }
+      return {
+        code,
+        name,
+        amount: totals.get(code) || 0,
+        count: counts.get(code) || 0,
+        isCouponStat: code === 'COUPON',
+        isActualSalesExcluded: isActualSalesExcludedPaymentCode(code),
+      };
+    });
+  }, [filteredHistory, paymentMethods, paymentMethodNameMap, pt]);
+
   const resetFilters = () => {
     setStartDate(monthStartIso());
     setEndDate(todayIso());
@@ -584,6 +644,44 @@ export default function SalesHistoryPage() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><TrendingUp size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalSales)}</h3></div></div>
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center"><Tag size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t029')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalDiscount)}</h3></div></div>
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><Scissors size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t025')}</p><h3 className="text-xl font-black text-slate-900">{stats.count}{pt('t047')}</h3></div></div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="size-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
+            <CreditCard size={20} />
+          </div>
+          <div>
+            <p className="text-sm font-black text-slate-900">{pt('t080')}</p>
+            <p className="text-xs text-slate-500">{pt('t081')}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {paymentStats.map((entry) => (
+            <div key={entry.code} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-3">
+              <div className="size-10 bg-white text-emerald-500 rounded-lg border border-slate-200 flex items-center justify-center">
+                <CreditCard size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t023')}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-black text-slate-600 truncate">{entry.name}</p>
+                  {entry.isActualSalesExcluded && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black whitespace-nowrap">
+                      {pt('t079')}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl font-black text-slate-900">
+                  {entry.isCouponStat
+                    ? `${entry.count.toLocaleString()}${pt('t082')}`
+                    : formatCurrency(entry.amount)}
+                </h3>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
