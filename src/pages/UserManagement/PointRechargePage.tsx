@@ -438,7 +438,7 @@ export default function MemberRechargePage() {
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      {[10000, 50000, 100000].map((value) => (
+                      {[100, 500, 1000].map((value) => (
                         <button
                           key={value}
                           type="button"
