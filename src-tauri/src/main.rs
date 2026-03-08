@@ -639,6 +639,7 @@ struct ReservationCalendarDataResult {
 struct MemberPointQueryPayload {
     connection: DbConnectionPayload,
     store_code: Option<String>,
+    include_histories: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3650,6 +3651,7 @@ async fn get_member_point_management_data(
     let client = connect_with_schema(&payload.connection).await?;
     ensure_member_point_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+    let include_histories = payload.include_histories.unwrap_or(true);
 
     let member_rows = client
         .query(
@@ -3717,116 +3719,120 @@ async fn get_member_point_management_data(
         })
         .collect::<Vec<_>>();
 
-    let history_rows = client
-        .query(
-            r#"
-            SELECT
-                x.id::BIGINT,
-                x.action_type,
-                x.user_id::BIGINT,
-                x.user_name,
-                x.user_phone,
-                x.recharge_type,
-                x.amount::BIGINT,
-                x.service_id::BIGINT,
-                x.service_name,
-                x.coupon_count,
-                x.payment_method_code,
-                x.payment_method_name,
-                x.memo,
-                x.created_at::TEXT,
-                x.is_cancelled,
-                x.cancel_reason,
-                x.cancelled_at
-              FROM (
-                    SELECT
-                        h.id,
-                        'RECHARGE'::TEXT AS action_type,
-                        h.user_id,
-                        u.name AS user_name,
-                        u.phone AS user_phone,
-                        h.recharge_type,
-                        h.amount,
-                        h.service_id,
-                        s.service_name,
-                        h.coupon_count,
-                        h.payment_method_code,
-                        COALESCE(pm.detail_name, h.payment_method_code) AS payment_method_name,
-                        COALESCE(h.memo, '') AS memo,
-                        h.created_at,
-                        (h.status_code = 'CANCELLED') AS is_cancelled,
-                        h.cancel_reason,
-                        TO_CHAR(h.cancelled_at, 'YYYY-MM-DD HH24:MI:SS') AS cancelled_at
-                      FROM member_point_history h
-                      JOIN user_management u
-                        ON u.user_id = h.user_id
-                       AND u.store_code = h.store_code
-                 LEFT JOIN service_catalog_management s
-                        ON s.service_id = h.service_id
-                       AND s.store_code = h.store_code
-                 LEFT JOIN common_code_detail pm
-                        ON pm.group_code_id = 'PAYMENT_METHOD'
-                        AND pm.detail_code = h.payment_method_code
-                      WHERE h.store_code = $1
+    let histories = if include_histories {
+        let history_rows = client
+            .query(
+                r#"
+                SELECT
+                    x.id::BIGINT,
+                    x.action_type,
+                    x.user_id::BIGINT,
+                    x.user_name,
+                    x.user_phone,
+                    x.recharge_type,
+                    x.amount::BIGINT,
+                    x.service_id::BIGINT,
+                    x.service_name,
+                    x.coupon_count,
+                    x.payment_method_code,
+                    x.payment_method_name,
+                    x.memo,
+                    x.created_at::TEXT,
+                    x.is_cancelled,
+                    x.cancel_reason,
+                    x.cancelled_at
+                  FROM (
+                        SELECT
+                            h.id,
+                            'RECHARGE'::TEXT AS action_type,
+                            h.user_id,
+                            u.name AS user_name,
+                            u.phone AS user_phone,
+                            h.recharge_type,
+                            h.amount,
+                            h.service_id,
+                            s.service_name,
+                            h.coupon_count,
+                            h.payment_method_code,
+                            COALESCE(pm.detail_name, h.payment_method_code) AS payment_method_name,
+                            COALESCE(h.memo, '') AS memo,
+                            h.created_at,
+                            (h.status_code = 'CANCELLED') AS is_cancelled,
+                            h.cancel_reason,
+                            TO_CHAR(h.cancelled_at, 'YYYY-MM-DD HH24:MI:SS') AS cancelled_at
+                          FROM member_point_history h
+                          JOIN user_management u
+                            ON u.user_id = h.user_id
+                           AND u.store_code = h.store_code
+                     LEFT JOIN service_catalog_management s
+                            ON s.service_id = h.service_id
+                           AND s.store_code = h.store_code
+                     LEFT JOIN common_code_detail pm
+                            ON pm.group_code_id = 'PAYMENT_METHOD'
+                            AND pm.detail_code = h.payment_method_code
+                          WHERE h.store_code = $1
 
-                    UNION ALL
+                        UNION ALL
 
-                    SELECT
-                        uh.id,
-                        'USE'::TEXT AS action_type,
-                        uh.user_id,
-                        u.name AS user_name,
-                        u.phone AS user_phone,
-                        uh.use_type AS recharge_type,
-                        uh.amount,
-                        uh.service_id,
-                        s.service_name,
-                        uh.coupon_count,
-                        'USE'::TEXT AS payment_method_code,
-                        '사용'::TEXT AS payment_method_name,
-                        COALESCE(uh.memo, '') AS memo,
-                        uh.created_at,
-                        FALSE AS is_cancelled,
-                        NULL::TEXT AS cancel_reason,
-                        NULL::TEXT AS cancelled_at
-                      FROM member_point_usage_history uh
-                      JOIN user_management u
-                        ON u.user_id = uh.user_id
-                       AND u.store_code = uh.store_code
-                 LEFT JOIN service_catalog_management s
-                        ON s.service_id = uh.service_id
-                       AND s.store_code = uh.store_code
-                     WHERE uh.store_code = $1
-                   ) x
-             ORDER BY x.created_at DESC, x.id DESC
-            "#,
-            &[&store_code],
-        )
-        .await
-        .map_err(|e| format!("회원 포인트 이력 조회 실패: {e}"))?;
+                        SELECT
+                            uh.id,
+                            'USE'::TEXT AS action_type,
+                            uh.user_id,
+                            u.name AS user_name,
+                            u.phone AS user_phone,
+                            uh.use_type AS recharge_type,
+                            uh.amount,
+                            uh.service_id,
+                            s.service_name,
+                            uh.coupon_count,
+                            'USE'::TEXT AS payment_method_code,
+                            '사용'::TEXT AS payment_method_name,
+                            COALESCE(uh.memo, '') AS memo,
+                            uh.created_at,
+                            FALSE AS is_cancelled,
+                            NULL::TEXT AS cancel_reason,
+                            NULL::TEXT AS cancelled_at
+                          FROM member_point_usage_history uh
+                          JOIN user_management u
+                            ON u.user_id = uh.user_id
+                           AND u.store_code = uh.store_code
+                     LEFT JOIN service_catalog_management s
+                            ON s.service_id = uh.service_id
+                           AND s.store_code = uh.store_code
+                         WHERE uh.store_code = $1
+                       ) x
+                 ORDER BY x.created_at DESC, x.id DESC
+                "#,
+                &[&store_code],
+            )
+            .await
+            .map_err(|e| format!("회원 포인트 이력 조회 실패: {e}"))?;
 
-    let histories = history_rows
-        .into_iter()
-        .map(|row| MemberPointHistoryDto {
-            id: row.get::<_, i64>(0),
-            action_type: row.get::<_, String>(1),
-            user_id: row.get::<_, i64>(2),
-            user_name: row.get::<_, String>(3),
-            user_phone: row.get::<_, Option<String>>(4),
-            recharge_type: row.get::<_, String>(5),
-            amount: row.get::<_, Option<i64>>(6),
-            service_id: row.get::<_, Option<i64>>(7),
-            service_name: row.get::<_, Option<String>>(8),
-            coupon_count: row.get::<_, Option<i32>>(9),
-            payment_method_code: row.get::<_, String>(10),
-            payment_method_name: row.get::<_, String>(11),
-            memo: row.get::<_, String>(12),
-            created_at: row.get::<_, String>(13),
-            is_cancelled: row.get::<_, bool>(14),
-            cancel_reason: row.get::<_, Option<String>>(15),
-            cancelled_at: row.get::<_, Option<String>>(16),
-        })
-        .collect::<Vec<_>>();
+        history_rows
+            .into_iter()
+            .map(|row| MemberPointHistoryDto {
+                id: row.get::<_, i64>(0),
+                action_type: row.get::<_, String>(1),
+                user_id: row.get::<_, i64>(2),
+                user_name: row.get::<_, String>(3),
+                user_phone: row.get::<_, Option<String>>(4),
+                recharge_type: row.get::<_, String>(5),
+                amount: row.get::<_, Option<i64>>(6),
+                service_id: row.get::<_, Option<i64>>(7),
+                service_name: row.get::<_, Option<String>>(8),
+                coupon_count: row.get::<_, Option<i32>>(9),
+                payment_method_code: row.get::<_, String>(10),
+                payment_method_name: row.get::<_, String>(11),
+                memo: row.get::<_, String>(12),
+                created_at: row.get::<_, String>(13),
+                is_cancelled: row.get::<_, bool>(14),
+                cancel_reason: row.get::<_, Option<String>>(15),
+                cancelled_at: row.get::<_, Option<String>>(16),
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     Ok(MemberPointDataResult {
         success: true,

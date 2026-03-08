@@ -25,9 +25,9 @@ import {
   Filter,
   Download,
   Calendar,
-  Loader2,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 type ViewType = 'daily' | 'weekly' | 'monthly' | 'period';
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
@@ -477,19 +477,12 @@ export default function HairSalesStatisticsPage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
       className="max-w-7xl mx-auto space-y-6 pb-20"
     >
-      {isLoading && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">Loading...</span>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay visible={isLoading} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>

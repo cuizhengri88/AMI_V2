@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Search,
@@ -15,11 +15,11 @@ import {
   X,
   CheckCircle2,
   Info,
-  Loader2,
   AlertCircle,
   GripHorizontal,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 type Member = { id: number; name: string; phone: string; balance: number };
 type Manager = { id: number; name: string; role: string };
@@ -168,6 +168,7 @@ export default function SalesHistoryPage() {
   const [selectedPayment, setSelectedPayment] = useState('');
   const [selectedHistory, setSelectedHistory] = useState<Settlement | null>(null);
   const detailDragControls = useDragControls();
+  const initialLoadDoneRef = useRef(false);
 
   const categories = useMemo(() => {
     const labels = Array.from(new Set(procedures.map((entry) => entry.categoryName).filter(Boolean)));
@@ -180,7 +181,7 @@ export default function SalesHistoryPage() {
     return { name: member?.name || '-', phone: member?.phone || '-' };
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       const [codeResult, managerResult, procedureResult, memberResult, settlementResult] = await Promise.all([
@@ -314,12 +315,13 @@ export default function SalesHistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (initialLoadDoneRef.current) return;
+    initialLoadDoneRef.current = true;
+    void loadData();
+  }, [loadData]);
 
   const paymentMethodNameMap = useMemo(
     () => new Map(paymentMethods.map((entry) => [entry.code, entry.name])),
@@ -424,15 +426,8 @@ export default function SalesHistoryPage() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="max-w-7xl mx-auto space-y-6 pb-20">
-      {isLoading && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">Loading...</span>
-          </div>
-        </div>
-      )}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="max-w-7xl mx-auto space-y-6 pb-20">
+      <LoadingOverlay visible={isLoading} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripHorizontal, Trash2, Loader2, Database, Briefcase, Calendar } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 type Employee = {
   employee_id: number;
@@ -132,18 +133,11 @@ export default function EmployeeManagementPage() {
 
   return (
     <motion.div 
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      {isLoading && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">로딩 중...</span>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay visible={isLoading} message="로딩 중..." />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>

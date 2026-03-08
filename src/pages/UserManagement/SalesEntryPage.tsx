@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Scissors,
@@ -10,9 +10,9 @@ import {
   X,
   Trash2,
   AlertCircle,
-  Loader2,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 type Coupon = {
   serviceId: number;
@@ -195,6 +195,8 @@ export default function SalesEntryPage() {
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Settlement | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const initialLoadDoneRef = useRef(false);
+  const loadDataInFlightRef = useRef<Promise<void> | null>(null);
 
   const isBusy = isLoading || isMutating;
 
@@ -207,207 +209,224 @@ export default function SalesEntryPage() {
   }, [procedures]);
 
   // [로직] 화면 진입 시 필요한 모든 기준 데이터/정산 데이터를 DB에서 조회
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const commonCodeResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        details: Array<{
-          group: string;
-          code: string;
-          name: string;
-          order: number;
-          use_yn: 'Y' | 'N';
-        }>;
-      }>('get_common_code_management_data');
+  const loadData = useCallback(async () => {
+    if (loadDataInFlightRef.current) {
+      return loadDataInFlightRef.current;
+    }
 
-      const managerResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        employees: Array<{
-          employee_id: number;
-          employee_name: string;
-          role_name: string | null;
-          role_id: string | null;
-        }>;
-      }>('get_employee_management_data');
+    const task = (async () => {
+      try {
+        setIsLoading(true);
+        const [
+          commonCodeResult,
+          managerResult,
+          procedureResult,
+          memberResult,
+          settlementResult,
+          reservationResult,
+        ] = await Promise.all([
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            details: Array<{
+              group: string;
+              code: string;
+              name: string;
+              order: number;
+              use_yn: 'Y' | 'N';
+            }>;
+          }>('get_common_code_management_data'),
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            employees: Array<{
+              employee_id: number;
+              employee_name: string;
+              role_name: string | null;
+              role_id: string | null;
+            }>;
+          }>('get_employee_management_data'),
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            items: Array<{
+              service_id: number;
+              category_code: string;
+              category_name: string;
+              service_name: string;
+              unit_price: number;
+              duration_minutes: number;
+              use_yn: 'Y' | 'N';
+            }>;
+          }>('get_service_catalog_data'),
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            members: Array<{
+              user_id: number;
+              user_name: string;
+              phone: string | null;
+              point_balance: number;
+              coupons: Array<{
+                service_id: number;
+                service_name: string;
+                count: number;
+              }>;
+            }>;
+          }>('get_member_point_management_data', {
+            include_histories: false,
+          }),
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            settlements: Array<{
+              settlement_id: number;
+              settlement_datetime: string;
+              member_user_id: number | null;
+              manager_employee_id: number;
+              service_ids: number[];
+              total_amount: number;
+              total_time_minutes: number;
+              payments: Array<{
+                payment_method_code: string;
+                amount: number;
+                coupon_service_id: number | null;
+              }>;
+              status: string;
+              reservation_ref: string | null;
+              cancel_type: string | null;
+              cancel_reason: string | null;
+              cancelled_at: string | null;
+            }>;
+          }>('get_sales_settlement_data'),
+          invokeDbCommand<{
+            success: boolean;
+            message: string;
+            reservations: Array<{
+              reservation_id: number;
+              reservation_date: string;
+              start_time: string;
+              customer_name: string;
+              designer_name: string;
+              status: string;
+              services: Array<{
+                service_id: number;
+              }>;
+            }>;
+          }>('get_reservation_calendar_data'),
+        ]);
 
-      const procedureResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        items: Array<{
-          service_id: number;
-          category_code: string;
-          category_name: string;
-          service_name: string;
-          unit_price: number;
-          duration_minutes: number;
-          use_yn: 'Y' | 'N';
-        }>;
-      }>('get_service_catalog_data');
-
-      const memberResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        members: Array<{
-          user_id: number;
-          user_name: string;
-          phone: string | null;
-          point_balance: number;
-          coupons: Array<{
-            service_id: number;
-            service_name: string;
-            count: number;
-          }>;
-        }>;
-      }>('get_member_point_management_data');
-
-      const settlementResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        settlements: Array<{
-          settlement_id: number;
-          settlement_datetime: string;
-          member_user_id: number | null;
-          manager_employee_id: number;
-          service_ids: number[];
-          total_amount: number;
-          total_time_minutes: number;
-          payments: Array<{
-            payment_method_code: string;
-            amount: number;
-            coupon_service_id: number | null;
-          }>;
-          status: string;
-          reservation_ref: string | null;
-          cancel_type: string | null;
-          cancel_reason: string | null;
-          cancelled_at: string | null;
-        }>;
-      }>('get_sales_settlement_data');
-
-      const reservationResult = await invokeDbCommand<{
-        success: boolean;
-        message: string;
-        reservations: Array<{
-          reservation_id: number;
-          reservation_date: string;
-          start_time: string;
-          customer_name: string;
-          designer_name: string;
-          status: string;
-          services: Array<{
-            service_id: number;
-          }>;
-        }>;
-      }>('get_reservation_calendar_data');
-
-      // [매핑] 회원 포인트 조회 결과 -> 화면 모델
-      const mappedMembers: Member[] = (memberResult.members || []).map((member) => ({
-        id: member.user_id,
-        name: member.user_name,
-        phone: member.phone || '-',
-        balance: member.point_balance || 0,
-        coupons: (member.coupons || []).map((coupon) => ({
-          serviceId: coupon.service_id,
-          name: coupon.service_name,
-          count: coupon.count,
-        })),
-      }));
-
-      // [매핑] 직원 조회 결과 -> 담당자 모델
-      const mappedManagers: Manager[] = (managerResult.employees || []).map((manager) => ({
-        id: manager.employee_id,
-        name: manager.employee_name,
-        role: manager.role_name || manager.role_id || '-',
-      }));
-
-      // [매핑] 시술 조회 결과 -> 시술 선택 모델(사용중만 노출)
-      const mappedProcedures: Procedure[] = (procedureResult.items || [])
-        .filter((procedure) => procedure.use_yn === 'Y')
-        .map((procedure) => ({
-          id: procedure.service_id,
-          name: procedure.service_name,
-          categoryCode: procedure.category_code,
-          categoryName: procedure.category_name || procedure.category_code,
-          price: procedure.unit_price,
-          time: procedure.duration_minutes,
+        // [매핑] 회원 포인트 조회 결과 -> 화면 모델
+        const mappedMembers: Member[] = (memberResult.members || []).map((member) => ({
+          id: member.user_id,
+          name: member.user_name,
+          phone: member.phone || '-',
+          balance: member.point_balance || 0,
+          coupons: (member.coupons || []).map((coupon) => ({
+            serviceId: coupon.service_id,
+            name: coupon.service_name,
+            count: coupon.count,
+          })),
         }));
 
-      // [매핑] 공통코드 PAYMENT_METHOD -> 결제수단 선택 모델
-      const mappedPaymentMethods: PaymentMethodOption[] = (commonCodeResult.details || [])
-        .filter((detail) => detail.group === 'PAYMENT_METHOD' && detail.use_yn === 'Y')
-        .map((detail) => ({
-          code: detail.code,
-          name: detail.name,
-          order: detail.order,
-        }))
-        .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+        // [매핑] 직원 조회 결과 -> 담당자 모델
+        const mappedManagers: Manager[] = (managerResult.employees || []).map((manager) => ({
+          id: manager.employee_id,
+          name: manager.employee_name,
+          role: manager.role_name || manager.role_id || '-',
+        }));
 
-      // [매핑] 정산 조회 결과 -> 목록/수정 모델
-      const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => ({
-        id: settlement.settlement_id,
-        date: settlement.settlement_datetime,
-        memberId: settlement.member_user_id ?? 'GUEST',
-        managerId: settlement.manager_employee_id,
-        procedureIds: settlement.service_ids || [],
-        totalAmount: settlement.total_amount,
-        totalTime: settlement.total_time_minutes,
-        payments: (settlement.payments || []).map((payment) => ({
-          method: payment.payment_method_code,
-          amount: payment.amount,
-          couponServiceId: payment.coupon_service_id ?? undefined,
-        })),
-        status: toSettlementStatus(settlement.status),
-        reservationId: settlement.reservation_ref || undefined,
-        cancelType:
-          settlement.cancel_type === 'PAYMENT' || settlement.cancel_type === 'PROCEDURE'
-            ? settlement.cancel_type
-            : undefined,
-        cancelReason: settlement.cancel_reason || undefined,
-        cancelledAt: settlement.cancelled_at || undefined,
-      }));
+        // [매핑] 시술 조회 결과 -> 시술 선택 모델(사용중만 노출)
+        const mappedProcedures: Procedure[] = (procedureResult.items || [])
+          .filter((procedure) => procedure.use_yn === 'Y')
+          .map((procedure) => ({
+            id: procedure.service_id,
+            name: procedure.service_name,
+            categoryCode: procedure.category_code,
+            categoryName: procedure.category_name || procedure.category_code,
+            price: procedure.unit_price,
+            time: procedure.duration_minutes,
+          }));
 
-      // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
-      const mappedReservations: Reservation[] = (reservationResult.reservations || []).map((reservation) => {
-        const customerName = reservation.customer_name?.trim() || '';
-        const designerName = reservation.designer_name?.trim() || '';
-        const matchedMember = mappedMembers.find((member) => member.name.trim() === customerName);
-        const matchedManager = mappedManagers.find((manager) => manager.name.trim() === designerName);
+        // [매핑] 공통코드 PAYMENT_METHOD -> 결제수단 선택 모델
+        const mappedPaymentMethods: PaymentMethodOption[] = (commonCodeResult.details || [])
+          .filter((detail) => detail.group === 'PAYMENT_METHOD' && detail.use_yn === 'Y')
+          .map((detail) => ({
+            code: detail.code,
+            name: detail.name,
+            order: detail.order,
+          }))
+          .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
 
-        return {
-          id: String(reservation.reservation_id),
-          date: reservation.reservation_date,
-          time: reservation.start_time,
-          customerName,
-          designerName,
-          memberId: matchedMember?.id,
-          managerId: matchedManager?.id,
-          procedureIds: (reservation.services || [])
-            .map((service) => service.service_id)
-            .filter((serviceId) => Number.isFinite(serviceId) && serviceId > 0),
-          status: toReservationStatus(reservation.status),
-        };
-      });
+        // [매핑] 정산 조회 결과 -> 목록/수정 모델
+        const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => ({
+          id: settlement.settlement_id,
+          date: settlement.settlement_datetime,
+          memberId: settlement.member_user_id ?? 'GUEST',
+          managerId: settlement.manager_employee_id,
+          procedureIds: settlement.service_ids || [],
+          totalAmount: settlement.total_amount,
+          totalTime: settlement.total_time_minutes,
+          payments: (settlement.payments || []).map((payment) => ({
+            method: payment.payment_method_code,
+            amount: payment.amount,
+            couponServiceId: payment.coupon_service_id ?? undefined,
+          })),
+          status: toSettlementStatus(settlement.status),
+          reservationId: settlement.reservation_ref || undefined,
+          cancelType:
+            settlement.cancel_type === 'PAYMENT' || settlement.cancel_type === 'PROCEDURE'
+              ? settlement.cancel_type
+              : undefined,
+          cancelReason: settlement.cancel_reason || undefined,
+          cancelledAt: settlement.cancelled_at || undefined,
+        }));
 
-      setMembers(mappedMembers);
-      setManagers(mappedManagers);
-      setProcedures(mappedProcedures);
-      setPaymentMethods(mappedPaymentMethods.length > 0 ? mappedPaymentMethods : FALLBACK_PAYMENT_METHODS);
-      setSettlements(mappedSettlements);
-      setTodayReservations(mappedReservations);
-    } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '매출/정산 데이터를 불러오지 못했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
+        const mappedReservations: Reservation[] = (reservationResult.reservations || []).map((reservation) => {
+          const customerName = reservation.customer_name?.trim() || '';
+          const designerName = reservation.designer_name?.trim() || '';
+          const matchedMember = mappedMembers.find((member) => member.name.trim() === customerName);
+          const matchedManager = mappedManagers.find((manager) => manager.name.trim() === designerName);
+
+          return {
+            id: String(reservation.reservation_id),
+            date: reservation.reservation_date,
+            time: reservation.start_time,
+            customerName,
+            designerName,
+            memberId: matchedMember?.id,
+            managerId: matchedManager?.id,
+            procedureIds: (reservation.services || [])
+              .map((service) => service.service_id)
+              .filter((serviceId) => Number.isFinite(serviceId) && serviceId > 0),
+            status: toReservationStatus(reservation.status),
+          };
+        });
+
+        setMembers(mappedMembers);
+        setManagers(mappedManagers);
+        setProcedures(mappedProcedures);
+        setPaymentMethods(mappedPaymentMethods.length > 0 ? mappedPaymentMethods : FALLBACK_PAYMENT_METHODS);
+        setSettlements(mappedSettlements);
+        setTodayReservations(mappedReservations);
+      } catch (error: any) {
+        alert(typeof error === 'string' ? error : error?.message || '매출/정산 데이터를 불러오지 못했습니다.');
+      } finally {
+        setIsLoading(false);
+        loadDataInFlightRef.current = null;
+      }
+    })();
+
+    loadDataInFlightRef.current = task;
+    return task;
+  }, []);
 
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (initialLoadDoneRef.current) return;
+    initialLoadDoneRef.current = true;
+    void loadData();
+  }, [loadData]);
 
   useEffect(() => {
     if (categories.length > 0 && !categories.includes(selectedCategory)) {
@@ -771,19 +790,12 @@ export default function SalesEntryPage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
       className="h-full flex flex-col space-y-6"
     >
-      {isBusy && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">Loading...</span>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay visible={isBusy} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>

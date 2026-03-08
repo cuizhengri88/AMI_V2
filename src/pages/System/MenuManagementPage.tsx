@@ -20,6 +20,7 @@ import {
   List as ListIcon,
   Loader2,
 } from 'lucide-react';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 type MenuType = 'MAIN' | 'SUB';
 type LangKey = 'ko' | 'en' | 'zh';
@@ -313,15 +314,8 @@ export default function MenuManagementPage() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
-      {isDbBusy && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-semibold text-slate-700">Loading...</span>
-          </div>
-        </div>
-      )}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+      <LoadingOverlay visible={isDbBusy} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
