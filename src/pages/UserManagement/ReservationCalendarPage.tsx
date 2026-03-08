@@ -374,7 +374,6 @@ export default function ReservationCalendarPage() {
     [categories],
   );
 
-  const monthKey = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
   const calendarCells = useMemo(() => buildCalendarCells(monthCursor), [monthCursor]);
 
   const reservationsByDate = useMemo(() => {
@@ -397,13 +396,6 @@ export default function ReservationCalendarPage() {
     () => reservationsByDate.get(selectedDate) || [],
     [reservationsByDate, selectedDate],
   );
-
-  const dailyReservationGroups = useMemo(() => {
-    return Array.from(reservationsByDate.entries())
-      .filter(([date]) => date.startsWith(monthKey))
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, items]) => ({ date, items }));
-  }, [reservationsByDate, monthKey]);
 
   const categoryServices = useMemo(() => {
     return serviceItems.filter((service) => service.categoryCode === form.selectedCategory);
@@ -810,6 +802,12 @@ export default function ReservationCalendarPage() {
     );
   };
 
+  const syncSelectedDate = (isoDate: string) => {
+    setSelectedDate(isoDate);
+    const parsed = parseIsoDate(isoDate);
+    setMonthCursor(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
       <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} zIndex={90} />
@@ -937,17 +935,11 @@ export default function ReservationCalendarPage() {
         </section>
 
         <section className="hidden xl:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+          <div className="p-4 border-b border-slate-200 bg-slate-50">
             <div>
               <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
               <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate, weekdayLabels)}</p>
             </div>
-            <button
-              onClick={() => openCreateModal(selectedDate)} disabled={isDbBusy}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary/90 disabled:opacity-60"
-            >
-              {pt('t050')}
-            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -1023,108 +1015,113 @@ export default function ReservationCalendarPage() {
       {viewMode === 'list' && (
       <section className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 md:order-2">
+          <div>
+            <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
+            <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate, weekdayLabels)}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => moveMonth(-1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+              onClick={() => syncSelectedDate(shiftDate(selectedDate, -1))}
+              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
               aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
             >
               <ChevronLeft size={16} />
             </button>
-            <div className="w-28 text-center text-sm font-bold text-slate-800">
-              {formatMonthLabel(monthCursor)}</div>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => syncSelectedDate(event.target.value)}
+              className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+            />
             <button
-              onClick={() => moveMonth(1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+              onClick={() => syncSelectedDate(shiftDate(selectedDate, 1))}
+              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
               aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
             >
               <ChevronRight size={16} />
             </button>
             <button
-              onClick={() => {
-                const now = new Date();
-                setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1));
-                setSelectedDate(todayIso());
-              }}
+              onClick={() => syncSelectedDate(todayIso())}
               className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
             >
-                {pt('t047')}
-              </button>
+              {pt('t047')}
+            </button>
           </div>
-          <h2 className="text-sm font-bold text-slate-700">{pt('t056', { month: formatMonthLabel(monthCursor) })}</h2>
         </div>
 
-        <div className="p-4 space-y-4">
-          {dailyReservationGroups.length === 0 ? (
-            <p className="text-sm text-slate-400">{pt('t026')}</p>
-          ) : (
-            dailyReservationGroups.map((group) => (
-              <div key={group.date} className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-700">{formatDateLabel(group.date, weekdayLabels)}</p>
-                  <span className="text-xs font-semibold text-slate-500">{pt('t048', { count: group.items.length })}</span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left min-w-[900px]">
-                    <thead>
-                      <tr className="bg-slate-900 text-slate-200">
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t057')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
+        <div className="p-4">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left min-w-[900px]">
+              <thead>
+                <tr className="bg-slate-900 text-slate-200">
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t057')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {selectedDateReservations.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-10 text-center text-sm text-slate-400">
+                      {pt('t053')}
+                    </td>
+                  </tr>
+                ) : (
+                  selectedDateReservations.map((reservation) => {
+                    const statusLabel = getStatusLabel(reservation.status);
+                    const tone = getStatusTone(reservation.status, statusLabel);
+                    return (
+                      <tr key={reservation.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-2.5 px-4 text-sm font-semibold text-slate-700">{reservation.startTime}</td>
+                        <td className="py-2.5 px-4 text-sm text-slate-700">{reservation.customerName}</td>
+                        <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
+                        <td className="py-2.5 px-4 text-sm text-slate-600">
+                          {pt('t058', { count: getExpectedMinutes(reservation.services) })}
+                        </td>
+                        <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">
+                          {formatCurrency(getExpectedAmount(reservation.services))}
+                        </td>
+                        <td className="py-2.5 px-4 text-center">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-sm text-slate-500">{reservation.note || '-'}</td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => openEditModal(reservation)} disabled={isDbBusy}
+                              className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                              title={pt('t054')}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
+                              className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title={pt('t055')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {group.items.map((reservation) => {
-                        const statusLabel = getStatusLabel(reservation.status);
-                        const tone = getStatusTone(reservation.status, statusLabel);
-                        return (
-                          <tr key={reservation.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-2.5 px-4 text-sm font-semibold text-slate-700">{reservation.startTime}</td>
-                            <td className="py-2.5 px-4 text-sm text-slate-700">{reservation.customerName}</td>
-                            <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
-                            <td className="py-2.5 px-4 text-sm text-slate-600">
-                              {pt('t058', { count: getExpectedMinutes(reservation.services) })}
-                            </td>
-                            <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">
-                              {formatCurrency(getExpectedAmount(reservation.services))}</td>
-                            <td className="py-2.5 px-4 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>
-                                {statusLabel}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-4 text-sm text-slate-500">{reservation.note || '-'}</td>
-                            <td className="py-2.5 px-4">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => openEditModal(reservation)} disabled={isDbBusy}
-                                  className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                                  title={pt('t054')}
-                                >
-                                  <Edit2 size={14} />
-                                </button>
-                                <button
-                                  onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
-                                  className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  title={pt('t055')}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}</tbody>
-                  </table>
-                </div>
-              </div>
-            ))
-          )}</div>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
-      )} {isModalOpen && (
+      )}
+      {isModalOpen && (
         <div
           className="fixed inset-0 z-[80] bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4"
           onClick={closeModal}
