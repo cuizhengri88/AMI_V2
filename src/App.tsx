@@ -53,6 +53,7 @@ type VerifyStoreBindingResult = {
 };
 
 const STATUS_ACTIVE = '사용중';
+const STORE_BINDING_DENIED_MESSAGE = '인증이 거부 되었습니다.';
 
 const ROUTABLE_PATHS = new Set<string>([
   '/products',
@@ -155,8 +156,9 @@ function MenuAwareRedirect() {
 }
 
 function StoreBindingGate({ children }: { children: React.ReactNode }) {
-  const [phase, setPhase] = useState<'checking' | 'input' | 'verifying' | 'ready'>('checking');
+  const [phase, setPhase] = useState<'checking' | 'input' | 'verifying' | 'ready' | 'denied'>('checking');
   const [storeCodeInput, setStoreCodeInput] = useState('');
+  const [cdkeyInput, setCdkeyInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
@@ -181,8 +183,13 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
         setPhase('input');
       } catch (error) {
         if (!isMounted) return;
-        setErrorMessage(getErrorMessage(error));
+        const message = getErrorMessage(error);
+        setErrorMessage(message);
         setStoreCodeInput((localStorage.getItem(STORE_CODE_STORAGE_KEY) || '').trim().toUpperCase());
+        if (message.includes(STORE_BINDING_DENIED_MESSAGE)) {
+          setPhase('denied');
+          return;
+        }
         setPhase('input');
       }
     };
@@ -201,20 +208,27 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
       setErrorMessage('점포코드를 입력해 주세요.');
       return;
     }
+    const normalizedCdkey = cdkeyInput.trim().toUpperCase();
+    if (!normalizedCdkey) {
+      setErrorMessage('CDKEY를 입력해 주세요.');
+      return;
+    }
 
     try {
       setErrorMessage('');
       setPhase('verifying');
       const result = await invokeDbCommand<VerifyStoreBindingResult>('verify_or_register_store_binding', {
         store_code: normalizedStoreCode,
+        cdkey: normalizedCdkey,
       });
       const resolvedStoreCode = normalizeStoreCode(result.store_code);
       localStorage.setItem(STORE_CODE_STORAGE_KEY, resolvedStoreCode);
       window.dispatchEvent(new Event('store-code-updated'));
       setPhase('ready');
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-      setPhase('input');
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      setPhase(message.includes(STORE_BINDING_DENIED_MESSAGE) ? 'denied' : 'input');
     }
   };
 
@@ -237,6 +251,27 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (phase === 'denied') {
+    return (
+      <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe_0%,#e2e8f0_45%,#f8fafc_100%)] flex items-center justify-center p-6">
+        <div className="relative w-full max-w-lg rounded-3xl border border-rose-200/80 bg-white/90 backdrop-blur-xl shadow-2xl shadow-slate-900/10 overflow-hidden">
+          <div className="relative px-7 py-6 border-b border-rose-100/90">
+            <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-700">
+              ACCESS BLOCKED
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 mt-3 tracking-tight">{STORE_BINDING_DENIED_MESSAGE}</h1>
+            <p className="text-sm text-slate-500 mt-1">관리자에게 문의해 주세요.</p>
+          </div>
+          {errorMessage ? (
+            <div className="relative px-7 py-5 text-sm text-rose-700 bg-rose-50/80 border-t border-rose-100">
+              {errorMessage}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe_0%,#e2e8f0_45%,#f8fafc_100%)] flex items-center justify-center p-6">
       <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white/90 backdrop-blur-xl shadow-2xl shadow-slate-900/10 overflow-hidden">
@@ -249,7 +284,7 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
             LICENSE SECURITY
           </div>
           <h1 className="text-2xl font-black text-slate-900 mt-3 tracking-tight">점포코드 인증</h1>
-          <p className="text-sm text-slate-500 mt-1">최초 실행 시 STR_CD(점포관리) 그룹의 상세코드를 입력해 장치를 인증합니다.</p>
+          <p className="text-sm text-slate-500 mt-1">최초 실행 시 STR_CD(점포관리) 점포코드와 CDKEY를 입력해 장치를 인증합니다.</p>
         </div>
 
         <div className="relative px-7 py-6">
@@ -262,6 +297,18 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
                 onChange={(e) => setStoreCodeInput(e.target.value.toUpperCase())}
                 className="w-full h-11 px-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 bg-white/90 focus:ring-2 focus:ring-sky-200 outline-none"
                 placeholder="예: HAIR_001"
+                disabled={phase === 'verifying'}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold tracking-wide text-slate-500 uppercase mb-1">CDKEY</label>
+              <input
+                type="text"
+                value={cdkeyInput}
+                onChange={(e) => setCdkeyInput(e.target.value.toUpperCase())}
+                className="w-full h-11 px-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 bg-white/90 focus:ring-2 focus:ring-sky-200 outline-none"
+                placeholder="예: A1B2-C3D4-E5F6-G7H8"
                 disabled={phase === 'verifying'}
               />
             </div>

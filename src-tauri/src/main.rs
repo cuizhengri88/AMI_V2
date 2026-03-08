@@ -18,6 +18,7 @@ const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";
 const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";
 const DEFAULT_STORE_CODE: &str = "HAIR_001";
 const STORE_CODE_GROUP_ID: &str = "STR_CD";
+const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다.";
 const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
 const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
 const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
@@ -397,6 +398,7 @@ struct StoreBindingStatusResult {
 struct VerifyStoreBindingPayload {
     connection: DbConnectionPayload,
     store_code: String,
+    cdkey: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1165,18 +1167,177 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
                 hwid VARCHAR(500) NOT NULL,
                 cpu_id VARCHAR(255) NOT NULL,
                 host_name VARCHAR(255) NOT NULL,
+                status CHAR(1) NOT NULL DEFAULT 'Y' CHECK (status IN ('Y', 'N')),
                 registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (store_code),
                 UNIQUE (hwid)
             );
 
+            ALTER TABLE security_store_binding
+            ADD COLUMN IF NOT EXISTS status CHAR(1);
+
+            UPDATE security_store_binding
+               SET status = 'Y'
+             WHERE status IS NULL
+                OR BTRIM(status) = ''
+                OR UPPER(BTRIM(status)) NOT IN ('Y', 'N');
+
+            UPDATE security_store_binding
+               SET status = UPPER(BTRIM(status))
+             WHERE status IS NOT NULL;
+
+            ALTER TABLE security_store_binding
+            ALTER COLUMN status SET DEFAULT 'Y';
+
+            ALTER TABLE security_store_binding
+            ALTER COLUMN status SET NOT NULL;
+
+            ALTER TABLE security_store_binding
+            DROP CONSTRAINT IF EXISTS security_store_binding_status_check;
+
+            ALTER TABLE security_store_binding
+            ADD CONSTRAINT security_store_binding_status_check
+            CHECK (status IN ('Y', 'N'));
+
             CREATE INDEX IF NOT EXISTS idx_security_store_binding_verified
             ON security_store_binding (last_verified_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_security_store_binding_status
+            ON security_store_binding (status);
             "#,
         )
         .await
-        .map_err(|e| format!("보안 인증 테이블 생성 실패: {e}"))
+        .map_err(|e| format!("보안 인증 테이블 생성 실패: {e}"))?;
+
+    ensure_cdkey_table(client).await?;
+    Ok(())
+}
+
+async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
+    client
+        .batch_execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS security_cdkey (
+                id BIGSERIAL PRIMARY KEY,
+                cdkey VARCHAR(64) NOT NULL UNIQUE,
+                use_yn CHAR(1) NOT NULL DEFAULT 'N' CHECK (use_yn IN ('Y', 'N')),
+                security_store_binding_id BIGINT NULL REFERENCES security_store_binding(id) ON DELETE SET NULL,
+                issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                used_at TIMESTAMPTZ NULL
+            );
+
+            ALTER TABLE security_cdkey
+            ADD COLUMN IF NOT EXISTS use_yn CHAR(1);
+
+            UPDATE security_cdkey
+               SET use_yn = 'N'
+             WHERE use_yn IS NULL
+                OR BTRIM(use_yn) = ''
+                OR UPPER(BTRIM(use_yn)) NOT IN ('Y', 'N');
+
+            UPDATE security_cdkey
+               SET use_yn = UPPER(BTRIM(use_yn))
+             WHERE use_yn IS NOT NULL;
+
+            ALTER TABLE security_cdkey
+            ALTER COLUMN use_yn SET DEFAULT 'N';
+
+            ALTER TABLE security_cdkey
+            ALTER COLUMN use_yn SET NOT NULL;
+
+            ALTER TABLE security_cdkey
+            DROP CONSTRAINT IF EXISTS security_cdkey_use_yn_check;
+
+            ALTER TABLE security_cdkey
+            ADD CONSTRAINT security_cdkey_use_yn_check
+            CHECK (use_yn IN ('Y', 'N'));
+
+            ALTER TABLE security_cdkey
+            ADD COLUMN IF NOT EXISTS security_store_binding_id BIGINT;
+
+            ALTER TABLE security_cdkey
+            DROP CONSTRAINT IF EXISTS security_cdkey_security_store_binding_id_fkey;
+
+            ALTER TABLE security_cdkey
+            ADD CONSTRAINT security_cdkey_security_store_binding_id_fkey
+            FOREIGN KEY (security_store_binding_id) REFERENCES security_store_binding(id) ON DELETE SET NULL;
+
+            ALTER TABLE security_cdkey
+            ADD COLUMN IF NOT EXISTS issued_at TIMESTAMPTZ;
+
+            UPDATE security_cdkey
+               SET issued_at = NOW()
+             WHERE issued_at IS NULL;
+
+            ALTER TABLE security_cdkey
+            ALTER COLUMN issued_at SET DEFAULT NOW();
+
+            ALTER TABLE security_cdkey
+            ALTER COLUMN issued_at SET NOT NULL;
+
+            ALTER TABLE security_cdkey
+            ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ;
+
+            UPDATE security_cdkey
+               SET used_at = NOW()
+             WHERE use_yn = 'Y'
+               AND security_store_binding_id IS NOT NULL
+               AND used_at IS NULL;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_security_cdkey_binding_id
+            ON security_cdkey (security_store_binding_id)
+            WHERE security_store_binding_id IS NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_security_cdkey_use_yn
+            ON security_cdkey (use_yn, issued_at DESC);
+            "#,
+        )
+        .await
+        .map_err(|e| format!("CDKEY 테이블 생성 실패: {e}"))?;
+
+    let mut attempt = 0;
+    loop {
+        let current_count = client
+            .query_one("SELECT COUNT(1)::BIGINT FROM security_cdkey", &[])
+            .await
+            .map_err(|e| format!("CDKEY 개수 조회 실패: {e}"))?
+            .get::<_, i64>(0);
+
+        if current_count >= 20 {
+            break;
+        }
+
+        let missing = (20_i64 - current_count) as i32;
+        client
+            .execute(
+                r#"
+                WITH seeds AS (
+                    SELECT UPPER(SUBSTRING(md5(random()::TEXT || clock_timestamp()::TEXT || g::TEXT) FROM 1 FOR 16)) AS raw
+                      FROM generate_series(1, $1::INT) AS g
+                )
+                INSERT INTO security_cdkey (cdkey)
+                SELECT CONCAT(
+                           SUBSTRING(raw FROM 1 FOR 4), '-',
+                           SUBSTRING(raw FROM 5 FOR 4), '-',
+                           SUBSTRING(raw FROM 9 FOR 4), '-',
+                           SUBSTRING(raw FROM 13 FOR 4)
+                       )
+                  FROM seeds
+                ON CONFLICT (cdkey) DO NOTHING
+                "#,
+                &[&missing],
+            )
+            .await
+            .map_err(|e| format!("CDKEY 자동 생성 실패: {e}"))?;
+
+        attempt += 1;
+        if attempt > 10 {
+            return Err("CDKEY 20개 자동 생성에 실패했습니다. 다시 시도해 주세요.".to_string());
+        }
+    }
+
+    Ok(())
 }
 
 async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<(), String> {
@@ -1220,7 +1381,7 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
     let hwid = detect_hwid();
     let row = client
         .query_opt(
-            "SELECT store_code FROM security_store_binding WHERE hwid = $1",
+            "SELECT store_code, status FROM security_store_binding WHERE hwid = $1",
             &[&hwid],
         )
         .await
@@ -1234,6 +1395,10 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
     };
 
     let bound_store_code: String = row.get(0);
+    let status: String = row.get(1);
+    if !status.trim().eq_ignore_ascii_case("Y") {
+        return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
+    }
     if !bound_store_code.trim().eq_ignore_ascii_case(store_code) {
         return Err(format!(
             "현재 PC는 점포코드 {} 로 이미 인증되어 있습니다.",
@@ -1243,7 +1408,7 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
 
     client
         .execute(
-            "UPDATE security_store_binding SET last_verified_at = NOW() WHERE hwid = $1",
+            "UPDATE security_store_binding SET last_verified_at = NOW() WHERE hwid = $1 AND status = 'Y'",
             &[&hwid],
         )
         .await
@@ -2371,7 +2536,7 @@ async fn get_store_binding_status(
     let row = client
         .query_opt(
             r#"
-            SELECT store_code, registered_at::TEXT
+            SELECT store_code, registered_at::TEXT, status
               FROM security_store_binding
              WHERE hwid = $1
             "#,
@@ -2381,6 +2546,10 @@ async fn get_store_binding_status(
         .map_err(|e| format!("보안 인증 상태 조회 실패: {e}"))?;
 
     let (bound_store_code, registered_at, message) = if let Some(row) = row {
+        let status: String = row.get(2);
+        if !status.trim().eq_ignore_ascii_case("Y") {
+            return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
+        }
         (
             Some(row.get::<_, String>(0)),
             Some(row.get::<_, String>(1)),
@@ -2408,7 +2577,7 @@ async fn get_store_binding_status(
 async fn verify_or_register_store_binding(
     payload: VerifyStoreBindingPayload,
 ) -> Result<VerifyStoreBindingResult, String> {
-    let client = connect_with_schema(&payload.connection).await?;
+    let mut client = connect_with_schema(&payload.connection).await?;
     ensure_store_binding_table(&client).await?;
 
     let store_code = payload.store_code.trim().to_uppercase();
@@ -2421,11 +2590,12 @@ async fn verify_or_register_store_binding(
     let hwid = detect_hwid();
     let cpu_id = detect_cpu_id();
     let host_name = detect_host_name();
+    let cdkey = payload.cdkey.trim().to_uppercase();
 
     if let Some(row) = client
         .query_opt(
             r#"
-            SELECT store_code, registered_at::TEXT
+            SELECT store_code, registered_at::TEXT, status
               FROM security_store_binding
              WHERE hwid = $1
             "#,
@@ -2436,6 +2606,10 @@ async fn verify_or_register_store_binding(
     {
         let existing_store: String = row.get(0);
         let registered_at: String = row.get(1);
+        let status: String = row.get(2);
+        if !status.trim().eq_ignore_ascii_case("Y") {
+            return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
+        }
         if existing_store.trim().eq_ignore_ascii_case(&store_code) {
             client
                 .execute(
@@ -2487,7 +2661,40 @@ async fn verify_or_register_store_binding(
         ));
     }
 
-    let registered_at = client
+    if cdkey.is_empty() {
+        return Err("CDKEY를 입력해 주세요.".to_string());
+    }
+
+    let transaction = client
+        .transaction()
+        .await
+        .map_err(|e| format!("점포 인증 트랜잭션 시작 실패: {e}"))?;
+
+    let cdkey_row = transaction
+        .query_opt(
+            r#"
+            SELECT id, use_yn, security_store_binding_id
+              FROM security_cdkey
+             WHERE cdkey = $1
+             FOR UPDATE
+            "#,
+            &[&cdkey],
+        )
+        .await
+        .map_err(|e| format!("CDKEY 조회 실패: {e}"))?;
+
+    let Some(cdkey_row) = cdkey_row else {
+        return Err("유효하지 않은 CDKEY 입니다.".to_string());
+    };
+
+    let cdkey_id: i64 = cdkey_row.get(0);
+    let use_yn: String = cdkey_row.get(1);
+    let mapped_binding_id: Option<i64> = cdkey_row.get(2);
+    if !use_yn.trim().eq_ignore_ascii_case("N") || mapped_binding_id.is_some() {
+        return Err("이미 사용된 CDKEY 입니다. 다른 CDKEY를 입력해 주세요.".to_string());
+    }
+
+    let binding_row = transaction
         .query_one(
             r#"
             INSERT INTO security_store_binding (
@@ -2496,13 +2703,40 @@ async fn verify_or_register_store_binding(
                 cpu_id,
                 host_name
             ) VALUES ($1, $2, $3, $4)
-            RETURNING registered_at::TEXT
+            RETURNING id, registered_at::TEXT
             "#,
             &[&store_code, &hwid, &cpu_id, &host_name],
         )
         .await
-        .map_err(|e| format!("점포 인증 등록 실패: {e}"))?
-        .get::<_, String>(0);
+        .map_err(|e| format!("점포 인증 등록 실패: {e}"))?;
+
+    let binding_id: i64 = binding_row.get(0);
+    let registered_at: String = binding_row.get(1);
+
+    let updated_count = transaction
+        .execute(
+            r#"
+            UPDATE security_cdkey
+               SET use_yn = 'Y',
+                   security_store_binding_id = $2,
+                   used_at = NOW()
+             WHERE id = $1
+               AND use_yn = 'N'
+               AND security_store_binding_id IS NULL
+            "#,
+            &[&cdkey_id, &binding_id],
+        )
+        .await
+        .map_err(|e| format!("CDKEY 사용처리 실패: {e}"))?;
+
+    if updated_count == 0 {
+        return Err("이미 사용된 CDKEY 입니다. 다른 CDKEY를 입력해 주세요.".to_string());
+    }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|e| format!("점포 인증 등록 커밋 실패: {e}"))?;
 
     Ok(VerifyStoreBindingResult {
         success: true,
