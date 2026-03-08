@@ -29,14 +29,14 @@ type PointHistoryItem = {
 };
 
 function formatCurrency(value: number) {
-  return `₩${value.toLocaleString('ko-KR')}`;
+  return `₩${value.toLocaleString()}`;
 }
 
 function formatDateTime(raw: string) {
   if (!raw) return '-';
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString('ko-KR');
+  return parsed.toLocaleString();
 }
 
 export default function MemberPointHistoryPage() {
@@ -113,7 +113,7 @@ export default function MemberPointHistoryPage() {
         })),
       );
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '회원 포인트 이력을 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t024'));
     } finally {
       setIsLoading(false);
     }
@@ -188,11 +188,11 @@ export default function MemberPointHistoryPage() {
         history_id: cancelTarget.id,
         cancel_reason: reason,
       });
-      alert(result.message || '충전 취소가 완료되었습니다.');
+      alert(result.message || pt('t025'));
       closeCancelModal();
       await loadData();
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '충전 취소에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t026'));
     } finally {
       setIsMutating(false);
     }
@@ -216,7 +216,7 @@ export default function MemberPointHistoryPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t011')}</p>
-            <p className="text-2xl font-black text-slate-900">{filteredHistories.length}건</p>
+            <p className="text-2xl font-black text-slate-900">{pt('t027', { count: filteredHistories.length })}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
@@ -225,7 +225,7 @@ export default function MemberPointHistoryPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t013')}</p>
-            <p className="text-2xl font-black text-slate-900">{summary.rechargeCount}건</p>
+            <p className="text-2xl font-black text-slate-900">{pt('t027', { count: summary.rechargeCount })}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
@@ -234,7 +234,7 @@ export default function MemberPointHistoryPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t018')}</p>
-            <p className="text-2xl font-black text-slate-900">{summary.cancelledCount}건</p>
+            <p className="text-2xl font-black text-slate-900">{pt('t027', { count: summary.cancelledCount })}</p>
           </div>
         </div>
       </div>
@@ -281,7 +281,7 @@ export default function MemberPointHistoryPage() {
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t008')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t019')}</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">전화번호</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t028')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t023')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t003')}</th>
@@ -294,15 +294,15 @@ export default function MemberPointHistoryPage() {
             {filteredHistories.length === 0 ? (
               <tr>
                 <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
-                  조회된 이력이 없습니다.
+                  {pt('t029')}
                 </td>
               </tr>
             ) : (
               filteredHistories.map((item) => {
                 const signedCoupon = item.couponCount
                   ? item.actionType === 'RECHARGE'
-                    ? `+${item.couponCount}회`
-                    : `-${item.couponCount}회`
+                    ? pt('t030', { count: item.couponCount })
+                    : pt('t031', { count: item.couponCount })
                   : '-';
                 const signedAmount =
                   item.amount == null
@@ -318,16 +318,16 @@ export default function MemberPointHistoryPage() {
                       {item.actionType === 'RECHARGE' ? (
                         item.isCancelled ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                            충전(취소)
+                            {pt('t032')}
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            충전
+                            {pt('t012')}
                           </span>
                         )
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                          사용
+                          {pt('t005')}
                         </span>
                       )}</td>
                     <td className="py-4 px-6 text-sm font-semibold text-slate-800">{item.userName}</td>
@@ -346,7 +346,10 @@ export default function MemberPointHistoryPage() {
                       <div>{item.memo || '-'}</div>
                       {item.isCancelled && (
                         <div className="text-rose-600 mt-1">
-                          취소사유: {item.cancelReason || '-'} ({formatDateTime(item.cancelledAt || '')})
+                          {pt('t033', {
+                            reason: item.cancelReason || '-',
+                            date: formatDateTime(item.cancelledAt || ''),
+                          })}
                         </div>
                       )}</td>
                     <td className="py-4 px-6 text-center">
@@ -355,7 +358,7 @@ export default function MemberPointHistoryPage() {
                           type="button"
                           onClick={() => openCancelModal(item)} className="px-2.5 py-1 text-[11px] font-bold rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
                         >
-                          취소
+                          {pt('t034')}
                         </button>
                       ) : (
                         <span className="text-xs text-slate-300">-</span>
@@ -384,7 +387,7 @@ export default function MemberPointHistoryPage() {
               </div>
               <div className="p-5 space-y-4">
                 <div className="text-sm text-slate-600">
-                  선택 이력: <span className="font-semibold text-slate-900">{cancelTarget?.userName}</span> /{' '}
+                  {pt('t035')}: <span className="font-semibold text-slate-900">{cancelTarget?.userName}</span> /{' '}
                   <span className="font-semibold text-slate-900">{cancelTarget?.serviceName || '-'}</span>
                 </div>
                 <div className="space-y-1">
@@ -401,7 +404,7 @@ export default function MemberPointHistoryPage() {
                     onClick={closeCancelModal}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200"
                   >
-                    닫기
+                    {pt('t036')}
                   </button>
                   <button
                     type="button"
@@ -409,7 +412,7 @@ export default function MemberPointHistoryPage() {
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-rose-600 text-white text-sm font-bold rounded-lg hover:bg-rose-500 disabled:opacity-60"
                   >
-                    취소 확정
+                    {pt('t037')}
                   </button>
                 </div>
               </div>

@@ -48,13 +48,53 @@ type Settlement = {
 };
 
 const FALLBACK_PAYMENT_METHODS: PaymentMethod[] = [
-  { code: 'CASH', name: '현금', order: 1 },
-  { code: 'CARD', name: '카드', order: 2 },
-  { code: 'WECHAT', name: '위챗페이', order: 3 },
-  { code: 'ALIPAY', name: '알리페이', order: 4 },
-  { code: 'PREPAID', name: '충전금 차감', order: 5 },
-  { code: 'COUPON', name: '쿠폰 사용', order: 6 },
+  { code: 'CASH', name: 'CASH', order: 1 },
+  { code: 'CARD', name: 'CARD', order: 2 },
+  { code: 'WECHAT', name: 'WECHAT', order: 3 },
+  { code: 'ALIPAY', name: 'ALIPAY', order: 4 },
+  { code: 'PREPAID', name: 'PREPAID', order: 5 },
+  { code: 'COUPON', name: 'COUPON', order: 6 },
 ];
+
+const DEFAULT_CATEGORY_TEXT_KEYS = [
+  't053', // 커트
+  't054', // 파마
+  't055', // 염색
+  't056', // 기타
+] as const;
+
+const STATUS_TEXT_KEY_BY_CODE: Record<SettlementStatus, string> = {
+  PROCESSING: 't017', // 작업중
+  COMPLETED: 't036', // 결제 완료
+  CANCELLED: 't037', // 취소
+};
+
+const DETAIL_STATUS_TEXT_KEY_BY_CODE: Record<SettlementStatus, string> = {
+  PROCESSING: 't017', // 작업중
+  COMPLETED: 't036', // 결제 완료
+  CANCELLED: 't057', // 취소됨
+};
+
+const ENTRY_TYPE_TEXT_KEY_BY_CODE: Record<HistoryEntryType, string> = {
+  SETTLEMENT: 't038', // 정산
+  POINT_RECHARGE: 't039', // 포인트충전
+};
+
+const RECHARGE_TYPE_TEXT_KEY_BY_CODE: Record<'BALANCE' | 'COUPON', string> = {
+  BALANCE: 't040', // 포인트 충전
+  COUPON: 't041', // 쿠폰 충전
+};
+
+const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
+  CASH: 't073', // 현금
+  CARD: 't074', // 카드
+  WECHAT: 't075', // 위챗페이
+  ALIPAY: 't076', // 알리페이
+  PREPAID: 't077', // 충전금 차감
+  COUPON: 't078', // 쿠폰 사용
+};
+
+const LEGACY_COUPON_PAYMENT_LABEL = '쿠폰결재건';
 
 function todayIso() {
   const now = new Date();
@@ -86,11 +126,11 @@ function formatDateTime(raw: string) {
   if (!raw) return '-';
   const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
   if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString('ko-KR', { hour12: false });
+  return parsed.toLocaleString(undefined, { hour12: false });
 }
 
 function formatCurrency(value: number) {
-  return `₩${value.toLocaleString('ko-KR')}`;
+  return `₩${value.toLocaleString()}`;
 }
 
 function toDateTime(raw: string) {
@@ -131,21 +171,11 @@ function normalizeRechargeType(value?: string) {
   return 'BALANCE';
 }
 
-function getPointRechargeLabel(entry: Settlement) {
-  return entry.rechargeType === 'COUPON' ? '쿠폰 충전' : '포인트 충전';
-}
-
-function getRechargeTypeDisplayLabel(value?: string) {
+function normalizePaymentMethodCode(value: string) {
   const raw = value?.trim() || '';
-  if (!raw) return '-';
   const normalized = raw.toUpperCase();
-  if (normalized === 'COUPON' || raw === '쿠폰결재건') return '쿠폰 결재';
-  return raw;
-}
-
-function normalizePaymentMethodLabel(value: string) {
-  if (value.trim() === '쿠폰결재건') return '쿠폰 결재';
-  return value;
+  if (normalized === 'COUPON' || raw === LEGACY_COUPON_PAYMENT_LABEL || raw.includes('쿠폰')) return 'COUPON';
+  return normalized;
 }
 
 function csvEscape(value: string | number) {
@@ -172,13 +202,37 @@ export default function SalesHistoryPage() {
   const detailDragControls = useDragControls();
   const initialLoadDoneRef = useRef(false);
 
+  const getStatusLabelByCode = (status: SettlementStatus, detail = false) => {
+    const key = detail ? DETAIL_STATUS_TEXT_KEY_BY_CODE[status] : STATUS_TEXT_KEY_BY_CODE[status];
+    return pt(key);
+  };
+
+  const getEntryTypeLabel = (entryType: HistoryEntryType) => pt(ENTRY_TYPE_TEXT_KEY_BY_CODE[entryType]);
+
+  const getPointRechargeLabel = (entry: Settlement) =>
+    pt(RECHARGE_TYPE_TEXT_KEY_BY_CODE[entry.rechargeType === 'COUPON' ? 'COUPON' : 'BALANCE']);
+
+  const getRechargeTypeDisplayLabel = (value?: string) => {
+    const raw = value?.trim() || '';
+    if (!raw) return '-';
+    const normalized = raw.toUpperCase();
+    if (normalized === 'COUPON' || raw === LEGACY_COUPON_PAYMENT_LABEL) return pt('t071');
+    return raw;
+  };
+
+  const getPaymentMethodLabelByCode = (code: string, fallback?: string) => {
+    const key = PAYMENT_METHOD_TEXT_KEY_BY_CODE[code.toUpperCase()];
+    if (key) return pt(key);
+    return fallback || code;
+  };
+
   const categories = useMemo(() => {
     const labels = Array.from(new Set(procedures.map((entry) => entry.categoryName).filter(Boolean)));
-    return labels.length > 0 ? labels : ['커트', '파마', '염색', '기타'];
-  }, [procedures]);
+    return labels.length > 0 ? labels : DEFAULT_CATEGORY_TEXT_KEYS.map((key) => pt(key));
+  }, [procedures, pt]);
 
   const getMemberInfo = (memberId: number | 'GUEST') => {
-    if (memberId === 'GUEST') return { name: '일반 방문객', phone: '-' };
+    if (memberId === 'GUEST') return { name: pt('t015'), phone: '-' };
     const member = members.find((entry) => entry.id === memberId);
     return { name: member?.name || '-', phone: member?.phone || '-' };
   };
@@ -313,11 +367,11 @@ export default function SalesHistoryPage() {
           }),
       );
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '매출내역 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t042'));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pt]);
 
   useEffect(() => {
     if (initialLoadDoneRef.current) return;
@@ -326,18 +380,23 @@ export default function SalesHistoryPage() {
   }, [loadData]);
 
   const paymentMethodNameMap = useMemo(
-    () => new Map(paymentMethods.map((entry) => [entry.code, entry.name])),
+    () => new Map(paymentMethods.map((entry) => [entry.code.toUpperCase(), entry.name])),
     [paymentMethods],
   );
 
-  const getPaymentMethodName = (code: string) => normalizePaymentMethodLabel(paymentMethodNameMap.get(code) || code);
+  const getPaymentMethodName = (code: string) => {
+    const normalizedCode = normalizePaymentMethodCode(code);
+    const commonCodeName = paymentMethodNameMap.get(normalizedCode)?.trim();
+    if (commonCodeName) return commonCodeName === LEGACY_COUPON_PAYMENT_LABEL ? pt('t071') : commonCodeName;
+    return getPaymentMethodLabelByCode(normalizedCode, code);
+  };
 
   const filteredHistory = useMemo(() => {
     const keyword = searchMember.trim().toLowerCase();
     const searchPhone = searchMember.replace(/-/g, '').trim();
     return settlements.filter((entry) => {
       const member = entry.memberId === 'GUEST'
-        ? { name: '일반 방문객', phone: '' }
+        ? { name: pt('t015'), phone: '' }
         : members.find((memberItem) => memberItem.id === entry.memberId) || { name: '-', phone: '' };
       const procedureRows = entry.procedureIds.map((id) => procedures.find((procedure) => procedure.id === id)).filter(Boolean) as Procedure[];
       const day = toDateOnly(entry.date);
@@ -359,7 +418,7 @@ export default function SalesHistoryPage() {
 
       return matchesDate && matchesMember && matchesManager && matchesCategory && matchesProcedure && matchesPayment;
     });
-  }, [settlements, searchMember, members, procedures, startDate, endDate, selectedManager, selectedCategory, selectedProcedure, selectedPayment]);
+  }, [settlements, searchMember, members, procedures, startDate, endDate, selectedManager, selectedCategory, selectedProcedure, selectedPayment, pt]);
 
   const stats = useMemo(() => {
     return filteredHistory.reduce((acc, entry) => {
@@ -384,6 +443,21 @@ export default function SalesHistoryPage() {
   };
 
   const exportCsv = () => {
+    const csvHeader = [
+      pt('t063'),
+      pt('t064'),
+      pt('t016'),
+      pt('t065'),
+      pt('t066'),
+      pt('t007'),
+      pt('t010'),
+      pt('t067'),
+      pt('t068'),
+      pt('t069'),
+      pt('t014'),
+      pt('t070'),
+    ];
+
     const rows = filteredHistory.map((entry) => {
       const member = getMemberInfo(entry.memberId);
       const managerName = entry.entryType === 'POINT_RECHARGE'
@@ -394,14 +468,10 @@ export default function SalesHistoryPage() {
         : entry.procedureIds.map((id) => procedures.find((procedure) => procedure.id === id)?.name).filter(Boolean).join(', ') || '-';
       const paymentNames = entry.payments.map((payment) => getPaymentMethodName(payment.method)).join(', ');
       const statusLabel = entry.entryType === 'POINT_RECHARGE'
-        ? getPointRechargeLabel(entry)
-        : entry.status === 'COMPLETED'
-          ? '결제 완료'
-          : entry.status === 'CANCELLED'
-            ? '취소'
-            : '작업중';
+        ? pt('t058', { type: getPointRechargeLabel(entry) })
+        : getStatusLabelByCode(entry.status);
       return [
-        entry.entryType === 'POINT_RECHARGE' ? '포인트충전' : '정산',
+        getEntryTypeLabel(entry.entryType),
         entry.sourceId,
         formatDateTime(entry.date),
         member.name,
@@ -415,7 +485,7 @@ export default function SalesHistoryPage() {
         getDiscountAmount(entry),
       ];
     });
-    const csv = `\uFEFF${[['구분', 'ID', '일시', '고객명', '전화번호', '담당자', '시술항목', '결제수단', '상태', '총시술금액', '실수납액', '할인액'], ...rows].map((line) => line.map(csvEscape).join(',')).join('\n')}`;
+    const csv = `\uFEFF${[csvHeader, ...rows].map((line) => line.map(csvEscape).join(',')).join('\n')}`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -438,13 +508,13 @@ export default function SalesHistoryPage() {
         </div>
         <button onClick={exportCsv} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
           <Download size={18} />
-          엑셀 다운로드(CSV)
+          {pt('t043')}
         </button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-800 font-bold"><Filter size={18} className="text-primary" />상세 필터</div>
+          <div className="flex items-center gap-2 text-slate-800 font-bold"><Filter size={18} className="text-primary" />{pt('t044')}</div>
           <button onClick={resetFilters} className="text-xs font-bold text-slate-400 hover:text-primary flex items-center gap-1"><RefreshCw size={12} />{pt('t033')}</button>
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -470,9 +540,9 @@ export default function SalesHistoryPage() {
               {managers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.role})</option>)}</select>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Tag size={12} /> 카테고리</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Tag size={12} /> {pt('t045')}</label>
             <select value={selectedCategory} onChange={(e) => { setSelectedCategory(e.target.value); setSelectedProcedure(''); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
-              <option value="">전체 카테고리</option>
+              <option value="">{pt('t046')}</option>
               {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
           </div>
           <div className="space-y-2">
@@ -485,7 +555,7 @@ export default function SalesHistoryPage() {
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><CreditCard size={12} />{pt('t023')}</label>
             <select value={selectedPayment} onChange={(e) => setSelectedPayment(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20">
               <option value="">{pt('t020')}</option>
-              {paymentMethods.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}</select>
+              {paymentMethods.map((entry) => <option key={entry.code} value={entry.code}>{getPaymentMethodName(entry.code)}</option>)}</select>
           </div>
         </div>
       </div>
@@ -493,20 +563,20 @@ export default function SalesHistoryPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><TrendingUp size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalSales)}</h3></div></div>
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center"><Tag size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t029')}</p><h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.totalDiscount)}</h3></div></div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><Scissors size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t025')}</p><h3 className="text-xl font-black text-slate-900">{stats.count}건</h3></div></div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4"><div className="size-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><Scissors size={24} /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t025')}</p><h3 className="text-xl font-black text-slate-900">{stats.count}{pt('t047')}</h3></div></div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-2 text-[11px] text-slate-400 border-b border-slate-100 bg-slate-50/60">
-          상세 내역은 행을 더블클릭하면 열립니다.
+          {pt('t048')}
         </div>
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[1120px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
                 <th className="py-4 px-6">{pt('t016')}</th>
-                <th className="py-4 px-6">고객명</th>
-                <th className="py-4 px-6">전화번호</th>
+                <th className="py-4 px-6">{pt('t049')}</th>
+                <th className="py-4 px-6">{pt('t050')}</th>
                 <th className="py-4 px-6">{pt('t007')}</th>
                 <th className="py-4 px-6">{pt('t010')}</th>
                 <th className="py-4 px-6">{pt('t023')}</th>
@@ -558,9 +628,9 @@ export default function SalesHistoryPage() {
                       {entry.entryType === 'POINT_RECHARGE' ? (
                         <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-black">{getPointRechargeLabel(entry)}</span>
                       ) : entry.status === 'CANCELLED' ? (
-                        <span className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-black">취소</span>
+                        <span className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-black">{getStatusLabelByCode('CANCELLED')}</span>
                       ) : entry.status === 'PROCESSING' ? (
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-black">{pt('t017')}</span>
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-black">{getStatusLabelByCode('PROCESSING')}</span>
                       ) : discount > 0 ? (
                         <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">{discountRate}% ({formatCurrency(discount)})</span>
                       ) : (
@@ -602,8 +672,8 @@ export default function SalesHistoryPage() {
                 <div className="flex items-center gap-3">
                   <div className="size-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center"><Info size={20} /></div>
                   <div>
-                    <h2 className="text-xl font-black text-slate-900">{selectedHistory.entryType === 'POINT_RECHARGE' ? '포인트 충전 상세' : '매출 상세 내역'}</h2>
-                    <p className="text-xs text-slate-500 font-bold">{selectedHistory.entryType === 'POINT_RECHARGE' ? '충전ID' : '정산ID'}: {selectedHistory.sourceId}</p>
+                    <h2 className="text-xl font-black text-slate-900">{selectedHistory.entryType === 'POINT_RECHARGE' ? pt('t051') : pt('t052')}</h2>
+                    <p className="text-xs text-slate-500 font-bold">{selectedHistory.entryType === 'POINT_RECHARGE' ? pt('t053') : pt('t054')}: {selectedHistory.sourceId}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -625,12 +695,8 @@ export default function SalesHistoryPage() {
                     <div className={`flex items-center gap-2 font-bold ${selectedHistory.status === 'COMPLETED' ? 'text-emerald-500' : selectedHistory.status === 'CANCELLED' ? 'text-rose-500' : 'text-blue-500'}`}>
                       {selectedHistory.status === 'COMPLETED' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                       {selectedHistory.entryType === 'POINT_RECHARGE'
-                        ? '충전 완료'
-                        : selectedHistory.status === 'COMPLETED'
-                          ? '결제 완료'
-                          : selectedHistory.status === 'CANCELLED'
-                            ? '취소됨'
-                            : '작업중'}
+                        ? pt('t072')
+                        : getStatusLabelByCode(selectedHistory.status, true)}
                     </div>
                   </div>
                 </div>
@@ -651,7 +717,7 @@ export default function SalesHistoryPage() {
                     {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                       <div>
                         <p className="text-sm font-black text-slate-900">-</p>
-                        <p className="text-xs text-slate-500 font-bold">{getPointRechargeLabel(selectedHistory)} 내역</p>
+                        <p className="text-xs text-slate-500 font-bold">{pt('t058', { type: getPointRechargeLabel(selectedHistory) })}</p>
                       </div>
                     ) : (
                       <div>
@@ -663,7 +729,7 @@ export default function SalesHistoryPage() {
 
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                    {selectedHistory.entryType === 'POINT_RECHARGE' ? '내역 구분' : '시술 항목'}
+                    {selectedHistory.entryType === 'POINT_RECHARGE' ? pt('t057') : pt('t010')}
                   </p>
                   {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                     <div className="p-3 border border-slate-100 rounded-xl bg-emerald-50/40">
@@ -681,11 +747,11 @@ export default function SalesHistoryPage() {
                           <div key={id} className="flex items-center justify-between p-3 border border-slate-100 rounded-xl">
                             <div>
                               <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold text-slate-900">{procedure?.name || '미등록 시술'}</p>
+                                <p className="text-sm font-bold text-slate-900">{procedure?.name || pt('t059')}</p>
                                 {isCouponProcedure && (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">{pt('t032')}</span>
                                 )}</div>
-                              <p className="text-[10px] text-slate-400 font-bold">{procedure?.categoryName || '-'} | {procedure?.time || 0}분</p>
+                              <p className="text-[10px] text-slate-400 font-bold">{procedure?.categoryName || '-'} | {procedure?.time || 0}{pt('t060')}</p>
                             </div>
                             <p className="text-sm font-black text-slate-900">{formatCurrency(procedure?.price || 0)}</p>
                           </div>
@@ -712,8 +778,8 @@ export default function SalesHistoryPage() {
 
                 {selectedHistory.entryType === 'SETTLEMENT' && selectedHistory.cancelReason && (
                   <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-900 font-medium">
-                    취소 사유: {selectedHistory.cancelReason}
-                    {selectedHistory.cancelledAt && <p className="text-xs text-rose-700 mt-2">취소일시: {formatDateTime(selectedHistory.cancelledAt)}</p>}
+                    {pt('t061', { reason: selectedHistory.cancelReason })}
+                    {selectedHistory.cancelledAt && <p className="text-xs text-rose-700 mt-2">{pt('t062', { date: formatDateTime(selectedHistory.cancelledAt) })}</p>}
                   </div>
                 )}</div>
 

@@ -97,12 +97,12 @@ type ModalProps = {
 };
 
 const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
-  { code: 'CASH', name: '현금', order: 1 },
-  { code: 'CARD', name: '카드', order: 2 },
-  { code: 'WECHAT', name: '위챗페이', order: 3 },
-  { code: 'ALIPAY', name: '알리페이', order: 4 },
-  { code: 'PREPAID', name: '충전금 차감', order: 5 },
-  { code: 'COUPON', name: '쿠폰 사용', order: 6 },
+  { code: 'CASH', name: 'CASH', order: 1 },
+  { code: 'CARD', name: 'CARD', order: 2 },
+  { code: 'WECHAT', name: 'WECHAT', order: 3 },
+  { code: 'ALIPAY', name: 'ALIPAY', order: 4 },
+  { code: 'PREPAID', name: 'PREPAID', order: 5 },
+  { code: 'COUPON', name: 'COUPON', order: 6 },
 ];
 
 function todayIso() {
@@ -189,7 +189,7 @@ export default function SalesEntryPage() {
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
   const [couponAppliedServiceIds, setCouponAppliedServiceIds] = useState<number[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('커트');
+  const [selectedCategory, setSelectedCategory] = useState<string>(pt('t084'));
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
   const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
@@ -201,13 +201,38 @@ export default function SalesEntryPage() {
 
   const isBusy = isLoading || isMutating;
 
+  const getPaymentMethodLabel = (code: string, fallback?: string) => {
+    switch (code.toUpperCase()) {
+      case 'CASH':
+        return pt('t078');
+      case 'CARD':
+        return pt('t079');
+      case 'WECHAT':
+        return pt('t080');
+      case 'ALIPAY':
+        return pt('t081');
+      case 'PREPAID':
+        return pt('t082');
+      case 'COUPON':
+        return pt('t083');
+      default:
+        return fallback || code;
+    }
+  };
+
+  const getSettlementStatusLabel = (status: SettlementStatus) => {
+    if (status === 'COMPLETED') return pt('t045');
+    if (status === 'CANCELLED') return pt('t046');
+    return pt('t047');
+  };
+
   // [계산] 시술 데이터에서 카테고리 목록 생성
   const categories = useMemo(() => {
     const labels = Array.from(
       new Set(procedures.map((procedure) => procedure.categoryName).filter((label) => !!label)),
     );
-    return labels.length > 0 ? labels : ['커트', '파마', '염색', '기타'];
-  }, [procedures]);
+    return labels.length > 0 ? labels : [pt('t084'), pt('t085'), pt('t086'), pt('t087')];
+  }, [procedures, pt]);
 
   // [로직] 화면 진입 시 필요한 모든 기준 데이터/정산 데이터를 DB에서 조회
   const loadData = useCallback(async () => {
@@ -412,7 +437,7 @@ export default function SalesEntryPage() {
         setSettlements(mappedSettlements);
         setTodayReservations(mappedReservations);
       } catch (error: any) {
-        alert(typeof error === 'string' ? error : error?.message || '매출/정산 데이터를 불러오지 못했습니다.');
+        alert(typeof error === 'string' ? error : error?.message || pt('t076'));
       } finally {
         setIsLoading(false);
         loadDataInFlightRef.current = null;
@@ -474,7 +499,7 @@ export default function SalesEntryPage() {
     return settlements.filter((settlement) => {
       const member =
         settlement.memberId === 'GUEST'
-          ? { name: '일반 방문객', phone: '' }
+          ? { name: pt('t025'), phone: '' }
           : members.find((entry) => entry.id === settlement.memberId);
       const manager = managers.find((entry) => entry.id === settlement.managerId);
 
@@ -540,7 +565,7 @@ export default function SalesEntryPage() {
     setSelectedManagerId('');
     setSelectedProcs([]);
     setCouponAppliedServiceIds([]);
-    setSelectedCategory(categories[0] || '커트');
+    setSelectedCategory(categories[0] || pt('t084'));
     setPayments([]);
   };
 
@@ -676,7 +701,7 @@ export default function SalesEntryPage() {
       .reduce((sum, payment) => sum + payment.amount, 0);
 
     if (selectedMember && prepaidTotal > selectedMember.balance) {
-      alert(`충전 잔액이 부족합니다. (보유: ₩${selectedMember.balance.toLocaleString()})`);
+      alert(pt('t036', { balance: selectedMember.balance.toLocaleString() }));
       return;
     }
 
@@ -735,12 +760,12 @@ export default function SalesEntryPage() {
       );
 
       await loadData();
-      alert(result.message || '정산 저장이 완료되었습니다.');
+      alert(result.message || pt('t037'));
       setIsModalOpen(false);
       setEditingSettlement(null);
       resetModalForm();
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '정산 저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t038'));
     } finally {
       setIsMutating(false);
     }
@@ -778,12 +803,12 @@ export default function SalesEntryPage() {
       );
 
       await loadData();
-      alert(result.message || '취소 처리 완료');
+      alert(result.message || pt('t039'));
       setIsCancelModalOpen(false);
       setCancelTarget(null);
       setCancelReason('');
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '취소 처리에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t040'));
     } finally {
       setIsMutating(false);
     }
@@ -807,7 +832,7 @@ export default function SalesEntryPage() {
           onClick={() => handleOpenModal()} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
         >
           <Plus size={20} />
-          신규 시술 등록
+          {pt('t041')}
         </button>
       </div>
 
@@ -836,18 +861,18 @@ export default function SalesEntryPage() {
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
                 <th className="py-4 px-6">{pt('t026')}</th>
-                <th className="py-4 px-6">고객명</th>
+                <th className="py-4 px-6">{pt('t042')}</th>
                 <th className="py-4 px-6">{pt('t011')}</th>
                 <th className="py-4 px-6">{pt('t019')}</th>
                 <th className="py-4 px-6">{pt('t007')}</th>
                 <th className="py-4 px-6">{pt('t034')}</th>
-                <th className="py-4 px-6">상태</th>
-                <th className="py-4 px-6 text-center">작업</th>
+                <th className="py-4 px-6">{pt('t043')}</th>
+                <th className="py-4 px-6 text-center">{pt('t044')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredSettlements.map((settlement) => {
-                const member = settlement.memberId === 'GUEST' ? { name: '일반 방문객' } : members.find((entry) => entry.id === settlement.memberId);
+                const member = settlement.memberId === 'GUEST' ? { name: pt('t025') } : members.find((entry) => entry.id === settlement.memberId);
                 const manager = managers.find((entry) => entry.id === settlement.managerId);
                 const procedureNames = settlement.procedureIds
                   .map((id) => procedures.find((entry) => entry.id === id)?.name)
@@ -863,12 +888,7 @@ export default function SalesEntryPage() {
                     : settlement.status === 'CANCELLED'
                       ? 'bg-rose-100 text-rose-600'
                       : 'bg-blue-100 text-blue-600';
-                const statusLabel =
-                  settlement.status === 'COMPLETED'
-                    ? '결제완료'
-                    : settlement.status === 'CANCELLED'
-                      ? '취소'
-                      : '작업중';
+                const statusLabel = getSettlementStatusLabel(settlement.status);
 
                 return (
                   <tr
@@ -895,8 +915,8 @@ export default function SalesEntryPage() {
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-slate-900">{member?.name}</span>
                           {settlement.reservationId && (
-                            <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
-                              <Calendar size={8} /> 예약건
+                          <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
+                              <Calendar size={8} /> {pt('t048')}
                             </span>
                           )}</div>
                       </div>
@@ -926,7 +946,7 @@ export default function SalesEntryPage() {
                           className="mt-1 text-[10px] text-rose-600 max-w-[180px] truncate"
                           title={settlement.cancelReason}
                         >
-                          사유: {settlement.cancelReason}
+                          {pt('t049', { reason: settlement.cancelReason })}
                         </p>
                       )}</td>
                     <td className="py-4 px-6 text-center">
@@ -939,7 +959,7 @@ export default function SalesEntryPage() {
                           disabled={settlement.status === 'CANCELLED' || isBusy}
                           className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          취소
+                          {pt('t046')}
                         </button>
                       </div>
                     </td>
@@ -948,7 +968,7 @@ export default function SalesEntryPage() {
               })} {filteredSettlements.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-20 text-center text-slate-400 font-bold">
-                    조회된 내역이 없습니다.
+                    {pt('t051')}
                   </td>
                 </tr>
               )}</tbody>
@@ -960,7 +980,7 @@ export default function SalesEntryPage() {
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={editingSettlement ? '시술 정보 수정' : '신규 시술 등록'}
+              title={editingSettlement ? pt('t052') : pt('t041')}
               onClose={() => setIsModalOpen(false)} icon={<Scissors size={20} className="text-primary" />}
             >
               <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
@@ -968,7 +988,7 @@ export default function SalesEntryPage() {
                   <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
-                        <Calendar size={12} /> 예약 불러오기
+                        <Calendar size={12} /> {pt('t053')}
                       </label>
                       {selectedReservationId && (
                         <button
@@ -980,7 +1000,7 @@ export default function SalesEntryPage() {
                           }}
                           className="text-[10px] font-bold text-slate-400 hover:text-red-500"
                         >
-                          초기화
+                          {pt('t054')}
                         </button>
                       )}</div>
                     <div className="flex items-center justify-between gap-2">
@@ -990,7 +1010,7 @@ export default function SalesEntryPage() {
                         onChange={(event) => setReservationImportDate(event.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
                       />
                       <span className="text-[10px] font-bold text-slate-500">
-                        예약 {importableReservations.length}건
+                        {pt('t055', { count: importableReservations.length })}
                       </span>
                     </div>
                     <select
@@ -1002,7 +1022,7 @@ export default function SalesEntryPage() {
                         const member = reservation.memberId
                           ? members.find((entry) => entry.id === reservation.memberId)
                           : null;
-                        const customerLabel = member?.name || reservation.customerName || '일반 방문객';
+                        const customerLabel = member?.name || reservation.customerName || pt('t025');
                         const procLabel = reservation.procedureIds
                           .map((id) => procedures.find((entry) => entry.id === id)?.name)
                           .filter(Boolean)
@@ -1010,7 +1030,7 @@ export default function SalesEntryPage() {
 
                         return (
                           <option key={reservation.id} value={reservation.id}>
-                            [{reservation.time}] {customerLabel} - {procLabel || '시술 미매핑'}
+                            [{reservation.time}] {customerLabel} - {procLabel || pt('t056')}
                           </option>
                         );
                       })}</select>
@@ -1082,7 +1102,7 @@ export default function SalesEntryPage() {
                   <div className="space-y-2">
                     {selectedProcs.length === 0 && (
                       <div className="text-[10px] text-slate-400 px-2 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
-                        선택된 시술이 없습니다.
+                        {pt('t057')}
                       </div>
                     )} {selectedProcs.map((id) => {
                       const procedure = procedures.find((entry) => entry.id === id);
@@ -1102,7 +1122,7 @@ export default function SalesEntryPage() {
                           <div className="flex flex-col">
                             <span className="text-xs font-bold text-slate-800">{procedure.name}</span>
                             <span className={`text-[10px] font-bold ${isCouponApplied ? 'text-emerald-600' : 'text-slate-500'}`}>
-                              {isCouponApplied ? '쿠폰 적용' : `₩${procedure.price.toLocaleString()}`}
+                              {isCouponApplied ? pt('t058') : `₩${procedure.price.toLocaleString()}`}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1121,7 +1141,7 @@ export default function SalesEntryPage() {
                                       : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
                                   }`}
                                 >
-                                  {isCouponApplied ? '쿠폰적용 취소' : '쿠폰사용'} (잔여 {visibleCouponRemaining}회)
+                                  {isCouponApplied ? pt('t059') : pt('t060')} ({pt('t061', { count: visibleCouponRemaining })})
                                 </button>
                               ) : (
                                 <span className="text-[10px] font-bold text-slate-400">{pt('t032')}</span>
@@ -1145,7 +1165,7 @@ export default function SalesEntryPage() {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1 text-slate-400">
                         <Clock size={14} />
-                        <span className="text-xs font-bold">{totals.time}분</span>
+                        <span className="text-xs font-bold">{pt('t062', { count: totals.time })}</span>
                       </div>
                       <div className="text-lg font-black">₩{totals.price.toLocaleString()}</div>
                     </div>
@@ -1177,7 +1197,7 @@ export default function SalesEntryPage() {
                       disabled={remainingAmount <= 0}
                       className="flex items-center gap-1 text-[10px] font-black text-primary disabled:opacity-30"
                     >
-                      <Plus size={12} /> 추가
+                      <Plus size={12} /> {pt('t063')}
                     </button>
                   </div>
 
@@ -1194,7 +1214,7 @@ export default function SalesEntryPage() {
                                 const isDisabled = method.code === 'PREPAID' && selectedMemberId === 'GUEST';
                                 return (
                                   <option key={method.code} value={method.code} disabled={isDisabled}>
-                                    {method.name}
+                                    {getPaymentMethodLabel(method.code, method.name)}
                                   </option>
                                 );
                               })}</select>
@@ -1210,10 +1230,10 @@ export default function SalesEntryPage() {
 
                           {payment.method === 'PREPAID' && selectedMember && (
                             <div className="flex items-center justify-between px-2 py-1 bg-emerald-50 rounded text-[10px] font-bold text-emerald-700">
-                              <span>현재 잔액: ₩{selectedMember.balance.toLocaleString()}</span>
+                              <span>{pt('t064', { balance: selectedMember.balance.toLocaleString() })}</span>
                               {selectedMember.balance < payment.amount && (
                                 <span className="text-red-500 flex items-center gap-0.5">
-                                  <AlertCircle size={10} /> 잔액 부족
+                                  <AlertCircle size={10} /> {pt('t065')}
                                 </span>
                               )}</div>
                           )}</div>
@@ -1223,17 +1243,17 @@ export default function SalesEntryPage() {
                   <div className="flex items-center justify-between p-3 rounded-xl border border-dashed border-slate-200">
                     <div className="text-[10px] font-bold text-slate-400">{pt('t003')}</div>
                     <div className="flex items-center gap-3">
-                      <div className="text-[10px] font-bold text-slate-500">수납: ₩{paidTotal.toLocaleString()}</div>
+                      <div className="text-[10px] font-bold text-slate-500">{pt('t066', { amount: paidTotal.toLocaleString() })}</div>
                       <div
                         className={`text-[10px] font-black ${
                           remainingAmount === 0 ? 'text-emerald-500' : remainingAmount > 0 ? 'text-red-500' : 'text-amber-500'
                         }`}
                       >
                         {remainingAmount === 0
-                          ? '결제 완료'
+                          ? pt('t067')
                           : remainingAmount > 0
-                            ? `미수: ₩${remainingAmount.toLocaleString()}`
-                            : `초과: ₩${Math.abs(remainingAmount).toLocaleString()}`}
+                            ? pt('t068', { amount: remainingAmount.toLocaleString() })
+                            : pt('t069', { amount: Math.abs(remainingAmount).toLocaleString() })}
                       </div>
                     </div>
                   </div>
@@ -1243,12 +1263,12 @@ export default function SalesEntryPage() {
                   <button
                     onClick={() => handleSaveSettlement('PROCESSING')} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
                   >
-                    작업중 저장
+                    {pt('t070')}
                   </button>
                   <button
                     onClick={() => handleSaveSettlement('COMPLETED')} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
                   >
-                    결제 완료 처리
+                    {pt('t071')}
                   </button>
                 </div>
               </div>
@@ -1268,13 +1288,13 @@ export default function SalesEntryPage() {
               <div className="p-6 space-y-4">
                 <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-xs text-slate-600">
                   <p className="font-semibold text-slate-800">
-                    대상 정산: #{cancelTarget.id} / {cancelTarget.date}
+                    {pt('t072', { id: cancelTarget.id, date: cancelTarget.date })}
                   </p>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    취소 사유
+                    {pt('t073')}
                   </label>
                   <textarea
                     value={cancelReason}
@@ -1294,14 +1314,14 @@ export default function SalesEntryPage() {
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
                     disabled={isMutating}
                   >
-                    닫기
+                    {pt('t074')}
                   </button>
                   <button
                     onClick={handleCancelSettlement}
                     className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all disabled:opacity-60"
                     disabled={isMutating}
                   >
-                    취소 확정
+                    {pt('t075')}
                   </button>
                 </div>
               </div>

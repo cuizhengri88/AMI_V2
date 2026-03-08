@@ -27,7 +27,15 @@ import {
   ShieldCheck,
   Layout,
   Type as TypeIcon,
-  Image as ImageIcon
+  Image as ImageIcon,
+  CalendarDays,
+  Scissors,
+  Users,
+  Briefcase,
+  CreditCard,
+  History,
+  TrendingUp,
+  Trash2,
 } from 'lucide-react';
 
 type CodeDetailRow = {
@@ -49,6 +57,15 @@ type StoreOption = {
   name: string;
   order: number;
 };
+
+type ResetSalonDataTarget =
+  | 'SALES'
+  | 'RESERVATION'
+  | 'SERVICE_CATALOG'
+  | 'MEMBER'
+  | 'EMPLOYEE'
+  | 'MEMBER_POINT'
+  | 'POINT_USAGE_HISTORY';
 
 export default function SystemSettingsPage() {
   const pt = usePageText('system_system_settings');
@@ -74,6 +91,57 @@ export default function SystemSettingsPage() {
   const [selectedStoreCode, setSelectedStoreCode] = useState(
     normalizeStoreCode(localStorage.getItem(STORE_CODE_STORAGE_KEY)),
   );
+  const [resettingTarget, setResettingTarget] = useState<ResetSalonDataTarget | null>(null);
+
+  const resetActions: Array<{
+    target: ResetSalonDataTarget;
+    label: string;
+    description: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      target: 'SALES',
+      label: '매출데이터',
+      description: '시술 정산/결제 데이터를 초기화합니다.',
+      icon: <TrendingUp size={16} />,
+    },
+    {
+      target: 'RESERVATION',
+      label: '예약데이터',
+      description: '예약 캘린더 데이터를 초기화합니다.',
+      icon: <CalendarDays size={16} />,
+    },
+    {
+      target: 'SERVICE_CATALOG',
+      label: '시술항목 데이터',
+      description: '시술 카탈로그(메뉴) 데이터를 초기화합니다. (연관 예약/매출이 있으면 차단)',
+      icon: <Scissors size={16} />,
+    },
+    {
+      target: 'MEMBER',
+      label: '회원데이터',
+      description: '회원 기본 데이터를 초기화합니다. (연관 포인트 데이터 포함)',
+      icon: <Users size={16} />,
+    },
+    {
+      target: 'EMPLOYEE',
+      label: '직원데이터',
+      description: '직원 관리 데이터를 초기화합니다.',
+      icon: <Briefcase size={16} />,
+    },
+    {
+      target: 'MEMBER_POINT',
+      label: '회원포인트 데이터',
+      description: '회원 포인트 잔액/충전내역을 초기화합니다.',
+      icon: <CreditCard size={16} />,
+    },
+    {
+      target: 'POINT_USAGE_HISTORY',
+      label: '포인트사용내역 데이터',
+      description: '회원 포인트 사용내역을 초기화합니다.',
+      icon: <History size={16} />,
+    },
+  ];
 
   const loadSystemTypeOptions = async () => {
     try {
@@ -210,6 +278,35 @@ export default function SystemSettingsPage() {
       alert(message);
     } finally {
       setIsRunningIntegrityCheck(false);
+    }
+  };
+
+  const handleResetSalonData = async (target: ResetSalonDataTarget, label: string) => {
+    const storeCode = normalizeStoreCode(selectedStoreCode);
+    const shouldReset = window.confirm(
+      `[${storeCode}] 점포의 ${label}를 초기화하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+    );
+    if (!shouldReset) return;
+
+    try {
+      setResettingTarget(target);
+      const result = await invokeDbCommand<{
+        success: boolean;
+        message: string;
+      }>('reset_salon_data', {
+        target,
+        store_code: storeCode,
+      });
+
+      alert(result.message || `${label} 초기화 완료`);
+    } catch (error: any) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error?.message || `${label} 초기화 중 오류가 발생했습니다.`;
+      alert(message);
+    } finally {
+      setResettingTarget(null);
     }
   };
 
@@ -426,6 +523,46 @@ export default function SystemSettingsPage() {
                 <RefreshCw size={16} className={isTestingConnection ? 'animate-spin' : ''} />
                 {isTestingConnection ? '테스트 중...' : '연결 테스트'}
               </button>
+            </div>
+          </div>
+        </section>
+
+        {/* 미용실 데이터 초기화 */}
+        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden grid-shadow">
+          <div className="p-4 border-b border-slate-200 bg-rose-50 flex items-center gap-2">
+            <Trash2 size={18} className="text-rose-700" />
+            <h2 className="font-bold text-slate-800">미용실 데이터 초기화</h2>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="p-4 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-sm">
+              선택한 점포코드(<span className="font-bold">{normalizeStoreCode(selectedStoreCode)}</span>) 기준으로
+              데이터가 즉시 삭제됩니다.
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {resetActions.map((action) => (
+                <div
+                  key={action.target}
+                  className="p-4 border border-slate-200 rounded-xl bg-white flex flex-col gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="size-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                      {action.icon}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{action.label}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{action.description}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetSalonData(action.target, action.label)}
+                    disabled={resettingTarget !== null}
+                    className="w-full py-2 bg-white border border-rose-200 text-rose-700 text-sm font-bold rounded-lg hover:bg-rose-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {resettingTarget === action.target ? '초기화 중...' : `${action.label} 초기화`}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </section>

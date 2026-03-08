@@ -98,25 +98,49 @@ type ReservationViewMode = 'calendar' | 'list';
 
 const STATUS_GROUP_ID = 'RESERVATION_STATUS';
 const CATEGORY_GROUP_ID = 'T_CATEGORY';
-const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
-const FALLBACK_STATUSES: CodeOption[] = [
-  { code: 'RESERVED', label: '예약중', order: 1 },
-  { code: 'COMPLETED', label: '완료', order: 2 },
-  { code: 'CANCELLED', label: '예약취소', order: 3 },
-];
+const FALLBACK_STATUS_CODES = ['RESERVED', 'COMPLETED', 'CANCELLED'] as const;
+const FALLBACK_CATEGORY_CODES = ['CUT', 'PERM', 'COLOR'] as const;
 
-const FALLBACK_CATEGORIES: CodeOption[] = [
-  { code: 'CUT', label: '커트', order: 1 },
-  { code: 'PERM', label: '파마', order: 2 },
-  { code: 'COLOR', label: '염색', order: 3 },
-];
+const FALLBACK_STATUSES: CodeOption[] = FALLBACK_STATUS_CODES.map((code, index) => ({
+  code,
+  label: '',
+  order: index + 1,
+}));
 
-const FALLBACK_STATUS_LABEL_MAP: Record<string, string> = {
-  RESERVED: '예약중',
-  COMPLETED: '완료',
-  CANCELLED: '예약취소',
+const FALLBACK_CATEGORIES: CodeOption[] = FALLBACK_CATEGORY_CODES.map((code, index) => ({
+  code,
+  label: '',
+  order: index + 1,
+}));
+
+const WEEKDAY_TEXT_KEYS = [
+  't028', // 일
+  't029', // 월
+  't030', // 화
+  't031', // 수
+  't032', // 목
+  't033', // 금
+  't034', // 토
+] as const;
+
+const STATUS_TEXT_KEY_BY_CODE: Record<string, string> = {
+  RESERVED: 't080', // 예약중
+  COMPLETED: 't081', // 완료
+  CANCELLED: 't082', // 예약취소
 };
+
+const CATEGORY_TEXT_KEY_BY_CODE: Record<string, string> = {
+  CUT: 't083', // 커트
+  PERM: 't084', // 파마
+  COLOR: 't085', // 염색
+};
+
+const A11Y_TEXT_KEYS = {
+  PREVIOUS_MONTH: 't086', // 이전 달
+  NEXT_MONTH: 't087', // 다음 달
+  CLOSE_MODAL: 't088', // 모달 닫기
+} as const;
 
 // 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
 const INITIAL_RESERVATIONS: ReservationRecord[] = [];
@@ -144,7 +168,7 @@ function shiftDate(iso: string, diffDays: number) {
 }
 
 function formatCurrency(value: number) {
-  return `${value.toLocaleString('ko-KR')}원`;
+  return `₩${value.toLocaleString()}`;
 }
 
 function formatMonthLabel(date: Date) {
@@ -153,9 +177,9 @@ function formatMonthLabel(date: Date) {
   return `${yyyy}.${mm}`;
 }
 
-function formatDateLabel(isoDate: string) {
+function formatDateLabel(isoDate: string, weekdayLabels: string[]) {
   const date = parseIsoDate(isoDate);
-  const dayOfWeek = WEEKDAY_LABELS[date.getDay()];
+  const dayOfWeek = weekdayLabels[date.getDay()] || '';
   return `${isoDate} (${dayOfWeek})`;
 }
 
@@ -190,14 +214,14 @@ function normalizeStatusText(code: string, label: string) {
 
 function getStatusTone(code: string, label: string): StatusTone {
   const normalized = normalizeStatusText(code, label);
-  if (normalized.includes('CANCEL') || label.includes('취소')) {
+  if (normalized.includes('CANCEL')) {
     return {
       badge: 'bg-rose-50 text-rose-700 border-rose-200',
       chip: 'bg-rose-100 text-rose-700',
       dot: 'bg-rose-500',
     };
   }
-  if (normalized.includes('COMPLETE') || label.includes('완료')) {
+  if (normalized.includes('COMPLETE')) {
     return {
       badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
       chip: 'bg-emerald-100 text-emerald-700',
@@ -317,6 +341,20 @@ export default function ReservationCalendarPage() {
 
   const isDbBusy = isLoading || isMutating;
 
+  const weekdayLabels = WEEKDAY_TEXT_KEYS.map((key) => pt(key));
+
+  const getStatusLabelByCode = (code: string, fallback?: string) => {
+    const textKey = STATUS_TEXT_KEY_BY_CODE[code.toUpperCase()];
+    if (textKey) return pt(textKey);
+    return fallback || code;
+  };
+
+  const getCategoryLabelByCode = (code: string, fallback?: string) => {
+    const textKey = CATEGORY_TEXT_KEY_BY_CODE[code.toUpperCase()];
+    if (textKey) return pt(textKey);
+    return fallback || code;
+  };
+
   const statusMap = useMemo(
     () => new Map(statusOptions.map((status) => [status.code, status])),
     [statusOptions],
@@ -431,7 +469,7 @@ export default function ReservationCalendarPage() {
       )
       .map((detail) => ({
         code: detail.code,
-        label: detail.name,
+        label: detail.name?.trim() || getStatusLabelByCode(detail.code),
         order: detail.order,
       }));
 
@@ -440,7 +478,7 @@ export default function ReservationCalendarPage() {
       .map((item) => ({
         id: item.service_id,
         categoryCode: item.category_code,
-        categoryName: item.category_name || item.category_code,
+        categoryName: item.category_name?.trim() || getCategoryLabelByCode(item.category_code),
         serviceName: item.service_name,
         unitPrice: item.unit_price,
         durationMinutes: item.duration_minutes,
@@ -458,7 +496,7 @@ export default function ReservationCalendarPage() {
       )
       .map((detail) => ({
         code: detail.code,
-        label: detail.name,
+        label: detail.name?.trim() || getCategoryLabelByCode(detail.code),
         order: detail.order,
       }));
 
@@ -467,7 +505,7 @@ export default function ReservationCalendarPage() {
         if (!map.has(item.categoryCode)) {
           map.set(item.categoryCode, {
             code: item.categoryCode,
-            label: item.categoryName,
+            label: item.categoryName?.trim() || getCategoryLabelByCode(item.categoryCode),
             order: map.size + 1,
           });
         }
@@ -529,7 +567,7 @@ export default function ReservationCalendarPage() {
       alert(
         typeof error === 'string'
           ? error
-          : (error as { message?: string })?.message || '예약 데이터를 불러오지 못했습니다.',
+          : (error as { message?: string })?.message || pt('t035'),
       );
     } finally {
       setIsLoading(false);
@@ -578,11 +616,9 @@ export default function ReservationCalendarPage() {
   }, [statusOptions, categories, serviceItems]);
 
   const getStatusLabel = (statusCode: string) => {
-    return (
-      statusMap.get(statusCode)?.label
-      || FALLBACK_STATUS_LABEL_MAP[statusCode]
-      || statusCode
-    );
+    const commonCodeLabel = statusMap.get(statusCode)?.label?.trim();
+    if (commonCodeLabel) return commonCodeLabel;
+    return getStatusLabelByCode(statusCode, statusCode);
   };
 
   const openCreateModal = (date = selectedDate) => {
@@ -662,7 +698,10 @@ export default function ReservationCalendarPage() {
           serviceId: selectedService.id,
           categoryCode: selectedService.categoryCode,
           categoryName:
-            categoryMap.get(selectedService.categoryCode)?.label || selectedService.categoryName,
+            getCategoryLabelByCode(
+              selectedService.categoryCode,
+              categoryMap.get(selectedService.categoryCode)?.label || selectedService.categoryName,
+            ),
           serviceName: selectedService.serviceName,
           unitPrice: selectedService.unitPrice,
           durationMinutes: selectedService.durationMinutes,
@@ -721,12 +760,12 @@ export default function ReservationCalendarPage() {
       await loadReservations();
       setSelectedDate(form.reservationDate);
       closeModal();
-      alert(result.message || (modalMode === 'edit' ? '예약 수정이 완료되었습니다.' : '예약 등록이 완료되었습니다.'));
+      alert(result.message || (modalMode === 'edit' ? pt('t036') : pt('t037')));
     } catch (error) {
       alert(
         typeof error === 'string'
           ? error
-          : (error as { message?: string })?.message || '예약 저장에 실패했습니다.',
+          : (error as { message?: string })?.message || pt('t038'),
       );
     } finally {
       setIsMutating(false);
@@ -744,12 +783,12 @@ export default function ReservationCalendarPage() {
         { reservation_id: reservationId },
       );
       await loadReservations();
-      alert(result.message || '예약이 삭제되었습니다.');
+      alert(result.message || pt('t039'));
     } catch (error) {
       alert(
         typeof error === 'string'
           ? error
-          : (error as { message?: string })?.message || '예약 삭제에 실패했습니다.',
+          : (error as { message?: string })?.message || pt('t040'),
       );
     } finally {
       setIsMutating(false);
@@ -764,25 +803,25 @@ export default function ReservationCalendarPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
-      <LoadingOverlay visible={isDbBusy} message={isMutating ? '저장중...' : '로딩중...'} />
+      <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t019')}</h1>
           <p className="text-slate-500 mt-1">
-            예약 등록/수정/상태 변경을 팝업에서 처리하고, 캘린더와 일별 리스트를 함께 관리합니다.
+            {pt('t043')}
           </p>
         </div>
         <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1">
           <button
             onClick={() => setViewMode('calendar')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            Calendar
+            {pt('t044')}
           </button>
           <button
             onClick={() => setViewMode('list')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            List
+            {pt('t045')}
           </button>
         </div>
         <button
@@ -790,7 +829,7 @@ export default function ReservationCalendarPage() {
           className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-60"
         >
           <PlusCircle size={16} />
-          예약 등록
+          {pt('t046')}
         </button>
       </div>
 
@@ -807,7 +846,7 @@ export default function ReservationCalendarPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => moveMonth(-1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-                aria-label="previous-month"
+                aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
               >
                 <ChevronLeft size={16} />
               </button>
@@ -815,7 +854,7 @@ export default function ReservationCalendarPage() {
                 {formatMonthLabel(monthCursor)}</div>
               <button
                 onClick={() => moveMonth(1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-                aria-label="next-month"
+                aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
               >
                 <ChevronRight size={16} />
               </button>
@@ -827,13 +866,13 @@ export default function ReservationCalendarPage() {
                 }}
                 className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
               >
-                Today
+                {pt('t047')}
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-100">
-            {WEEKDAY_LABELS.map((weekday) => (
+            {weekdayLabels.map((weekday) => (
               <div
                 key={weekday}
                 className="px-2 py-2 text-center text-xs font-bold text-slate-600 border-r border-slate-200 last:border-r-0"
@@ -857,7 +896,7 @@ export default function ReservationCalendarPage() {
                     <span className={`text-xs font-semibold ${isToday ? 'text-primary' : ''}`}>{cell.date.getDate()}</span>
                     {dayReservations.length > 0 && (
                       <span className="text-[10px] font-semibold text-slate-400">
-                        {dayReservations.length}건
+                        {pt('t048', { count: dayReservations.length })}
                       </span>
                     )}</div>
 
@@ -880,7 +919,7 @@ export default function ReservationCalendarPage() {
                       );
                     })} {dayReservations.length > 3 && (
                       <p className="text-[10px] text-slate-400 font-semibold pl-1">
-                        +{dayReservations.length - 3}건 더보기
+                        {pt('t049', { count: dayReservations.length - 3 })}
                       </p>
                     )}</div>
                 </button>
@@ -892,13 +931,13 @@ export default function ReservationCalendarPage() {
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
-              <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate)}</p>
+              <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate, weekdayLabels)}</p>
             </div>
             <button
               onClick={() => openCreateModal(selectedDate)} disabled={isDbBusy}
               className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary/90 disabled:opacity-60"
             >
-              선택일 등록
+              {pt('t050')}
             </button>
           </div>
 
@@ -911,15 +950,15 @@ export default function ReservationCalendarPage() {
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t008')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">상태</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">작업</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {selectedDateReservations.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-10 text-center text-sm text-slate-400">
-                      선택한 날짜의 예약이 없습니다.
+                      {pt('t053')}
                     </td>
                   </tr>
                 ) : (
@@ -950,14 +989,14 @@ export default function ReservationCalendarPage() {
                             <button
                               onClick={() => openEditModal(reservation)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                              title="수정"
+                              title={pt('t054')}
                             >
                               <Edit2 size={14} />
                             </button>
                             <button
                               onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="삭제"
+                              title={pt('t055')}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -978,7 +1017,7 @@ export default function ReservationCalendarPage() {
           <div className="flex items-center gap-2 md:order-2">
             <button
               onClick={() => moveMonth(-1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-              aria-label="previous-month"
+              aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
             >
               <ChevronLeft size={16} />
             </button>
@@ -986,7 +1025,7 @@ export default function ReservationCalendarPage() {
               {formatMonthLabel(monthCursor)}</div>
             <button
               onClick={() => moveMonth(1)} className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-              aria-label="next-month"
+              aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
             >
               <ChevronRight size={16} />
             </button>
@@ -998,10 +1037,10 @@ export default function ReservationCalendarPage() {
               }}
               className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
             >
-                Today
+                {pt('t047')}
               </button>
           </div>
-          <h2 className="text-sm font-bold text-slate-700">일별 예약 리스트 ({formatMonthLabel(monthCursor)})</h2>
+          <h2 className="text-sm font-bold text-slate-700">{pt('t056', { month: formatMonthLabel(monthCursor) })}</h2>
         </div>
 
         <div className="p-4 space-y-4">
@@ -1011,8 +1050,8 @@ export default function ReservationCalendarPage() {
             dailyReservationGroups.map((group) => (
               <div key={group.date} className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-700">{formatDateLabel(group.date)}</p>
-                  <span className="text-xs font-semibold text-slate-500">{group.items.length}건</span>
+                  <p className="text-sm font-bold text-slate-700">{formatDateLabel(group.date, weekdayLabels)}</p>
+                  <span className="text-xs font-semibold text-slate-500">{pt('t048', { count: group.items.length })}</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1024,9 +1063,9 @@ export default function ReservationCalendarPage() {
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
                         <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">상태</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">비고</th>
-                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">작업</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t057')}</th>
+                        <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1039,7 +1078,7 @@ export default function ReservationCalendarPage() {
                             <td className="py-2.5 px-4 text-sm text-slate-700">{reservation.customerName}</td>
                             <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
                             <td className="py-2.5 px-4 text-sm text-slate-600">
-                              {getExpectedMinutes(reservation.services)}분
+                              {pt('t058', { count: getExpectedMinutes(reservation.services) })}
                             </td>
                             <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">
                               {formatCurrency(getExpectedAmount(reservation.services))}</td>
@@ -1054,14 +1093,14 @@ export default function ReservationCalendarPage() {
                                 <button
                                   onClick={() => openEditModal(reservation)} disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                                  title="수정"
+                                  title={pt('t054')}
                                 >
                                   <Edit2 size={14} />
                                 </button>
                                 <button
                                   onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  title="삭제"
+                                  title={pt('t055')}
                                 >
                                   <Trash2 size={14} />
                                 </button>
@@ -1095,10 +1134,10 @@ export default function ReservationCalendarPage() {
             >
               <div>
                 <h3 className="text-lg font-black text-slate-900">
-                  {modalMode === 'edit' ? '예약 수정' : '예약 등록'}
+                  {modalMode === 'edit' ? pt('t059') : pt('t060')}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  예약 정보, 상태, 시술 항목을 한 번에 수정할 수 있습니다.
+                  {pt('t061')}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1107,7 +1146,7 @@ export default function ReservationCalendarPage() {
                   onClick={closeModal}
                   disabled={isDbBusy}
                   className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                  aria-label="close-modal"
+                  aria-label={pt(A11Y_TEXT_KEYS.CLOSE_MODAL)}
                 >
                   <X size={18} />
                 </button>
@@ -1145,13 +1184,13 @@ export default function ReservationCalendarPage() {
                   >
                     {statusOptions.map((status) => (
                       <option key={status.code} value={status.code}>
-                        {status.label}
+                        {getStatusLabelByCode(status.code, status.label)}
                       </option>
                     ))}</select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">고객명</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t062')}</label>
                   <input
                     value={form.customerName}
                     onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))} list="reservation-customer-options"
@@ -1171,7 +1210,7 @@ export default function ReservationCalendarPage() {
                     onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
                   >
                     <option value="">
-                      {designerNames.length > 0 ? '디자이너를 선택해 주세요' : '직원 테이블에 디자이너가 없습니다'}
+                      {designerNames.length > 0 ? pt('t063') : pt('t064')}
                     </option>
                     {designerNames.map((name) => (
                       <option key={name} value={name}>
@@ -1180,13 +1219,13 @@ export default function ReservationCalendarPage() {
                     ))} {/* 기존 예약 수정 시, 현재 직원 목록에 없는 이름도 값 유지를 위해 임시 옵션으로 노출한다. */}
                     {form.designerName && !designerNames.includes(form.designerName) && (
                       <option value={form.designerName}>
-                        {form.designerName} (기존값)
+                        {pt('t065', { name: form.designerName })}
                       </option>
                     )}</select>
                 </div>
 
                 <div className="space-y-1 md:col-span-2 lg:col-span-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t066')}</label>
                   <input
                     value={form.note}
                     onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))} placeholder={pt('t025')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
@@ -1198,12 +1237,12 @@ export default function ReservationCalendarPage() {
                 <section className="lg:col-span-5 border border-slate-200 rounded-xl p-4 bg-slate-50/60">
                   <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-3">
                     <Scissors size={16} className="text-primary" />
-                    시술 선택
+                    {pt('t067')}
                   </h4>
 
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">카테고리</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t068')}</label>
                       <select
                         value={form.selectedCategory}
                         onChange={(event) => {
@@ -1221,7 +1260,7 @@ export default function ReservationCalendarPage() {
                       >
                         {categories.map((category) => (
                           <option key={category.code} value={category.code}>
-                            {category.label}
+                            {getCategoryLabelByCode(category.code, category.label)}
                           </option>
                         ))}</select>
                     </div>
@@ -1240,7 +1279,7 @@ export default function ReservationCalendarPage() {
                         ) : (
                           categoryServices.map((service) => (
                             <option key={service.id} value={String(service.id)}>
-                              {service.serviceName} ({service.durationMinutes}분 / {formatCurrency(service.unitPrice)})
+                              {service.serviceName} ({pt('t058', { count: service.durationMinutes })} / {formatCurrency(service.unitPrice)})
                             </option>
                           ))
                         )}</select>
@@ -1249,8 +1288,8 @@ export default function ReservationCalendarPage() {
                     {selectedService && (
                       <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 space-y-1">
                         <p className="font-semibold text-slate-700">{selectedService.serviceName}</p>
-                        <p>예상시간: {selectedService.durationMinutes}분</p>
-                        <p>단가: {formatCurrency(selectedService.unitPrice)}</p>
+                        <p>{pt('t070', { count: selectedService.durationMinutes })}</p>
+                        <p>{pt('t071', { amount: formatCurrency(selectedService.unitPrice) })}</p>
                       </div>
                     )}<button
                       type="button"
@@ -1259,7 +1298,7 @@ export default function ReservationCalendarPage() {
                       className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
                     >
                       <PlusCircle size={16} />
-                      선택 시술 추가
+                      {pt('t069')}
                     </button>
                   </div>
                 </section>
@@ -1271,26 +1310,26 @@ export default function ReservationCalendarPage() {
                     <table className="w-full border-collapse text-left min-w-[620px]">
                       <thead>
                         <tr className="bg-slate-900 text-slate-200">
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">카테고리</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t072')}</th>
                           <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t012')}</th>
                           <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t016')}</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">단가</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-center">삭제</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t073')}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-center">{pt('t074')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {form.services.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="py-8 text-center text-sm text-slate-400">
-                              아직 추가된 시술이 없습니다.
+                              {pt('t075')}
                             </td>
                           </tr>
                         ) : (
                           form.services.map((service) => (
                             <tr key={service.lineId} className="hover:bg-slate-50 transition-colors">
-                              <td className="py-2.5 px-3 text-sm text-slate-700">{service.categoryName}</td>
+                              <td className="py-2.5 px-3 text-sm text-slate-700">{getCategoryLabelByCode(service.categoryCode, service.categoryName)}</td>
                               <td className="py-2.5 px-3 text-sm font-semibold text-slate-700">{service.serviceName}</td>
-                              <td className="py-2.5 px-3 text-sm text-right text-slate-600">{service.durationMinutes}분</td>
+                              <td className="py-2.5 px-3 text-sm text-right text-slate-600">{pt('t058', { count: service.durationMinutes })}</td>
                               <td className="py-2.5 px-3 text-sm text-right font-semibold text-slate-700">
                                 {formatCurrency(service.unitPrice)}</td>
                               <td className="py-2.5 px-3 text-center">
@@ -1314,7 +1353,7 @@ export default function ReservationCalendarPage() {
                 <div className="flex flex-wrap gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                     <p className="text-xs font-bold text-slate-500 uppercase">{pt('t014')}</p>
-                    <p className="font-black text-slate-900 mt-1">{formExpectedMinutes}분</p>
+                    <p className="font-black text-slate-900 mt-1">{pt('t058', { count: formExpectedMinutes })}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                     <p className="text-xs font-bold text-slate-500 uppercase">{pt('t013')}</p>
@@ -1329,7 +1368,7 @@ export default function ReservationCalendarPage() {
                     disabled={isDbBusy}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
                   >
-                    취소
+                    {pt('t076')}
                   </button>
                   <button
                     type="submit"
@@ -1337,7 +1376,7 @@ export default function ReservationCalendarPage() {
                     className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
                   >
                     <Clock3 size={15} />
-                    {modalMode === 'edit' ? '예약 수정 저장' : '예약 등록'}
+                    {modalMode === 'edit' ? pt('t077') : pt('t060')}
                   </button>
                 </div>
               </div>

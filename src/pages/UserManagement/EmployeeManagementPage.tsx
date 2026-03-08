@@ -48,6 +48,9 @@ export default function EmployeeManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [formData, setFormData] = useState<FormData>({ employee_name: '', employee_code: '', email: '' });
+  const STATUS_ACTIVE = '재직중';
+  const STATUS_ON_LEAVE = '휴직';
+  const STATUS_RESIGNED = '퇴직';
 
   const loadRoles = async () => {
     try {
@@ -65,7 +68,7 @@ export default function EmployeeManagementPage() {
       setEmployees(result.employees || []);
       setFilteredEmployees(result.employees || []);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '직원 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t020'));
     } finally {
       setIsLoading(false);
     }
@@ -111,9 +114,9 @@ export default function EmployeeManagementPage() {
       });
       await loadEmployees();
       setIsModalOpen(false);
-      alert(modalMode === 'add' ? '직원이 추가되었습니다.' : '직원이 수정되었습니다.');
+      alert(modalMode === 'add' ? pt('t021') : pt('t022'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '저장에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t023'));
     } finally {
       setIsMutating(false);
     }
@@ -127,11 +130,29 @@ export default function EmployeeManagementPage() {
       await loadEmployees();
       alert(pt('t014'));
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '삭제에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t024'));
     } finally {
       setIsMutating(false);
     }
   };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case STATUS_ON_LEAVE:
+        return pt('t019');
+      case STATUS_RESIGNED:
+        return pt('t017');
+      case STATUS_ACTIVE:
+      case '':
+      case undefined:
+        return pt('t006');
+      default:
+        return status;
+    }
+  };
+
+  const getStatusBadgeClass = (status?: string) =>
+    status === STATUS_ACTIVE || !status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
 
   return (
     <motion.div 
@@ -139,11 +160,11 @@ export default function EmployeeManagementPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      <LoadingOverlay visible={isLoading} message="로딩 중..." />
+      <LoadingOverlay visible={isLoading} message={pt('t025')} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">직원 관리</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t026')}</h1>
           <p className="text-slate-500 mt-1">{pt('t010')}</p>
         </div>
         
@@ -154,7 +175,7 @@ export default function EmployeeManagementPage() {
             className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-            {isLoading ? '불러오는 중...' : 'DB 새로고침'}
+            {isLoading ? pt('t027') : pt('t028')}
           </button>
           <button 
             onClick={handleAddClick}
@@ -162,7 +183,7 @@ export default function EmployeeManagementPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             <UserPlus size={18} />
-            직원 추가
+            {pt('t029')}
           </button>
         </div>
       </div>
@@ -177,29 +198,29 @@ export default function EmployeeManagementPage() {
               onChange={(e) => setSearchText(e.target.value)} className="w-full pl-10 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
-          <div className="text-xs text-slate-400 font-medium">총 {filteredEmployees.length}명</div>
+          <div className="text-xs text-slate-400 font-medium">{pt('t030', { count: filteredEmployees.length })}</div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">ID</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">직원명</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t031')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t032')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t015')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">이메일</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t033')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">상태</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t034')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredEmployees.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-slate-400 text-sm">
-                    직원 데이터가 없습니다.
+                    {pt('t036')}
                   </td>
                 </tr>
               ) : (
@@ -234,8 +255,8 @@ export default function EmployeeManagementPage() {
                       </div>
                     </td>
                     <td className="py-4 px-6 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${emp.status === '재직중' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {emp.status || '재직중'}
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${getStatusBadgeClass(emp.status)}`}>
+                        {getStatusLabel(emp.status)}
                       </span>
                     </td>
                     <td className="py-4 px-6 text-center">
@@ -245,14 +266,14 @@ export default function EmployeeManagementPage() {
                           className="text-primary hover:text-primary/80 font-bold text-xs flex items-center justify-center gap-1 bg-primary/5 px-2 py-1 rounded transition-colors disabled:opacity-50"
                         >
                           <Edit2 size={14} />
-                          수정
+                          {pt('t037')}
                         </button>
                         <button 
                           onClick={() => handleDelete(emp.employee_id)} disabled={isMutating}
                           className="text-red-500 hover:text-red-600 font-bold text-xs flex items-center justify-center gap-1 bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
                         >
                           <Trash2 size={14} />
-                          삭제
+                          {pt('t038')}
                         </button>
                       </div>
                     </td>
@@ -268,7 +289,7 @@ export default function EmployeeManagementPage() {
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal 
-              title={modalMode === 'add' ? '새 직원 추가' : '직원 정보 수정'} 
+              title={modalMode === 'add' ? pt('t039') : pt('t040')} 
               onClose={() => setIsModalOpen(false)} icon={<UserPlus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSave} className="p-6 space-y-4">
@@ -311,7 +332,7 @@ export default function EmployeeManagementPage() {
                     ))}</select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">전화번호</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t041')}</label>
                   <input 
                     type="text" 
                     value={formData.phone || ''}
@@ -328,18 +349,18 @@ export default function EmployeeManagementPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">상태</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t042')}</label>
                   <select 
-                    value={formData.status || '재직중'}
+                    value={formData.status || STATUS_ACTIVE}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   >
-                    <option value="재직중">{pt('t006')}</option>
-                    <option value="휴직">{pt('t019')}</option>
-                    <option value="퇴직">{pt('t017')}</option>
+                    <option value={STATUS_ACTIVE}>{pt('t006')}</option>
+                    <option value={STATUS_ON_LEAVE}>{pt('t019')}</option>
+                    <option value={STATUS_RESIGNED}>{pt('t017')}</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">비고</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t043')}</label>
                   <textarea 
                     value={formData.remarks || ''}
                     onChange={(e) => setFormData({ ...formData, remarks: e.target.value })} placeholder={pt('t018')} rows={3}
@@ -353,14 +374,14 @@ export default function EmployeeManagementPage() {
                     onClick={() => setIsModalOpen(false)} disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
                   >
-                    취소
+                    {pt('t044')}
                   </button>
                   <button 
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                   >
-                    {isMutating ? '저장 중...' : '저장'}
+                    {isMutating ? pt('t045') : pt('t046')}
                   </button>
                 </div>
               </form>

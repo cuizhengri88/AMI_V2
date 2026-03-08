@@ -41,10 +41,20 @@ type PaymentMethodOption = {
 };
 
 const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
-  { code: 'WECHAT_PAY', label: '위챗페이', order: 1 },
-  { code: 'ALIPAY', label: '알리페이', order: 2 },
-  { code: 'CASH', label: '현금', order: 3 },
+  { code: 'WECHAT_PAY', label: 'WECHAT_PAY', order: 1 },
+  { code: 'ALIPAY', label: 'ALIPAY', order: 2 },
+  { code: 'CASH', label: 'CASH', order: 3 },
 ];
+
+const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
+  WECHAT_PAY: 't031', // 위챗페이
+  WECHAT: 't031', // 위챗페이
+  ALIPAY: 't032', // 알리페이
+  CASH: 't033', // 현금
+  CARD: 't034', // 카드
+  PREPAID: 't035', // 충전금 차감
+  COUPON: 't036', // 쿠폰 사용
+};
 
 export default function MemberRechargePage() {
   const pt = usePageText('user_management_point_recharge');
@@ -66,6 +76,12 @@ export default function MemberRechargePage() {
   const [paymentMethodCode, setPaymentMethodCode] = useState(FALLBACK_PAYMENT_METHODS[0].code);
 
   const isBusy = isLoading || isMutating;
+
+  const getPaymentMethodLabelByCode = (code: string, fallback?: string) => {
+    const key = PAYMENT_METHOD_TEXT_KEY_BY_CODE[code.toUpperCase()];
+    if (key) return pt(key);
+    return fallback || code;
+  };
 
   const loadPointData = async () => {
     const result = await invokeDbCommand<{
@@ -148,7 +164,7 @@ export default function MemberRechargePage() {
       setIsLoading(true);
       await Promise.all([loadPointData(), loadReferenceData()]);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '회원 포인트 데이터를 불러오지 못했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t018'));
     } finally {
       setIsLoading(false);
     }
@@ -227,7 +243,7 @@ export default function MemberRechargePage() {
       alert(pt('t013'));
       closeRechargeModal();
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || '충전에 실패했습니다.');
+      alert(typeof error === 'string' ? error : error?.message || pt('t019'));
     } finally {
       setIsMutating(false);
     }
@@ -269,7 +285,7 @@ export default function MemberRechargePage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t010')}</p>
-            <p className="text-2xl font-black text-slate-900">{members.length}명</p>
+            <p className="text-2xl font-black text-slate-900">{pt('t020', { count: members.length })}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 grid-shadow flex items-center gap-4">
@@ -278,7 +294,7 @@ export default function MemberRechargePage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t005')}</p>
-            <p className="text-2xl font-black text-slate-900">{totalCoupons}회</p>
+            <p className="text-2xl font-black text-slate-900">{pt('t021', { count: totalCoupons })}</p>
           </div>
         </div>
       </div>
@@ -299,7 +315,7 @@ export default function MemberRechargePage() {
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50"
           >
             <Filter size={16} />
-            필터
+            {pt('t022')}
           </button>
         </div>
 
@@ -307,16 +323,16 @@ export default function MemberRechargePage() {
           <thead>
             <tr className="bg-slate-900 text-slate-200">
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t017')}</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">연락처</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t023')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">작업</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t024')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filteredMembers.length === 0 ? (
               <tr>
                 <td colSpan={4} className="py-10 text-center text-sm text-slate-400">
-                  회원 데이터가 없습니다.
+                  {pt('t025')}
                 </td>
               </tr>
             ) : (
@@ -342,7 +358,7 @@ export default function MemberRechargePage() {
                             key={`${member.id}-${coupon.serviceId}`}
                             className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200"
                           >
-                            {coupon.name}: {coupon.count}회
+                            {pt('t026', { name: coupon.name, count: coupon.count })}
                           </span>
                         ))
                       ) : (
@@ -356,7 +372,7 @@ export default function MemberRechargePage() {
                         onClick={() => openRechargeModal(member)} className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-1.5"
                       >
                         <Plus size={14} />
-                        횟수권 충전
+                        {pt('t027')}
                       </button>
                     </div>
                   </td>
@@ -370,7 +386,7 @@ export default function MemberRechargePage() {
         {isRechargeModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={`${selectedMember?.name || ''} 회원 횟수권 충전`}
+              title={pt('t028', { name: selectedMember?.name || '' })}
               onClose={closeRechargeModal}
               icon={<CreditCard size={20} className="text-primary" />}
             >
@@ -445,7 +461,7 @@ export default function MemberRechargePage() {
                               : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
                           }`}
                         >
-                          {method.label}
+                          {getPaymentMethodLabelByCode(method.code, method.label)}
                         </button>
                       ))}</div>
                   </div>
@@ -456,14 +472,14 @@ export default function MemberRechargePage() {
                       onClick={closeRechargeModal}
                       className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
                     >
-                      취소
+                      {pt('t029')}
                     </button>
                     <button
                       type="submit"
                       disabled={isMutating}
                       className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                     >
-                      충전하기
+                      {pt('t030')}
                     </button>
                   </div>
                 </form>
