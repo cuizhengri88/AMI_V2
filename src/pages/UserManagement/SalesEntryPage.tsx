@@ -35,6 +35,12 @@ type Manager = {
   role: string;
 };
 
+type ServiceCategoryOption = {
+  code: string;
+  name: string;
+  order: number;
+};
+
 type Procedure = {
   id: number;
   name: string;
@@ -170,10 +176,11 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
 
 export default function SalesEntryPage() {
   const pt = usePageText('user_management_sales_entry');
-  // [상태] 기준 데이터(회원/직원/시술/결제수단/정산) 조회 결과
+  // [상태] 기준 데이터(회원/직원/시술/카테고리/결제수단/정산) 조회 결과
   const [members, setMembers] = useState<Member[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
+  const [procedureCategories, setProcedureCategories] = useState<ServiceCategoryOption[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
   const [todayReservations, setTodayReservations] = useState<Reservation[]>(EMPTY_RESERVATIONS);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -193,7 +200,7 @@ export default function SalesEntryPage() {
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
   const [couponAppliedServiceIds, setCouponAppliedServiceIds] = useState<number[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>(pt('t084'));
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
   const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
@@ -205,6 +212,7 @@ export default function SalesEntryPage() {
 
   const isBusy = isLoading || isMutating;
 
+  // [유틸] 결제수단 코드를 다국어 표시명으로 변환
   const getPaymentMethodLabel = (code: string, fallback?: string) => {
     switch (code.toUpperCase()) {
       case 'CASH':
@@ -224,19 +232,29 @@ export default function SalesEntryPage() {
     }
   };
 
+  // [유틸] 정산 상태 코드를 배지 텍스트로 변환
   const getSettlementStatusLabel = (status: SettlementStatus) => {
     if (status === 'COMPLETED') return pt('t045');
     if (status === 'CANCELLED') return pt('t046');
     return pt('t047');
   };
 
-  // [계산] 시술 데이터에서 카테고리 목록 생성
-  const categories = useMemo(() => {
-    const labels = Array.from(
-      new Set(procedures.map((procedure) => procedure.categoryName).filter((label) => !!label)),
-    );
-    return labels.length > 0 ? labels : [pt('t084'), pt('t085'), pt('t086'), pt('t087')];
-  }, [procedures, pt]);
+  // [계산] 카테고리 드롭다운 목록(공통코드 우선, 필요 시 시술 데이터로 보정)
+  const categories = useMemo<ServiceCategoryOption[]>(() => {
+    if (procedureCategories.length > 0) return procedureCategories;
+
+    const fallbackMap = new Map<string, ServiceCategoryOption>();
+    procedures.forEach((procedure, index) => {
+      if (!procedure.categoryCode) return;
+      if (fallbackMap.has(procedure.categoryCode)) return;
+      fallbackMap.set(procedure.categoryCode, {
+        code: procedure.categoryCode,
+        name: procedure.categoryName || procedure.categoryCode,
+        order: index + 1,
+      });
+    });
+    return Array.from(fallbackMap.values());
+  }, [procedureCategories, procedures]);
   const procedurePriceById = useMemo(
     () => new Map(procedures.map((procedure) => [procedure.id, procedure.price])),
     [procedures],
@@ -244,6 +262,7 @@ export default function SalesEntryPage() {
 
   // [로직] 화면 진입 시 필요한 모든 기준 데이터/정산 데이터를 DB에서 조회
   const loadData = useCallback(async () => {
+    // 중복 호출 시 동일 Promise를 재사용해 API 동시 호출 폭주를 방지
     if (loadDataInFlightRef.current) {
       return loadDataInFlightRef.current;
     }
@@ -382,6 +401,33 @@ export default function SalesEntryPage() {
             time: procedure.duration_minutes,
           }));
 
+        // [매핑] 공통코드 T_CATEGORY -> 카테고리 선택 모델
+        const mappedProcedureCategories: ServiceCategoryOption[] = (commonCodeResult.details || [])
+          .filter((detail) => detail.group === 'T_CATEGORY' && detail.use_yn === 'Y')
+          .map((detail) => ({
+            code: detail.code,
+            name: detail.name || detail.code,
+            order: detail.order,
+          }))
+          .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
+
+        // [보정] 공통코드에 누락된 코드라도 실제 시술에 존재하면 목록에 포함
+        const mergedCategoryMap = new Map<string, ServiceCategoryOption>(
+          mappedProcedureCategories.map((category) => [category.code, category]),
+        );
+        mappedProcedures.forEach((procedure) => {
+          if (!mergedCategoryMap.has(procedure.categoryCode)) {
+            mergedCategoryMap.set(procedure.categoryCode, {
+              code: procedure.categoryCode,
+              name: procedure.categoryName || procedure.categoryCode,
+              order: Number.MAX_SAFE_INTEGER,
+            });
+          }
+        });
+        const mergedProcedureCategories = Array.from(mergedCategoryMap.values()).sort(
+          (a, b) => (a.order - b.order) || a.name.localeCompare(b.name),
+        );
+
         // [매핑] 공통코드 PAYMENT_METHOD -> 결제수단 선택 모델
         const mappedPaymentMethods: PaymentMethodOption[] = (commonCodeResult.details || [])
           .filter((detail) => detail.group === 'PAYMENT_METHOD' && detail.use_yn === 'Y')
@@ -441,6 +487,7 @@ export default function SalesEntryPage() {
         setMembers(mappedMembers);
         setManagers(mappedManagers);
         setProcedures(mappedProcedures);
+        setProcedureCategories(mergedProcedureCategories);
         setPaymentMethods(mappedPaymentMethods.length > 0 ? mappedPaymentMethods : FALLBACK_PAYMENT_METHODS);
         setSettlements(mappedSettlements);
         setTodayReservations(mappedReservations);
@@ -463,8 +510,15 @@ export default function SalesEntryPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (categories.length > 0 && !categories.includes(selectedCategory)) {
-      setSelectedCategory(categories[0]);
+    if (categories.length === 0) {
+      if (selectedCategory !== '') {
+        setSelectedCategory('');
+      }
+      return;
+    }
+
+    if (!categories.some((category) => category.code === selectedCategory)) {
+      setSelectedCategory(categories[0].code);
     }
   }, [categories, selectedCategory]);
 
@@ -475,6 +529,7 @@ export default function SalesEntryPage() {
     return members.find((member) => member.id === memberId) || null;
   }, [selectedMemberId, members]);
 
+  // [계산] 선택 회원의 쿠폰 보유 수량 맵(serviceId -> count)
   const selectedMemberCouponMap = useMemo(() => {
     const map = new Map<number, number>();
     if (!selectedMember) return map;
@@ -538,6 +593,7 @@ export default function SalesEntryPage() {
     );
   }, [selectedProcs]);
 
+  // [계산] 쿠폰 적용 여부/적용 횟수 계산을 위한 보조 자료구조
   const couponAppliedSet = useMemo(() => new Set(couponAppliedServiceIds), [couponAppliedServiceIds]);
   const couponAppliedCountMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -547,6 +603,7 @@ export default function SalesEntryPage() {
     return map;
   }, [couponAppliedServiceIds]);
 
+  // [계산] 쿠폰 적용된 시술의 정가 합계를 할인액으로 계산
   const couponDiscountAmount = useMemo(() => {
     return selectedProcs.reduce((sum, serviceId) => {
       if (!couponAppliedSet.has(serviceId)) return sum;
@@ -555,6 +612,7 @@ export default function SalesEntryPage() {
     }, 0);
   }, [couponAppliedSet, procedures, selectedProcs]);
 
+  // [계산] 실결제 대상 금액(음수 방지), 쿠폰 결제수단 제외 목록
   const payableAmount = Math.max(totals.price - couponDiscountAmount, 0);
 
   const manualPaymentMethods = useMemo(
@@ -573,7 +631,7 @@ export default function SalesEntryPage() {
     setSelectedManagerId('');
     setSelectedProcs([]);
     setCouponAppliedServiceIds([]);
-    setSelectedCategory(categories[0] || pt('t084'));
+    setSelectedCategory(categories[0]?.code || '');
     setPayments([]);
   };
 
@@ -626,7 +684,7 @@ export default function SalesEntryPage() {
 
     const firstProcedure = procedures.find((procedure) => procedure.id === validProcedureIds[0]);
     if (firstProcedure) {
-      setSelectedCategory(firstProcedure.categoryName);
+      setSelectedCategory(firstProcedure.categoryCode);
     }
 
     if (validProcedureIds.length === 0) {
@@ -642,15 +700,18 @@ export default function SalesEntryPage() {
     }
   }, [selectedReservationId, importableReservations]);
 
+  // [동작] 선택 시술이 바뀌면 삭제된 시술에 연결된 쿠폰 적용 상태도 함께 정리
   useEffect(() => {
     setCouponAppliedServiceIds((prev) => prev.filter((serviceId) => selectedProcs.includes(serviceId)));
   }, [selectedProcs]);
 
+  // [동작] 회원 선택 해제(일반 방문객 전환) 시 쿠폰 적용 정보 초기화
   useEffect(() => {
     if (selectedMember) return;
     setCouponAppliedServiceIds([]);
   }, [selectedMember]);
 
+  // [동작] 일반 방문객은 선불권 사용 불가이므로 PREPAID/COUPON 결제라인 제거
   useEffect(() => {
     if (selectedMemberId !== 'GUEST') return;
     setPayments((prev) => prev.filter((payment) => payment.method !== 'PREPAID' && payment.method !== 'COUPON'));
@@ -702,6 +763,7 @@ export default function SalesEntryPage() {
       return;
     }
 
+    // 저장 payload에는 coupon 토글 상태에서 별도 생성한 couponPayments만 유지한다.
     const normalizedPayments = payments.filter((payment) => payment.method !== 'COUPON');
 
     const prepaidTotal = normalizedPayments
@@ -737,6 +799,7 @@ export default function SalesEntryPage() {
           ? Number(selectedMemberId)
           : null;
 
+    // 쿠폰 사용은 "결제수단 COUPON + coupon_service_id" 라인으로 백엔드에 전달
     const couponPayments = couponAppliedServiceIds.map((serviceId) => ({
       payment_method_code: 'COUPON',
       amount: 0,
@@ -779,6 +842,7 @@ export default function SalesEntryPage() {
     }
   };
 
+  // [동작] 취소 모달 열기(이미 취소된 정산은 재취소 방지)
   const handleOpenCancelModal = (settlement: Settlement) => {
     if (settlement.status === 'CANCELLED') {
       alert(pt('t024'));
@@ -789,6 +853,7 @@ export default function SalesEntryPage() {
     setIsCancelModalOpen(true);
   };
 
+  // [동작] 정산 취소 실행(완료 건은 결제 취소, 진행중 건은 시술 취소로 기록)
   const handleCancelSettlement = async () => {
     if (!cancelTarget) return;
     const reason = cancelReason.trim();
@@ -844,6 +909,7 @@ export default function SalesEntryPage() {
         </button>
       </div>
 
+      {/* 검색어 + 날짜로 정산 목록을 빠르게 좁히는 상단 필터 영역 */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
         <div className="flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -863,6 +929,7 @@ export default function SalesEntryPage() {
         </div>
       </div>
 
+      {/* 정산 목록 테이블: 클릭 시 수정 모달 오픈, 우측 버튼으로 취소 모달 오픈 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-1">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[980px]">
@@ -894,6 +961,7 @@ export default function SalesEntryPage() {
                 const couponPaidAmount = settlement.payments
                   .filter((payment) => isCouponPaymentMethod(payment.method))
                   .reduce((sum, payment) => sum + payment.amount, 0);
+                // coupon 금액이 0으로 저장되는 경우가 있어 coupon_service_id 기준으로 실제 할인액을 환산
                 const couponCoveredAmount = settlement.payments
                   .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
                   .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
@@ -1004,6 +1072,7 @@ export default function SalesEntryPage() {
               onClose={() => setIsModalOpen(false)} icon={<Scissors size={20} className="text-primary" />}
             >
               <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                {/* 신규 등록 시 예약 정보를 선반영해 입력을 빠르게 채운다. */}
                 {!editingSettlement && (
                   <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
@@ -1056,7 +1125,9 @@ export default function SalesEntryPage() {
                       })}</select>
                     {selectedReservationId && <p className="text-[10px] text-primary font-medium">{pt('t001')}</p>}
                   </div>
-                )}<div className="grid grid-cols-2 gap-4">
+                )}
+                {/* 기본 입력: 회원/담당자 선택 */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t005')}</label>
                     <select
@@ -1085,6 +1156,7 @@ export default function SalesEntryPage() {
                   </div>
                 </div>
 
+                {/* 시술 선택: 카테고리 선택 후 해당 카테고리 시술만 추가 */}
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t020')}</label>
                   <div className="flex gap-2">
@@ -1093,8 +1165,8 @@ export default function SalesEntryPage() {
                       onChange={(event) => setSelectedCategory(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
                     >
                       {categories.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
+                        <option key={category.code} value={category.code}>
+                          {category.name}
                         </option>
                       ))}</select>
                     <select
@@ -1111,7 +1183,7 @@ export default function SalesEntryPage() {
                     >
                       <option value="">{pt('t018')}</option>
                       {procedures
-                        .filter((procedure) => procedure.categoryName === selectedCategory)
+                        .filter((procedure) => procedure.categoryCode === selectedCategory)
                         .map((procedure) => (
                           <option key={procedure.id} value={procedure.id}>
                             {procedure.name} (¥{procedure.price.toLocaleString()})
@@ -1119,6 +1191,7 @@ export default function SalesEntryPage() {
                         ))}</select>
                   </div>
 
+                  {/* 선택된 시술 목록: 쿠폰 적용 가능 여부와 잔여수량을 동시에 표시 */}
                   <div className="space-y-2">
                     {selectedProcs.length === 0 && (
                       <div className="text-[10px] text-slate-400 px-2 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
@@ -1180,6 +1253,7 @@ export default function SalesEntryPage() {
                     })}</div>
                 </div>
 
+                {/* 요약 영역: 총액, 쿠폰 할인, 최종 결제대상 금액 */}
                 <div className="p-4 bg-slate-900 rounded-2xl text-white space-y-2">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-4">
@@ -1209,6 +1283,7 @@ export default function SalesEntryPage() {
                     </div>
                   )}</div>
 
+                {/* 결제 입력: 라인 추가/삭제, 수단별 제약(PREPAID) 검증 UI */}
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t004')}</label>
@@ -1279,6 +1354,7 @@ export default function SalesEntryPage() {
                   </div>
                 </div>
 
+                {/* 저장 동작: 작업중 상태 저장 또는 결제완료 저장 */}
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => handleSaveSettlement('PROCESSING')} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
@@ -1294,7 +1370,9 @@ export default function SalesEntryPage() {
               </div>
             </DraggableModal>
           </div>
-        )} {isCancelModalOpen && cancelTarget && (
+        )}
+        {/* 취소 모달: 취소 사유를 받아 cancel_sales_settlement 호출 */}
+        {isCancelModalOpen && cancelTarget && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
               title={pt('t030')} onClose={() => {

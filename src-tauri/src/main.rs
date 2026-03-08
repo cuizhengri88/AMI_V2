@@ -1170,8 +1170,9 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
                 status CHAR(1) NOT NULL DEFAULT 'Y' CHECK (status IN ('Y', 'N')),
                 registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (store_code),
-                UNIQUE (hwid)
+                -- 동일 장치에서 CDKEY 기반 다중 등록을 허용한다.
+                -- 무결성은 CDKEY 1회성 사용 정책으로 보장한다.
+                CHECK (BTRIM(hwid) <> '')
             );
 
             ALTER TABLE security_store_binding
@@ -1197,6 +1198,20 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
             DROP CONSTRAINT IF EXISTS security_store_binding_status_check;
 
             ALTER TABLE security_store_binding
+            DROP CONSTRAINT IF EXISTS security_store_binding_store_code_key;
+
+            DROP INDEX IF EXISTS security_store_binding_store_code_key;
+
+            DROP INDEX IF EXISTS uq_security_store_binding_store_code;
+
+            ALTER TABLE security_store_binding
+            DROP CONSTRAINT IF EXISTS security_store_binding_hwid_key;
+
+            DROP INDEX IF EXISTS security_store_binding_hwid_key;
+
+            DROP INDEX IF EXISTS uq_security_store_binding_hwid;
+
+            ALTER TABLE security_store_binding
             ADD CONSTRAINT security_store_binding_status_check
             CHECK (status IN ('Y', 'N'));
 
@@ -1205,6 +1220,12 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS idx_security_store_binding_status
             ON security_store_binding (status);
+
+            CREATE INDEX IF NOT EXISTS idx_security_store_binding_hwid
+            ON security_store_binding (hwid);
+
+            CREATE INDEX IF NOT EXISTS idx_security_store_binding_hwid_store
+            ON security_store_binding (hwid, store_code, status);
             "#,
         )
         .await
@@ -1379,37 +1400,67 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
     ensure_store_binding_table(client).await?;
 
     let hwid = detect_hwid();
+    let cpu_id = detect_cpu_id();
+    let host_name = detect_host_name();
+
+    let denied_exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM security_store_binding
+             WHERE hwid = $1
+               AND status = 'N'
+             ORDER BY id DESC
+             LIMIT 1
+            "#,
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("보안 인증 차단 상태 조회 실패: {e}"))?
+        .is_some();
+
+    if denied_exists {
+        return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
+    }
+
     let row = client
         .query_opt(
-            "SELECT store_code, status FROM security_store_binding WHERE hwid = $1",
-            &[&hwid],
+            r#"
+            SELECT id, status
+              FROM security_store_binding
+             WHERE hwid = $1
+               AND store_code = $2
+             ORDER BY id DESC
+             LIMIT 1
+            "#,
+            &[&hwid, &store_code],
         )
         .await
         .map_err(|e| format!("보안 인증 조회 실패: {e}"))?;
 
     let Some(row) = row else {
-        return Err(
-            "현재 PC는 점포 인증이 되어있지 않습니다. 프로그램 시작 시 점포코드를 먼저 등록해 주세요."
-                .to_string(),
-        );
+        return Err(format!(
+            "현재 PC는 점포코드 {store_code} 로 인증이 되어있지 않습니다. 프로그램 시작 시 점포코드와 CDKEY를 등록해 주세요."
+        ));
     };
 
-    let bound_store_code: String = row.get(0);
+    let binding_id: i64 = row.get(0);
     let status: String = row.get(1);
     if !status.trim().eq_ignore_ascii_case("Y") {
         return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
     }
-    if !bound_store_code.trim().eq_ignore_ascii_case(store_code) {
-        return Err(format!(
-            "현재 PC는 점포코드 {} 로 이미 인증되어 있습니다.",
-            bound_store_code.trim()
-        ));
-    }
 
     client
         .execute(
-            "UPDATE security_store_binding SET last_verified_at = NOW() WHERE hwid = $1 AND status = 'Y'",
-            &[&hwid],
+            r#"
+            UPDATE security_store_binding
+               SET cpu_id = $2,
+                   host_name = $3,
+                   last_verified_at = NOW()
+             WHERE id = $1
+               AND status = 'Y'
+            "#,
+            &[&binding_id, &cpu_id, &host_name],
         )
         .await
         .map_err(|e| format!("보안 인증 갱신 실패: {e}"))?;
@@ -2533,12 +2584,36 @@ async fn get_store_binding_status(
 
     let hwid = detect_hwid();
     let cpu_id = detect_cpu_id();
+
+    let denied_exists = client
+        .query_opt(
+            r#"
+            SELECT 1
+              FROM security_store_binding
+             WHERE hwid = $1
+               AND status = 'N'
+             ORDER BY id DESC
+             LIMIT 1
+            "#,
+            &[&hwid],
+        )
+        .await
+        .map_err(|e| format!("보안 인증 차단 상태 조회 실패: {e}"))?
+        .is_some();
+
+    if denied_exists {
+        return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
+    }
+
     let row = client
         .query_opt(
             r#"
-            SELECT store_code, registered_at::TEXT, status
+            SELECT store_code, registered_at::TEXT
               FROM security_store_binding
              WHERE hwid = $1
+               AND status = 'Y'
+             ORDER BY registered_at DESC, id DESC
+             LIMIT 1
             "#,
             &[&hwid],
         )
@@ -2546,10 +2621,6 @@ async fn get_store_binding_status(
         .map_err(|e| format!("보안 인증 상태 조회 실패: {e}"))?;
 
     let (bound_store_code, registered_at, message) = if let Some(row) = row {
-        let status: String = row.get(2);
-        if !status.trim().eq_ignore_ascii_case("Y") {
-            return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
-        }
         (
             Some(row.get::<_, String>(0)),
             Some(row.get::<_, String>(1)),
@@ -2592,77 +2663,28 @@ async fn verify_or_register_store_binding(
     let host_name = detect_host_name();
     let cdkey = payload.cdkey.trim().to_uppercase();
 
-    if let Some(row) = client
+    if cdkey.is_empty() {
+        return Err("CDKEY를 입력해 주세요.".to_string());
+    }
+
+    let denied_exists = client
         .query_opt(
             r#"
-            SELECT store_code, registered_at::TEXT, status
+            SELECT 1
               FROM security_store_binding
              WHERE hwid = $1
+               AND status = 'N'
+             ORDER BY id DESC
+             LIMIT 1
             "#,
             &[&hwid],
         )
         .await
-        .map_err(|e| format!("현재 장치 인증정보 조회 실패: {e}"))?
-    {
-        let existing_store: String = row.get(0);
-        let registered_at: String = row.get(1);
-        let status: String = row.get(2);
-        if !status.trim().eq_ignore_ascii_case("Y") {
-            return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
-        }
-        if existing_store.trim().eq_ignore_ascii_case(&store_code) {
-            client
-                .execute(
-                    r#"
-                    UPDATE security_store_binding
-                       SET cpu_id = $2,
-                           host_name = $3,
-                           last_verified_at = NOW()
-                     WHERE hwid = $1
-                    "#,
-                    &[&hwid, &cpu_id, &host_name],
-                )
-                .await
-                .map_err(|e| format!("점포 인증 갱신 실패: {e}"))?;
+        .map_err(|e| format!("현재 장치 인증 차단 상태 조회 실패: {e}"))?
+        .is_some();
 
-            return Ok(VerifyStoreBindingResult {
-                success: true,
-                message: "점포 인증이 확인되었습니다.".to_string(),
-                store_code,
-                hwid,
-                cpu_id,
-                registered_at,
-                is_new_registration: false,
-            });
-        }
-
-        return Err(format!(
-            "현재 장치는 이미 점포코드 {} 로 등록되어 있어 변경할 수 없습니다.",
-            existing_store.trim()
-        ));
-    }
-
-    if let Some(row) = client
-        .query_opt(
-            r#"
-            SELECT hwid, registered_at::TEXT
-              FROM security_store_binding
-             WHERE store_code = $1
-            "#,
-            &[&store_code],
-        )
-        .await
-        .map_err(|e| format!("점포코드 중복 확인 실패: {e}"))?
-    {
-        let existing_hwid: String = row.get(0);
-        let registered_at: String = row.get(1);
-        return Err(format!(
-            "점포코드 {store_code} 는 이미 다른 장치(HWID: {existing_hwid})에 등록되어 있습니다. 등록일시: {registered_at}"
-        ));
-    }
-
-    if cdkey.is_empty() {
-        return Err("CDKEY를 입력해 주세요.".to_string());
+    if denied_exists {
+        return Err(STORE_BINDING_DENIED_MESSAGE.to_string());
     }
 
     let transaction = client
