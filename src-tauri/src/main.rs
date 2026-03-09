@@ -5090,8 +5090,8 @@ async fn recharge_member_point(
         .map_err(|e| format!("예치금 충전 이력 저장 실패: {e}"))?;
     } else {
         let amount = recharge.amount.unwrap_or(0);
-        if amount <= 0 {
-            return Err("쿠폰 충전 수납 금액은 1원 이상이어야 합니다.".to_string());
+        if amount < 0 {
+            return Err("쿠폰 충전 수납 금액은 0원 이상이어야 합니다.".to_string());
         }
 
         let service_id = recharge

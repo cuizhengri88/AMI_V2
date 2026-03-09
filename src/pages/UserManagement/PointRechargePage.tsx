@@ -220,8 +220,12 @@ export default function MemberRechargePage() {
     const parsedAmount = parseInt(amount, 10) || 0;
     const parsedCouponCount = parseInt(couponCount, 10) || 0;
 
-    if (parsedAmount <= 0) {
+    if (rechargeType === 'BALANCE' && parsedAmount <= 0) {
       alert(pt('t003'));
+      return;
+    }
+    if (rechargeType === 'COUPON' && parsedAmount < 0) {
+      alert(pt('t044'));
       return;
     }
     if (rechargeType === 'COUPON') {
@@ -503,6 +507,7 @@ export default function MemberRechargePage() {
                         <input
                           type="number"
                           required
+                          min={rechargeType === 'COUPON' ? 0 : 1}
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                           placeholder="0"

@@ -591,7 +591,8 @@
       "t040": "Recharge Type",
       "t041": "Prepaid ¥{{amount}}",
       "t042": "Prepaid Balance",
-      "t043": "Total Coupon Count"
+      "t043": "Total Coupon Count",
+      "t044": "Please enter an amount of at least \u00a50."
     },
     "user_management_reservation_calendar": {
       "t001": "Customer",
