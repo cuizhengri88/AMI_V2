@@ -105,6 +105,18 @@ type ReservationRow = {
   services: ReservationServiceRow[];
 };
 
+type SalesSettlementPaymentRow = {
+  payment_method_code: string;
+  amount: number;
+  coupon_service_id?: number | null;
+};
+
+type SalesSettlementRow = {
+  settlement_id: number;
+  reservation_ref?: string | null;
+  payments: SalesSettlementPaymentRow[];
+};
+
 type StatusTone = {
   badge: string;
   chip: string;
@@ -253,6 +265,15 @@ function normalizeNameKey(raw: string) {
 
 function normalizePhoneDigits(raw?: string | null) {
   return (raw || '').replace(/\D/g, '');
+}
+
+function isBalancePaymentMethod(code: string) {
+  const normalized = code.trim().toUpperCase();
+  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
+}
+
+function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
+  return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
 }
 
 function normalizeGenderForForm(raw?: string | null) {
@@ -419,7 +440,9 @@ export default function ReservationCalendarPage() {
     useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
   const [memberNames, setMemberNames] = useState<string[]>([]);
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
+  const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
   const [designerNames, setDesignerNames] = useState<string[]>([]);
+  const [designerIdByName, setDesignerIdByName] = useState<Map<string, number>>(new Map());
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
@@ -575,13 +598,27 @@ export default function ReservationCalendarPage() {
     [form.services],
   );
 
+  const selectedMemberUserId = useMemo(() => {
+    const key = normalizeNameKey(form.customerName);
+    if (!key) return null;
+    const memberId = memberIdByName.get(key);
+    return typeof memberId === 'number' && Number.isFinite(memberId) && memberId > 0
+      ? memberId
+      : null;
+  }, [form.customerName, memberIdByName]);
+
   const manualPaymentMethodOptions = useMemo(
     () => {
-      const filtered = paymentMethodOptions.filter((method) => method.code !== 'COUPON');
+      const filtered = paymentMethodOptions.filter((method) => {
+        const methodCode = method.code.trim().toUpperCase();
+        if (methodCode === 'COUPON') return false;
+        if (!selectedMemberUserId && isBalancePaymentMethod(methodCode)) return false;
+        return true;
+      });
       if (filtered.length > 0) return filtered;
       return FALLBACK_PAYMENT_METHODS;
     },
-    [paymentMethodOptions],
+    [paymentMethodOptions, selectedMemberUserId],
   );
 
   const calculatorPayableAmount = useMemo(
@@ -733,9 +770,34 @@ export default function ReservationCalendarPage() {
       map.set(key, phone);
       return map;
     }, new Map<string, string>());
+    const nextMemberIdByName = (memberResult.users || []).reduce((map, user) => {
+      const key = normalizeNameKey(user.name || '');
+      const userId = Number(user.user_id);
+      if (!key || !Number.isFinite(userId) || userId <= 0) return map;
+
+      if (!map.has(key)) {
+        map.set(key, userId);
+        return map;
+      }
+
+      const existingValue = map.get(key);
+      if (typeof existingValue === 'number' && existingValue !== userId) {
+        // 동일 이름 회원이 복수인 경우 자동 매핑을 막아 잘못된 차감을 방지한다.
+        map.set(key, null);
+      }
+
+      return map;
+    }, new Map<string, number | null>());
     const nextDesignerNames = toUniqueSortedNames(
       (employeeResult.employees || []).map((employee) => employee.employee_name || ''),
     );
+    const nextDesignerIdByName = (employeeResult.employees || []).reduce((map, employee) => {
+      const key = normalizeNameKey(employee.employee_name || '');
+      const employeeId = Number(employee.employee_id);
+      if (!key || !Number.isFinite(employeeId) || employeeId <= 0 || map.has(key)) return map;
+      map.set(key, employeeId);
+      return map;
+    }, new Map<string, number>());
 
     setStatusOptions(nextStatuses);
     setCategories(nextCategories);
@@ -743,7 +805,9 @@ export default function ReservationCalendarPage() {
     setPaymentMethodOptions(nextPaymentMethods);
     setMemberNames(nextMemberNames);
     setMemberPhoneByName(nextMemberPhoneByName);
+    setMemberIdByName(nextMemberIdByName);
     setDesignerNames(nextDesignerNames);
+    setDesignerIdByName(nextDesignerIdByName);
 
     return nextMemberPhoneByName;
   };
@@ -764,6 +828,19 @@ export default function ReservationCalendarPage() {
     setNextLineId(getNextLineIdSeed(mappedReservations));
   };
 
+  const findLinkedSettlementByReservationId = async (reservationId: number) => {
+    const result = await invokeDbCommand<{
+      success: boolean;
+      message: string;
+      settlements: SalesSettlementRow[];
+    }>('get_sales_settlement_data');
+
+    return (result.settlements || []).find((settlement) => {
+      const reservationRef = (settlement.reservation_ref || '').trim();
+      return reservationRef === String(reservationId);
+    }) || null;
+  };
+
   // 초기 진입 시 조회성 데이터는 한 번에 불러와 화면 깜빡임을 줄인다.
   const loadInitialData = async () => {
     try {
@@ -777,7 +854,9 @@ export default function ReservationCalendarPage() {
       setPaymentMethodOptions(FALLBACK_PAYMENT_METHODS);
       setMemberNames([]);
       setMemberPhoneByName(new Map());
+      setMemberIdByName(new Map());
       setDesignerNames([]);
+      setDesignerIdByName(new Map());
       setReservations([]);
       alert(
         typeof error === 'string'
@@ -833,6 +912,13 @@ export default function ReservationCalendarPage() {
   useEffect(() => {
     setCalculatorDiscountAmount((prev) => Math.min(prev, formExpectedAmount));
   }, [formExpectedAmount]);
+
+  useEffect(() => {
+    if (selectedMemberUserId) return;
+    setQuickPaymentLines((prev) =>
+      prev.filter((line) => !isBalancePaymentMethod(line.methodCode)),
+    );
+  }, [selectedMemberUserId]);
 
   const getStatusLabel = (statusCode: string) => {
     const commonCodeLabel = statusMap.get(statusCode)?.label?.trim();
@@ -982,45 +1068,58 @@ export default function ReservationCalendarPage() {
     }));
   };
 
-  // 예약 등록/수정: 헤더 + 시술 service_id 목록을 함께 DB에 저장한다.
-  const saveReservation = async (event: React.FormEvent) => {
-    event.preventDefault();
-
+  const validateReservationForm = () => {
     if (!form.reservationDate || !form.startTime) {
       alert(pt('t017'));
-      return;
+      return false;
     }
     if (!form.customerName.trim() || !form.designerName.trim()) {
       alert(pt('t002'));
-      return;
+      return false;
     }
     if (!form.status) {
       alert(pt('t018'));
-      return;
+      return false;
     }
     if (form.services.length === 0) {
       alert(pt('t010'));
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const upsertReservationItem = async () => {
+    return invokeDbCommand<{
+      success: boolean;
+      message: string;
+      reservation_id: number;
+    }>(
+      'upsert_reservation_calendar_item',
+      {
+        item: {
+          reservation_id: modalMode === 'edit' ? editingId : undefined,
+          reservation_date: form.reservationDate,
+          start_time: normalizeTimeValue(form.startTime),
+          customer_name: form.customerName.trim(),
+          gender: form.gender || null,
+          designer_name: form.designerName.trim(),
+          status: form.status,
+          note: form.note.trim() || null,
+          service_ids: form.services.map((service) => service.serviceId),
+        },
+      },
+    );
+  };
+
+  // 예약 등록/수정: 예약 정보만 저장한다.
+  const saveReservation = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!validateReservationForm()) return;
 
     try {
       setIsMutating(true);
-      const result = await invokeDbCommand<{ success: boolean; message: string }>(
-        'upsert_reservation_calendar_item',
-        {
-          item: {
-            reservation_id: modalMode === 'edit' ? editingId : undefined,
-            reservation_date: form.reservationDate,
-            start_time: normalizeTimeValue(form.startTime),
-            customer_name: form.customerName.trim(),
-            gender: form.gender || null,
-            designer_name: form.designerName.trim(),
-            status: form.status,
-            note: form.note.trim() || null,
-            service_ids: form.services.map((service) => service.serviceId),
-          },
-        },
-      );
+      const result = await upsertReservationItem();
 
       await loadReservations();
       setSelectedDate(form.reservationDate);
@@ -1031,6 +1130,114 @@ export default function ReservationCalendarPage() {
         typeof error === 'string'
           ? error
           : (error as { message?: string })?.message || pt('t038'),
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  // 결제 처리: 예약 저장 후 정산 저장(회원 충전금 차감 포함)을 수행한다.
+  const processReservationPayment = async () => {
+    if (!validateReservationForm()) return;
+    const normalizedQuickPayments = quickPaymentLines
+      .map((line) => ({
+        methodCode: line.methodCode.trim().toUpperCase(),
+        amount: toAmountNumber(line.amount),
+      }))
+      .filter((line) => line.methodCode.length > 0 && line.amount > 0);
+    if (normalizedQuickPayments.length === 0) {
+      alert(pt('t123'));
+      return;
+    }
+    if (form.status.trim().toUpperCase() !== 'COMPLETED') {
+      alert(pt('t124'));
+      return;
+    }
+
+    if (
+      normalizedQuickPayments.some((line) => isBalancePaymentMethod(line.methodCode))
+      && !selectedMemberUserId
+    ) {
+      alert('회원 결제수단(충전금 차감)은 회원 고객 선택 시에만 사용할 수 있습니다.');
+      return;
+    }
+    const managerEmployeeIdForSettlement = normalizedQuickPayments.length > 0
+      ? designerIdByName.get(normalizeNameKey(form.designerName))
+      : undefined;
+    if (normalizedQuickPayments.length > 0 && !managerEmployeeIdForSettlement) {
+      alert('결제 저장을 위해 담당자를 직원 목록에서 다시 선택해 주세요.');
+      return;
+    }
+
+    let reservationSaved = false;
+
+    try {
+      setIsMutating(true);
+      const result = await upsertReservationItem();
+      reservationSaved = true;
+
+      const savedReservationId = Number(result.reservation_id);
+      if (!Number.isFinite(savedReservationId) || savedReservationId <= 0) {
+        throw new Error('예약 저장 결과의 reservation_id가 올바르지 않습니다.');
+      }
+
+      const linkedSettlement = await findLinkedSettlementByReservationId(savedReservationId);
+      const serviceIds = form.services.map((service) => service.serviceId);
+      const selectedServiceCountMap = serviceIds.reduce((map, serviceId) => {
+        map.set(serviceId, (map.get(serviceId) || 0) + 1);
+        return map;
+      }, new Map<number, number>());
+      const couponUsageCountMap = new Map<number, number>();
+      const preservedCouponPayments = (linkedSettlement?.payments || [])
+        .filter((payment) => payment.payment_method_code?.trim().toUpperCase() === 'COUPON')
+        .filter((payment) => {
+          const couponServiceId = Number(payment.coupon_service_id);
+          if (!Number.isFinite(couponServiceId) || couponServiceId <= 0) return false;
+          const selectedCount = selectedServiceCountMap.get(couponServiceId) || 0;
+          if (selectedCount <= 0) return false;
+
+          const nextCount = (couponUsageCountMap.get(couponServiceId) || 0) + 1;
+          if (nextCount > selectedCount) return false;
+          couponUsageCountMap.set(couponServiceId, nextCount);
+          return true;
+        })
+        .map((payment) => ({
+          payment_method_code: 'COUPON',
+          amount: 0,
+          coupon_service_id: Number(payment.coupon_service_id),
+        }));
+
+      const settlementResult = await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
+        settlement: {
+          settlement_id: linkedSettlement?.settlement_id || undefined,
+          member_user_id: selectedMemberUserId,
+          manager_employee_id: managerEmployeeIdForSettlement!,
+          service_ids: serviceIds,
+          payments: [
+            ...normalizedQuickPayments.map((payment) => ({
+              payment_method_code: payment.methodCode,
+              amount: payment.amount,
+              coupon_service_id: null,
+            })),
+            ...preservedCouponPayments,
+          ],
+          status: toSettlementStatusByReservationStatus(form.status),
+          reservation_ref: String(savedReservationId),
+        },
+      });
+
+      await loadReservations();
+      setSelectedDate(form.reservationDate);
+      closeModal();
+      alert(settlementResult.message || pt('t125'));
+    } catch (error) {
+      alert(
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message
+            || (reservationSaved
+              ? '예약은 저장되었지만 결제 저장 중 오류가 발생했습니다.'
+              : pt('t038')),
       );
     } finally {
       setIsMutating(false);
@@ -1849,12 +2056,21 @@ export default function ReservationCalendarPage() {
                     {pt('t076')}
                   </button>
                   <button
+                    type="button"
+                    onClick={processReservationPayment}
+                    disabled={isDbBusy}
+                    className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2"
+                  >
+                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
+                    {pt('t122')}
+                  </button>
+                  <button
                     type="submit"
                     disabled={isDbBusy}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
                   >
                     {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
-                    {modalMode === 'edit' ? pt('t077') : pt('t060')}
+                    {pt('t121')}
                   </button>
                 </div>
               </div>

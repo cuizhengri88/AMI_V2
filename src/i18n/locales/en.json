@@ -709,7 +709,12 @@
       "t117": "Calculator values are for quick checking and are not saved.",
       "t118": "No available payment methods.",
       "t119": "Add payment lines to check remaining amount instantly.",
-      "t120": "Calculation Complete"
+      "t120": "Calculation Complete",
+      "t121": "Save Reservation",
+      "t122": "Process Payment",
+      "t123": "Please add at least one payment line to process payment.",
+      "t124": "Set reservation status to Completed before processing payment.",
+      "t125": "Payment processed successfully."
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",

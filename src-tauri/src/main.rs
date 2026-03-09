@@ -355,6 +355,13 @@ struct MutationResult {
 }
 
 #[derive(Debug, Serialize)]
+struct ReservationMutationResult {
+    success: bool,
+    message: String,
+    reservation_id: i64,
+}
+
+#[derive(Debug, Serialize)]
 struct CommonCodeGroupDto {
     id: String,
     name: String,
@@ -4309,7 +4316,7 @@ async fn get_reservation_calendar_data(
 #[tauri::command]
 async fn upsert_reservation_calendar_item(
     payload: UpsertReservationCalendarPayload,
-) -> Result<MutationResult, String> {
+) -> Result<ReservationMutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -4584,13 +4591,14 @@ async fn upsert_reservation_calendar_item(
         .await
         .map_err(|e| format!("예약 저장 트랜잭션 커밋 실패: {e}"))?;
 
-    Ok(MutationResult {
+    Ok(ReservationMutationResult {
         success: true,
         message: if is_update {
             "예약 수정 완료".to_string()
         } else {
             "예약 등록 완료".to_string()
         },
+        reservation_id,
     })
 }
 
