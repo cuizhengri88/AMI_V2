@@ -12,7 +12,7 @@ type Employee = {
   employee_code: string;
   role_id?: string;
   role_name?: string;
-  email: string;
+  email?: string;
   gender?: string;
   phone?: string;
   hire_date?: string;
@@ -25,7 +25,7 @@ type FormData = {
   employee_name: string;
   employee_code: string;
   role_id?: string;
-  email: string;
+  email?: string;
   gender?: string;
   phone?: string;
   hire_date?: string;
@@ -85,7 +85,7 @@ export default function EmployeeManagementPage() {
     const filtered = employees.filter(emp =>
       emp.employee_name.toLowerCase().includes(searchText.toLowerCase()) ||
       emp.employee_code.toLowerCase().includes(searchText.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchText.toLowerCase())
+      (emp.email || '').toLowerCase().includes(searchText.toLowerCase())
     );
     setFilteredEmployees(filtered);
   }, [searchText, employees]);
@@ -105,13 +105,13 @@ export default function EmployeeManagementPage() {
 
   const handleEditClick = (employee: Employee) => {
     setModalMode('edit');
-    setFormData({ ...employee, gender: normalizeGenderForForm(employee.gender) });
+    setFormData({ ...employee, email: employee.email || '', gender: normalizeGenderForForm(employee.gender) });
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.employee_name || !formData.employee_code || !formData.email) {
+    if (!formData.employee_name || !formData.employee_code) {
       alert(pt('t012'));
       return;
     }
@@ -257,7 +257,7 @@ export default function EmployeeManagementPage() {
                     <td className="py-4 px-6 text-sm text-slate-600">
                       <div className="flex items-center gap-2">
                         <Mail size={14} className="text-slate-400" />
-                        {emp.email}
+                        {emp.email || '-'}
                       </div>
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600">
@@ -332,7 +332,7 @@ export default function EmployeeManagementPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t003')}</label>
                   <input 
                     type="email" 
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder={pt('t004')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>

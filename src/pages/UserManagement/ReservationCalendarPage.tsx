@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { motion, useDragControls } from 'motion/react';
 import {
   CalendarDays,
@@ -22,6 +22,18 @@ type CodeOption = {
   code: string;
   label: string;
   order: number;
+};
+
+type PaymentMethodOption = {
+  code: string;
+  label: string;
+  order: number;
+};
+
+type QuickPaymentLine = {
+  lineId: number;
+  methodCode: string;
+  amount: number;
 };
 
 type ServiceItem = {
@@ -104,6 +116,7 @@ type ListRangeMode = 'day' | 'month' | 'year';
 
 const STATUS_GROUP_ID = 'RESERVATION_STATUS';
 const CATEGORY_GROUP_ID = 'T_CATEGORY';
+const PAYMENT_METHOD_GROUP_ID = 'PAYMENT_METHOD';
 
 const FALLBACK_STATUS_CODES = ['RESERVED', 'COMPLETED', 'CANCELLED'] as const;
 const FALLBACK_CATEGORY_CODES = ['CUT', 'PERM', 'COLOR'] as const;
@@ -119,6 +132,13 @@ const FALLBACK_CATEGORIES: CodeOption[] = FALLBACK_CATEGORY_CODES.map((code, ind
   label: '',
   order: index + 1,
 }));
+
+const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
+  { code: 'CASH', label: '', order: 1 },
+  { code: 'CARD', label: '', order: 2 },
+  { code: 'WECHAT', label: '', order: 3 },
+  { code: 'ALIPAY', label: '', order: 4 },
+];
 
 const WEEKDAY_TEXT_KEYS = [
   't028', // 일
@@ -140,6 +160,14 @@ const CATEGORY_TEXT_KEY_BY_CODE: Record<string, string> = {
   CUT: 't083', // 커트
   PERM: 't084', // 파마
   COLOR: 't085', // 염색
+};
+
+const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
+  CASH: 't112',
+  CARD: 't113',
+  WECHAT: 't114',
+  ALIPAY: 't115',
+  PREPAID: 't116',
 };
 
 const A11Y_TEXT_KEYS = {
@@ -190,6 +218,12 @@ function shiftYear(iso: string, diffYears: number) {
 
 function formatCurrency(value: number) {
   return `¥${value.toLocaleString()}`;
+}
+
+function toAmountNumber(value: string | number) {
+  const numeric = typeof value === 'number' ? value : Number.parseInt(value, 10);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, numeric);
 }
 
 function formatMonthLabel(date: Date) {
@@ -381,6 +415,8 @@ export default function ReservationCalendarPage() {
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  const [paymentMethodOptions, setPaymentMethodOptions] =
+    useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
   const [memberNames, setMemberNames] = useState<string[]>([]);
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
   const [designerNames, setDesignerNames] = useState<string[]>([]);
@@ -401,6 +437,9 @@ export default function ReservationCalendarPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [nextLineId, setNextLineId] = useState(2000);
+  const [calculatorDiscountAmount, setCalculatorDiscountAmount] = useState(0);
+  const [quickPaymentLines, setQuickPaymentLines] = useState<QuickPaymentLine[]>([]);
+  const [nextQuickPaymentLineId, setNextQuickPaymentLineId] = useState(1);
   const [form, setForm] = useState<ReservationForm>(() =>
     createEmptyForm(
       todayIso(),
@@ -422,6 +461,12 @@ export default function ReservationCalendarPage() {
 
   const getCategoryLabelByCode = (code: string, fallback?: string) => {
     const textKey = CATEGORY_TEXT_KEY_BY_CODE[code.toUpperCase()];
+    if (textKey) return pt(textKey);
+    return fallback || code;
+  };
+
+  const getPaymentMethodLabelByCode = (code: string, fallback?: string) => {
+    const textKey = PAYMENT_METHOD_TEXT_KEY_BY_CODE[code.toUpperCase()];
     if (textKey) return pt(textKey);
     return fallback || code;
   };
@@ -530,6 +575,27 @@ export default function ReservationCalendarPage() {
     [form.services],
   );
 
+  const manualPaymentMethodOptions = useMemo(
+    () => {
+      const filtered = paymentMethodOptions.filter((method) => method.code !== 'COUPON');
+      if (filtered.length > 0) return filtered;
+      return FALLBACK_PAYMENT_METHODS;
+    },
+    [paymentMethodOptions],
+  );
+
+  const calculatorPayableAmount = useMemo(
+    () => Math.max(formExpectedAmount - calculatorDiscountAmount, 0),
+    [formExpectedAmount, calculatorDiscountAmount],
+  );
+
+  const calculatorPaidTotal = useMemo(
+    () => quickPaymentLines.reduce((sum, line) => sum + line.amount, 0),
+    [quickPaymentLines],
+  );
+
+  const calculatorRemainingAmount = calculatorPayableAmount - calculatorPaidTotal;
+
   // 공통코드/시술목록 조회: 예약 폼에서 쓰는 선택값을 준비한다.
   const loadLookupData = async () => {
     const [commonResult, serviceResult, memberResult, employeeResult] = await Promise.all([
@@ -616,6 +682,17 @@ export default function ReservationCalendarPage() {
         order: detail.order,
       }));
 
+    const loadedPaymentMethods = details
+      .filter((detail) => detail.group === PAYMENT_METHOD_GROUP_ID && detail.use_yn === 'Y')
+      .sort(
+        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
+      )
+      .map((detail) => ({
+        code: detail.code,
+        label: detail.name?.trim() || getPaymentMethodLabelByCode(detail.code),
+        order: detail.order,
+      }));
+
     const serviceDerivedCategories = Array.from(
       loadedServices.reduce((map, item) => {
         if (!map.has(item.categoryCode)) {
@@ -637,6 +714,13 @@ export default function ReservationCalendarPage() {
         : serviceDerivedCategories.length > 0
           ? serviceDerivedCategories
           : FALLBACK_CATEGORIES;
+    const nextPaymentMethods =
+      loadedPaymentMethods.length > 0
+        ? loadedPaymentMethods
+        : FALLBACK_PAYMENT_METHODS.map((method) => ({
+          ...method,
+          label: getPaymentMethodLabelByCode(method.code),
+        }));
 
     // 고객/디자이너는 각각 회원/직원 테이블의 이름 목록을 선택 소스로 사용한다.
     const nextMemberNames = toUniqueSortedNames(
@@ -656,6 +740,7 @@ export default function ReservationCalendarPage() {
     setStatusOptions(nextStatuses);
     setCategories(nextCategories);
     setServiceItems(loadedServices);
+    setPaymentMethodOptions(nextPaymentMethods);
     setMemberNames(nextMemberNames);
     setMemberPhoneByName(nextMemberPhoneByName);
     setDesignerNames(nextDesignerNames);
@@ -689,6 +774,7 @@ export default function ReservationCalendarPage() {
       console.error('Failed to load reservation page data:', error);
       setStatusOptions(FALLBACK_STATUSES);
       setCategories(FALLBACK_CATEGORIES);
+      setPaymentMethodOptions(FALLBACK_PAYMENT_METHODS);
       setMemberNames([]);
       setMemberPhoneByName(new Map());
       setDesignerNames([]);
@@ -744,10 +830,55 @@ export default function ReservationCalendarPage() {
     });
   }, [statusOptions, categories, serviceItems]);
 
+  useEffect(() => {
+    setCalculatorDiscountAmount((prev) => Math.min(prev, formExpectedAmount));
+  }, [formExpectedAmount]);
+
   const getStatusLabel = (statusCode: string) => {
     const commonCodeLabel = statusMap.get(statusCode)?.label?.trim();
     if (commonCodeLabel) return commonCodeLabel;
     return getStatusLabelByCode(statusCode, statusCode);
+  };
+
+  const resetQuickCalculator = () => {
+    setCalculatorDiscountAmount(0);
+    setQuickPaymentLines([]);
+    setNextQuickPaymentLineId(1);
+  };
+
+  const addQuickPaymentLine = () => {
+    if (calculatorRemainingAmount <= 0) return;
+    const defaultMethodCode =
+      manualPaymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code;
+    const nextAmount = Math.max(calculatorRemainingAmount, 0);
+    setQuickPaymentLines((prev) => [
+      ...prev,
+      {
+        lineId: nextQuickPaymentLineId,
+        methodCode: defaultMethodCode,
+        amount: nextAmount,
+      },
+    ]);
+    setNextQuickPaymentLineId((prev) => prev + 1);
+  };
+
+  const removeQuickPaymentLine = (lineId: number) => {
+    setQuickPaymentLines((prev) => prev.filter((line) => line.lineId !== lineId));
+  };
+
+  const updateQuickPaymentLine = (
+    lineId: number,
+    field: 'methodCode' | 'amount',
+    value: string | number,
+  ) => {
+    setQuickPaymentLines((prev) =>
+      prev.map((line) => (line.lineId === lineId
+        ? {
+          ...line,
+          [field]: field === 'amount' ? toAmountNumber(value) : String(value),
+        }
+        : line)),
+    );
   };
 
   const openCreateModal = (date = selectedDate) => {
@@ -772,6 +903,7 @@ export default function ReservationCalendarPage() {
         designerName: defaultDesignerName,
       },
     );
+    resetQuickCalculator();
     setIsModalOpen(true);
   };
 
@@ -801,10 +933,12 @@ export default function ReservationCalendarPage() {
         lineId: service.lineId || Date.now() + index,
       })),
     });
+    resetQuickCalculator();
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
+    resetQuickCalculator();
     setIsModalOpen(false);
   };
 
@@ -1587,6 +1721,112 @@ export default function ReservationCalendarPage() {
                 </section>
               </div>
 
+              <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="text-sm font-bold text-slate-700">{pt('t104')}</h4>
+                  <p className="text-[11px] text-slate-500">{pt('t117')}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t105')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={calculatorDiscountAmount}
+                      onChange={(event) =>
+                        setCalculatorDiscountAmount(Math.min(toAmountNumber(event.target.value), formExpectedAmount))
+                      }
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t106')}</p>
+                    <p className="mt-1 text-sm font-black text-slate-900">{formatCurrency(calculatorPayableAmount)}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t109')}</p>
+                    <p className="mt-1 text-sm font-black text-slate-900">{formatCurrency(calculatorPaidTotal)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t107')}</p>
+                    <button
+                      type="button"
+                      onClick={addQuickPaymentLine}
+                      disabled={manualPaymentMethodOptions.length === 0 || calculatorRemainingAmount <= 0}
+                      className="text-xs font-bold text-primary disabled:opacity-40 flex items-center gap-1"
+                    >
+                      <PlusCircle size={14} />
+                      {pt('t108')}
+                    </button>
+                  </div>
+
+                  {manualPaymentMethodOptions.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-400">
+                      {pt('t118')}
+                    </div>
+                  ) : quickPaymentLines.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-400">
+                      {pt('t119')}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {quickPaymentLines.map((line) => (
+                        <div key={line.lineId} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <select
+                            value={line.methodCode}
+                            onChange={(event) => updateQuickPaymentLine(line.lineId, 'methodCode', event.target.value)}
+                            className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            {manualPaymentMethodOptions.map((method) => (
+                              <option key={method.code} value={method.code}>
+                                {getPaymentMethodLabelByCode(method.code, method.label)}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min={0}
+                            value={line.amount}
+                            onChange={(event) => updateQuickPaymentLine(line.lineId, 'amount', event.target.value)}
+                            className="w-36 px-2 py-1.5 border border-slate-200 rounded text-xs font-black text-right outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeQuickPaymentLine(line.lineId)}
+                            className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">{pt('t109')}: {formatCurrency(calculatorPaidTotal)}</span>
+                  <span
+                    className={`text-xs font-black ${
+                      calculatorRemainingAmount === 0
+                        ? 'text-emerald-600'
+                        : calculatorRemainingAmount > 0
+                          ? 'text-rose-600'
+                          : 'text-amber-600'
+                    }`}
+                  >
+                    {calculatorRemainingAmount === 0
+                      ? pt('t120')
+                      : calculatorRemainingAmount > 0
+                        ? `${pt('t110')}: ${formatCurrency(calculatorRemainingAmount)}`
+                        : `${pt('t111')}: ${formatCurrency(Math.abs(calculatorRemainingAmount))}`}
+                  </span>
+                </div>
+              </section>
+
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
                 <div className="flex flex-wrap gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
@@ -1624,4 +1864,5 @@ export default function ReservationCalendarPage() {
       )}</motion.div>
   );
 }
+
 

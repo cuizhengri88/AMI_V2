@@ -1,4 +1,4 @@
-// src-tauri/src/main.rs
+﻿// src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use chrono::{NaiveDate, NaiveTime, Utc};
@@ -21,7 +21,7 @@ const STORE_CODE_GROUP_ID: &str = "STR_CD";
 const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다.";
 const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
 const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
-const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v1";
+const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2";
 const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
 const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__";
 #[cfg(target_os = "windows")]
@@ -505,7 +505,7 @@ struct EmployeePayload {
     employee_name: String,
     employee_code: String,
     role_id: Option<String>,
-    email: String,
+    email: Option<String>,
     gender: Option<String>,
     phone: Option<String>,
     hire_date: Option<String>,
@@ -540,7 +540,7 @@ struct EmployeeDto {
     employee_code: String,
     role_id: Option<String>,
     role_name: Option<String>,
-    email: String,
+    email: Option<String>,
     gender: Option<String>,
     phone: Option<String>,
     hire_date: Option<String>,
@@ -559,7 +559,7 @@ struct EmployeeDataResult {
 struct UserPayload {
     user_id: Option<i64>,
     name: String,
-    email: String,
+    email: Option<String>,
     gender: Option<String>,
     phone: Option<String>,
     address: Option<String>,
@@ -590,7 +590,7 @@ struct DeleteUserPayload {
 struct UserDto {
     user_id: i64,
     name: String,
-    email: String,
+    email: Option<String>,
     gender: Option<String>,
     phone: Option<String>,
     address: Option<String>,
@@ -1787,7 +1787,7 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
                 employee_name VARCHAR(100) NOT NULL,
                 employee_code VARCHAR(50) NOT NULL UNIQUE,
                 role_id VARCHAR(50) NULL REFERENCES role_management(role_id) ON DELETE SET NULL,
-                email VARCHAR(100) NOT NULL UNIQUE,
+                email VARCHAR(100) UNIQUE,
                 gender VARCHAR(20) NULL,
                 phone VARCHAR(20) NULL,
                 hire_date DATE NULL,
@@ -1805,6 +1805,9 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
 
             ALTER TABLE employee_management
             ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+
+            ALTER TABLE employee_management
+            ALTER COLUMN email DROP NOT NULL;
 
             UPDATE employee_management
                SET store_code = 'HAIR_001'
@@ -1835,7 +1838,7 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
             user_id BIGSERIAL PRIMARY KEY,
             store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
             name VARCHAR(100) NOT NULL,
-            email VARCHAR(100) NOT NULL UNIQUE,
+            email VARCHAR(100) UNIQUE,
             gender VARCHAR(20),
             phone VARCHAR(20),
             address VARCHAR(255),
@@ -1849,6 +1852,9 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
 
         ALTER TABLE user_management
         ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+
+        ALTER TABLE user_management
+        ALTER COLUMN email DROP NOT NULL;
 
         UPDATE user_management
            SET store_code = 'HAIR_001'
@@ -3798,7 +3804,7 @@ async fn get_employee_management_data(
             employee_code: row.get::<_, String>(2),
             role_id: row.get::<_, Option<String>>(3),
             role_name: row.get::<_, Option<String>>(4),
-            email: row.get::<_, String>(5),
+            email: row.get::<_, Option<String>>(5),
             gender: row.get::<_, Option<String>>(6),
             phone: row.get::<_, Option<String>>(7),
             hire_date: row.get::<_, Option<String>>(8),
@@ -3825,7 +3831,10 @@ async fn upsert_employee_management(
     let employee = payload.employee;
     let employee_name = employee.employee_name.trim().to_string();
     let employee_code = employee.employee_code.trim().to_uppercase();
-    let email = employee.email.trim().to_lowercase();
+    let email = employee
+        .email
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty());
     let role_id = employee
         .role_id
         .map(|v| v.trim().to_uppercase())
@@ -3853,8 +3862,8 @@ async fn upsert_employee_management(
         .unwrap_or_else(|| "재직중".to_string());
     let remarks = employee.remarks.map(|v| v.trim().to_string());
 
-    if employee_name.is_empty() || employee_code.is_empty() || email.is_empty() {
-        return Err("직원명, 직원코드, 이메일은 필수입니다.".to_string());
+    if employee_name.is_empty() || employee_code.is_empty() {
+        return Err("직원명과 직원코드는 필수입니다.".to_string());
     }
 
     if let Some(ref rid) = role_id {
@@ -3879,7 +3888,7 @@ async fn upsert_employee_management(
                 r#"
                 INSERT INTO employee_management (
                     employee_id, store_code, employee_name, employee_code, role_id, email, gender, phone, hire_date, status, remarks
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                ) VALUES ($1::BIGINT,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 ON CONFLICT (employee_id)
                 DO UPDATE SET
                     store_code = EXCLUDED.store_code,
@@ -3955,7 +3964,7 @@ async fn delete_employee_management(
 
     let affected = client
         .execute(
-            "DELETE FROM employee_management WHERE employee_id = $1 AND store_code = $2",
+            "DELETE FROM employee_management WHERE employee_id = $1::BIGINT AND store_code = $2",
             &[&payload.employee_id, &store_code],
         )
         .await
@@ -4638,7 +4647,7 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
         .map(|row| UserDto {
             user_id: row.get::<_, i64>(0),
             name: row.get::<_, String>(1),
-            email: row.get::<_, String>(2),
+            email: row.get::<_, Option<String>>(2),
             gender: row.get::<_, Option<String>>(3),
             phone: row.get::<_, Option<String>>(4),
             address: row.get::<_, Option<String>>(5),
@@ -4661,7 +4670,10 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
 
     let user = payload.user;
     let name = user.name.trim().to_string();
-    let email = user.email.trim().to_lowercase();
+    let email = user
+        .email
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty());
     let gender = user
         .gender
         .map(|v| v.trim().to_uppercase())
@@ -4679,8 +4691,8 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
 
-    if name.is_empty() || email.is_empty() {
-        return Err("이름, 이메일은 필수입니다.".to_string());
+    if name.is_empty() {
+        return Err("이름은 필수입니다.".to_string());
     }
 
     if let Some(id) = user.user_id {
@@ -4689,7 +4701,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
         }
         let sql = r#"
             INSERT INTO user_management (user_id, store_code, name, email, gender, phone, address, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 store_code = EXCLUDED.store_code,
@@ -4750,7 +4762,7 @@ async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationRe
         return Err("삭제할 user_id가 올바르지 않습니다.".to_string());
     }
 
-    let sql = "DELETE FROM user_management WHERE user_id = $1 AND store_code = $2";
+    let sql = "DELETE FROM user_management WHERE user_id = $1::BIGINT AND store_code = $2";
     log_sql!(sql, payload.user_id, &store_code);
     let affected = client
         .execute(sql, &[&payload.user_id, &store_code])
@@ -6780,3 +6792,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

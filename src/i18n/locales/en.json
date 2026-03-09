@@ -458,7 +458,7 @@
     "user_management_employee_management": {
       "t001": "Role",
       "t002": "Select Role",
-      "t003": "Email *",
+      "t003": "Email",
       "t004": "Email Address",
       "t005": "Hire Date",
       "t006": "Employed",
@@ -467,7 +467,7 @@
       "t009": "Employee Name",
       "t010": "Manage employee information.",
       "t011": "Employee Name *",
-      "t012": "Employee name, employee code, and email are required.",
+      "t012": "Employee name and employee code are required.",
       "t013": "Search name, code, email",
       "t014": "Employee has been deleted.",
       "t015": "Employee Code",
@@ -692,7 +692,24 @@
       "t100": "Gender",
       "t101": "Select Gender",
       "t102": "Male",
-      "t103": "Female"
+      "t103": "Female",
+      "t104": "Quick Payment Calculator",
+      "t105": "Discount Amount",
+      "t106": "Expected Amount Due",
+      "t107": "Payment Method",
+      "t108": "Add Payment Method",
+      "t109": "Collected Total",
+      "t110": "Remaining",
+      "t111": "Overpaid",
+      "t112": "Cash",
+      "t113": "Card",
+      "t114": "WeChat Pay",
+      "t115": "Alipay",
+      "t116": "Prepaid Balance",
+      "t117": "Calculator values are for quick checking and are not saved.",
+      "t118": "No available payment methods.",
+      "t119": "Add payment lines to check remaining amount instantly.",
+      "t120": "Calculation Complete"
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
@@ -866,7 +883,7 @@
       "t082": " times"
     },
     "user_management_user_management": {
-      "t001": "Name and email are required.",
+      "t001": "Name is required.",
       "t002": "Email Address",
       "t003": "Are you sure you want to delete this member?",
       "t004": "Enter notes",

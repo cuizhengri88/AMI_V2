@@ -9,7 +9,7 @@ import { usePageText } from '../../i18n/usePageText';
 type User = {
   user_id: number;
   name: string;
-  email: string;
+  email?: string;
   gender?: string;
   phone?: string;
   address?: string;
@@ -19,7 +19,7 @@ type User = {
 type FormData = {
   user_id?: number;
   name: string;
-  email: string;
+  email?: string;
   gender?: string;
   phone?: string;
   address?: string;
@@ -58,7 +58,7 @@ export default function UserManagementPage() {
   useEffect(() => {
     const filtered = users.filter(user =>
       user.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchText.toLowerCase())
+      (user.email || '').toLowerCase().includes(searchText.toLowerCase())
     );
     setFilteredUsers(filtered);
   }, [searchText, users]);
@@ -78,13 +78,13 @@ export default function UserManagementPage() {
 
   const handleEditClick = (user: User) => {
     setModalMode('edit');
-    setFormData({ ...user, gender: normalizeGenderForForm(user.gender) });
+    setFormData({ ...user, email: user.email || '', gender: normalizeGenderForForm(user.gender) });
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email) {
+    if (!formData.name) {
       alert(pt('t001'));
       return;
     }
@@ -202,7 +202,7 @@ export default function UserManagementPage() {
                     <td className="py-4 px-6 text-sm text-slate-600">
                       <div className="flex items-center gap-2">
                         <Mail size={14} className="text-slate-400" />
-                        {user.email}
+                        {user.email || '-'}
                       </div>
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600">{getGenderLabel(user.gender)}</td>
@@ -269,7 +269,7 @@ export default function UserManagementPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">이메일</label>
                   <input 
                     type="email" 
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder={pt('t002')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
