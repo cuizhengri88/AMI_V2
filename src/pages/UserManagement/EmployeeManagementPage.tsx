@@ -13,6 +13,7 @@ type Employee = {
   role_id?: string;
   role_name?: string;
   email: string;
+  gender?: string;
   phone?: string;
   hire_date?: string;
   status?: string;
@@ -25,6 +26,7 @@ type FormData = {
   employee_code: string;
   role_id?: string;
   email: string;
+  gender?: string;
   phone?: string;
   hire_date?: string;
   status?: string;
@@ -47,7 +49,7 @@ export default function EmployeeManagementPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [formData, setFormData] = useState<FormData>({ employee_name: '', employee_code: '', email: '' });
+  const [formData, setFormData] = useState<FormData>({ employee_name: '', employee_code: '', email: '', gender: '' });
   const STATUS_ACTIVE = '재직중';
   const STATUS_ON_LEAVE = '휴직';
   const STATUS_RESIGNED = '퇴직';
@@ -88,15 +90,22 @@ export default function EmployeeManagementPage() {
     setFilteredEmployees(filtered);
   }, [searchText, employees]);
 
+  const normalizeGenderForForm = (gender?: string) => {
+    const normalized = (gender || '').trim().toUpperCase();
+    if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') return 'M';
+    if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') return 'F';
+    return '';
+  };
+
   const handleAddClick = () => {
     setModalMode('add');
-    setFormData({ employee_name: '', employee_code: '', email: '' });
+    setFormData({ employee_name: '', employee_code: '', email: '', gender: '' });
     setIsModalOpen(true);
   };
 
   const handleEditClick = (employee: Employee) => {
     setModalMode('edit');
-    setFormData(employee);
+    setFormData({ ...employee, gender: normalizeGenderForForm(employee.gender) });
     setIsModalOpen(true);
   };
 
@@ -151,6 +160,13 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  const getGenderLabel = (gender?: string) => {
+    const normalized = (gender || '').trim().toUpperCase();
+    if (normalized === 'M') return pt('t049');
+    if (normalized === 'F') return pt('t050');
+    return gender?.trim() || '-';
+  };
+
   const getStatusBadgeClass = (status?: string) =>
     status === STATUS_ACTIVE || !status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
 
@@ -202,12 +218,13 @@ export default function EmployeeManagementPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1200px]">
+          <table className="w-full text-left border-collapse min-w-[1320px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t031')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t032')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t015')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t047')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t033')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>
@@ -219,7 +236,7 @@ export default function EmployeeManagementPage() {
             <tbody className="divide-y divide-slate-100">
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-sm">
                     {pt('t036')}
                   </td>
                 </tr>
@@ -231,6 +248,7 @@ export default function EmployeeManagementPage() {
                       <span className="text-sm font-bold text-slate-900">{emp.employee_name}</span>
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600">{emp.employee_code}</td>
+                    <td className="py-4 px-6 text-sm text-slate-600">{getGenderLabel(emp.gender)}</td>
                     <td className="py-4 px-6 text-sm text-slate-600">
                       <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold">
                         {emp.role_name || '-'}
@@ -317,6 +335,18 @@ export default function EmployeeManagementPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder={pt('t004')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t047')}</label>
+                  <select
+                    value={formData.gender || ''}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  >
+                    <option value="">{pt('t048')}</option>
+                    <option value="M">{pt('t049')}</option>
+                    <option value="F">{pt('t050')}</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>

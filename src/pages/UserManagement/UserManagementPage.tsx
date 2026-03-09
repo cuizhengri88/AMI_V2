@@ -10,6 +10,7 @@ type User = {
   user_id: number;
   name: string;
   email: string;
+  gender?: string;
   phone?: string;
   address?: string;
   remarks?: string;
@@ -19,6 +20,7 @@ type FormData = {
   user_id?: number;
   name: string;
   email: string;
+  gender?: string;
   phone?: string;
   address?: string;
   remarks?: string;
@@ -34,7 +36,7 @@ export default function UserManagementPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [formData, setFormData] = useState<FormData>({ name: '', email: '' });
+  const [formData, setFormData] = useState<FormData>({ name: '', email: '', gender: '' });
 
   const loadUsers = async () => {
     try {
@@ -61,15 +63,22 @@ export default function UserManagementPage() {
     setFilteredUsers(filtered);
   }, [searchText, users]);
 
+  const normalizeGenderForForm = (gender?: string) => {
+    const normalized = (gender || '').trim().toUpperCase();
+    if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') return 'M';
+    if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') return 'F';
+    return '';
+  };
+
   const handleAddClick = () => {
     setModalMode('add');
-    setFormData({ name: '', email: '' });
+    setFormData({ name: '', email: '', gender: '' });
     setIsModalOpen(true);
   };
 
   const handleEditClick = (user: User) => {
     setModalMode('edit');
-    setFormData(user);
+    setFormData({ ...user, gender: normalizeGenderForForm(user.gender) });
     setIsModalOpen(true);
   };
 
@@ -107,6 +116,13 @@ export default function UserManagementPage() {
     } finally {
       setIsMutating(false);
     }
+  };
+
+  const getGenderLabel = (gender?: string) => {
+    const normalized = (gender || '').trim().toUpperCase();
+    if (normalized === 'M') return pt('t009');
+    if (normalized === 'F') return pt('t010');
+    return gender?.trim() || '-';
   };
 
   return (
@@ -156,12 +172,13 @@ export default function UserManagementPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+          <table className="w-full text-left border-collapse min-w-[1120px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">ID</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_name')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_email')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_address')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_phone')}</th>
                 <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('user.col_remarks')}</th>
@@ -171,7 +188,7 @@ export default function UserManagementPage() {
             <tbody className="divide-y divide-slate-100">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={8} className="py-8 text-center text-slate-400 text-sm">
                     회원 데이터가 없습니다.
                   </td>
                 </tr>
@@ -188,6 +205,7 @@ export default function UserManagementPage() {
                         {user.email}
                       </div>
                     </td>
+                    <td className="py-4 px-6 text-sm text-slate-600">{getGenderLabel(user.gender)}</td>
                     <td className="py-4 px-6 text-sm text-slate-600 max-w-[200px] truncate">
                       <div className="flex items-center gap-2">
                         <MapPin size={14} className="text-slate-400 flex-shrink-0" />
@@ -254,6 +272,18 @@ export default function UserManagementPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder={pt('t002')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
+                  <select
+                    value={formData.gender || ''}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                  >
+                    <option value="">{pt('t008')}</option>
+                    <option value="M">{pt('t009')}</option>
+                    <option value="F">{pt('t010')}</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">전화번호</label>

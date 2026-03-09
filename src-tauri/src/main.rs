@@ -506,6 +506,7 @@ struct EmployeePayload {
     employee_code: String,
     role_id: Option<String>,
     email: String,
+    gender: Option<String>,
     phone: Option<String>,
     hire_date: Option<String>,
     status: Option<String>,
@@ -540,6 +541,7 @@ struct EmployeeDto {
     role_id: Option<String>,
     role_name: Option<String>,
     email: String,
+    gender: Option<String>,
     phone: Option<String>,
     hire_date: Option<String>,
     status: Option<String>,
@@ -558,6 +560,7 @@ struct UserPayload {
     user_id: Option<i64>,
     name: String,
     email: String,
+    gender: Option<String>,
     phone: Option<String>,
     address: Option<String>,
     remarks: Option<String>,
@@ -588,6 +591,7 @@ struct UserDto {
     user_id: i64,
     name: String,
     email: String,
+    gender: Option<String>,
     phone: Option<String>,
     address: Option<String>,
     remarks: Option<String>,
@@ -656,6 +660,7 @@ struct ReservationCalendarItemPayload {
     reservation_date: String,
     start_time: String,
     customer_name: String,
+    gender: Option<String>,
     designer_name: String,
     status: String,
     note: Option<String>,
@@ -699,6 +704,7 @@ struct ReservationCalendarDto {
     reservation_date: String,
     start_time: String,
     customer_name: String,
+    gender: Option<String>,
     designer_name: String,
     status: String,
     note: Option<String>,
@@ -1782,6 +1788,7 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
                 employee_code VARCHAR(50) NOT NULL UNIQUE,
                 role_id VARCHAR(50) NULL REFERENCES role_management(role_id) ON DELETE SET NULL,
                 email VARCHAR(100) NOT NULL UNIQUE,
+                gender VARCHAR(20) NULL,
                 phone VARCHAR(20) NULL,
                 hire_date DATE NULL,
                 status VARCHAR(20) NOT NULL DEFAULT '재직중',
@@ -1795,6 +1802,9 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
 
             ALTER TABLE employee_management
             ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+            ALTER TABLE employee_management
+            ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 
             UPDATE employee_management
                SET store_code = 'HAIR_001'
@@ -1826,6 +1836,7 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
             store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
             name VARCHAR(100) NOT NULL,
             email VARCHAR(100) NOT NULL UNIQUE,
+            gender VARCHAR(20),
             phone VARCHAR(20),
             address VARCHAR(255),
             remarks TEXT,
@@ -1835,6 +1846,9 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
 
         ALTER TABLE user_management
         ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        ALTER TABLE user_management
+        ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 
         UPDATE user_management
            SET store_code = 'HAIR_001'
@@ -1932,6 +1946,7 @@ async fn ensure_reservation_calendar_management_tables(
             reservation_date DATE NOT NULL,
             start_time TIME NOT NULL,
             customer_name VARCHAR(100) NOT NULL,
+            gender VARCHAR(20) NULL,
             designer_name VARCHAR(100) NOT NULL,
             status_code VARCHAR(100) NOT NULL,
             note TEXT NULL,
@@ -1976,6 +1991,9 @@ async fn ensure_reservation_calendar_management_tables(
     let patch_sql = r#"
         ALTER TABLE reservation_calendar_management
         ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
+
+        ALTER TABLE reservation_calendar_management
+        ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 
         UPDATE reservation_calendar_management
            SET store_code = 'HAIR_001'
@@ -3757,6 +3775,7 @@ async fn get_employee_management_data(
                 e.role_id,
                 r.role_name,
                 e.email,
+                e.gender,
                 e.phone,
                 e.hire_date::TEXT,
                 e.status,
@@ -3780,10 +3799,11 @@ async fn get_employee_management_data(
             role_id: row.get::<_, Option<String>>(3),
             role_name: row.get::<_, Option<String>>(4),
             email: row.get::<_, String>(5),
-            phone: row.get::<_, Option<String>>(6),
-            hire_date: row.get::<_, Option<String>>(7),
-            status: row.get::<_, Option<String>>(8),
-            remarks: row.get::<_, Option<String>>(9),
+            gender: row.get::<_, Option<String>>(6),
+            phone: row.get::<_, Option<String>>(7),
+            hire_date: row.get::<_, Option<String>>(8),
+            status: row.get::<_, Option<String>>(9),
+            remarks: row.get::<_, Option<String>>(10),
         })
         .collect::<Vec<_>>();
 
@@ -3808,6 +3828,10 @@ async fn upsert_employee_management(
     let email = employee.email.trim().to_lowercase();
     let role_id = employee
         .role_id
+        .map(|v| v.trim().to_uppercase())
+        .filter(|v| !v.is_empty());
+    let gender = employee
+        .gender
         .map(|v| v.trim().to_uppercase())
         .filter(|v| !v.is_empty());
     let phone = employee.phone.map(|v| v.trim().to_string());
@@ -3854,8 +3878,8 @@ async fn upsert_employee_management(
             .execute(
                 r#"
                 INSERT INTO employee_management (
-                    employee_id, store_code, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                    employee_id, store_code, employee_name, employee_code, role_id, email, gender, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 ON CONFLICT (employee_id)
                 DO UPDATE SET
                     store_code = EXCLUDED.store_code,
@@ -3863,6 +3887,7 @@ async fn upsert_employee_management(
                     employee_code = EXCLUDED.employee_code,
                     role_id = EXCLUDED.role_id,
                     email = EXCLUDED.email,
+                    gender = EXCLUDED.gender,
                     phone = EXCLUDED.phone,
                     hire_date = EXCLUDED.hire_date,
                     status = EXCLUDED.status,
@@ -3876,6 +3901,7 @@ async fn upsert_employee_management(
                     &employee_code,
                     &role_id,
                     &email,
+                    &gender,
                     &phone,
                     &hire_date,
                     &status,
@@ -3889,8 +3915,8 @@ async fn upsert_employee_management(
             .execute(
                 r#"
                 INSERT INTO employee_management (
-                    store_code, employee_name, employee_code, role_id, email, phone, hire_date, status, remarks
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    store_code, employee_name, employee_code, role_id, email, gender, phone, hire_date, status, remarks
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 "#,
                 &[
                     &store_code,
@@ -3898,6 +3924,7 @@ async fn upsert_employee_management(
                     &employee_code,
                     &role_id,
                     &email,
+                    &gender,
                     &phone,
                     &hire_date,
                     &status,
@@ -4193,6 +4220,7 @@ async fn get_reservation_calendar_data(
                 r.reservation_date::TEXT,
                 TO_CHAR(r.start_time, 'HH24:MI') AS start_time,
                 r.customer_name,
+                r.gender,
                 r.designer_name,
                 r.status_code,
                 r.note
@@ -4253,9 +4281,10 @@ async fn get_reservation_calendar_data(
                 reservation_date: row.get::<_, String>(1),
                 start_time: row.get::<_, String>(2),
                 customer_name: row.get::<_, String>(3),
-                designer_name: row.get::<_, String>(4),
-                status: row.get::<_, String>(5),
-                note: row.get::<_, Option<String>>(6),
+                gender: row.get::<_, Option<String>>(4),
+                designer_name: row.get::<_, String>(5),
+                status: row.get::<_, String>(6),
+                note: row.get::<_, Option<String>>(7),
                 services: service_map.remove(&reservation_id).unwrap_or_default(),
             }
         })
@@ -4280,6 +4309,24 @@ async fn upsert_reservation_calendar_item(
     let reservation_date_text = item.reservation_date.trim().to_string();
     let start_time_text = item.start_time.trim().to_string();
     let customer_name = item.customer_name.trim().to_string();
+    let gender = item
+        .gender
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            let normalized = value.to_uppercase();
+            if normalized == "M" || normalized == "MALE" || normalized == "남" || normalized == "남성" {
+                "M".to_string()
+            } else if normalized == "F"
+                || normalized == "FEMALE"
+                || normalized == "여"
+                || normalized == "여성"
+            {
+                "F".to_string()
+            } else {
+                normalized
+            }
+        });
     let designer_name = item.designer_name.trim().to_string();
     let status_code = item.status.trim().to_uppercase();
     let note = item
@@ -4421,9 +4468,10 @@ async fn upsert_reservation_calendar_item(
                    SET reservation_date = $3,
                        start_time = $4,
                        customer_name = $5,
-                       designer_name = $6,
-                       status_code = $7,
-                       note = $8,
+                       gender = $6,
+                       designer_name = $7,
+                       status_code = $8,
+                       note = $9,
                        updated_at = NOW()
                  WHERE reservation_id = $1
                    AND store_code = $2
@@ -4434,6 +4482,7 @@ async fn upsert_reservation_calendar_item(
                     &reservation_date,
                     &start_time,
                     &customer_name,
+                    &gender,
                     &designer_name,
                     &status_code,
                     &note,
@@ -4462,10 +4511,11 @@ async fn upsert_reservation_calendar_item(
                 reservation_date,
                 start_time,
                 customer_name,
+                gender,
                 designer_name,
                 status_code,
                 note
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
             RETURNING reservation_id::BIGINT
             "#,
             &[
@@ -4473,6 +4523,7 @@ async fn upsert_reservation_calendar_item(
                 &reservation_date,
                 &start_time,
                 &customer_name,
+                &gender,
                 &designer_name,
                 &status_code,
                 &note,
@@ -4571,7 +4622,7 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let sql = r#"
-        SELECT user_id::BIGINT, name, email, phone, address, remarks
+        SELECT user_id::BIGINT, name, email, gender, phone, address, remarks
           FROM user_management
          WHERE store_code = $1
          ORDER BY user_id DESC
@@ -4588,9 +4639,10 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
             user_id: row.get::<_, i64>(0),
             name: row.get::<_, String>(1),
             email: row.get::<_, String>(2),
-            phone: row.get::<_, Option<String>>(3),
-            address: row.get::<_, Option<String>>(4),
-            remarks: row.get::<_, Option<String>>(5),
+            gender: row.get::<_, Option<String>>(3),
+            phone: row.get::<_, Option<String>>(4),
+            address: row.get::<_, Option<String>>(5),
+            remarks: row.get::<_, Option<String>>(6),
         })
         .collect::<Vec<_>>();
 
@@ -4610,6 +4662,10 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
     let user = payload.user;
     let name = user.name.trim().to_string();
     let email = user.email.trim().to_lowercase();
+    let gender = user
+        .gender
+        .map(|v| v.trim().to_uppercase())
+        .filter(|v| !v.is_empty());
     let phone = user
         .phone
         .map(|v| v.trim().to_string())
@@ -4632,13 +4688,14 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
             return Err("user_id는 1 이상이어야 합니다.".to_string());
         }
         let sql = r#"
-            INSERT INTO user_management (user_id, store_code, name, email, phone, address, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO user_management (user_id, store_code, name, email, gender, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 store_code = EXCLUDED.store_code,
                 name = EXCLUDED.name,
                 email = EXCLUDED.email,
+                gender = EXCLUDED.gender,
                 phone = EXCLUDED.phone,
                 address = EXCLUDED.address,
                 remarks = EXCLUDED.remarks,
@@ -4650,6 +4707,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
             &store_code,
             &name,
             &email,
+            &gender,
             &phone,
             &address,
             &remarks
@@ -4657,20 +4715,20 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
         client
             .execute(
                 sql,
-                &[&id, &store_code, &name, &email, &phone, &address, &remarks],
+                &[&id, &store_code, &name, &email, &gender, &phone, &address, &remarks],
             )
             .await
             .map_err(|e| format!("회원 저장 실패: {e}"))?;
     } else {
         let sql = r#"
-            INSERT INTO user_management (store_code, name, email, phone, address, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO user_management (store_code, name, email, gender, phone, address, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#;
-        log_sql!(sql, &store_code, &name, &email, &phone, &address, &remarks);
+        log_sql!(sql, &store_code, &name, &email, &gender, &phone, &address, &remarks);
         client
             .execute(
                 sql,
-                &[&store_code, &name, &email, &phone, &address, &remarks],
+                &[&store_code, &name, &email, &gender, &phone, &address, &remarks],
             )
             .await
             .map_err(|e| format!("회원 등록 실패: {e}"))?;

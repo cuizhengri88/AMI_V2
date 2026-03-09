@@ -48,6 +48,7 @@ type ReservationRecord = {
   reservationDate: string;
   startTime: string;
   customerName: string;
+  gender?: string;
   customerPhone: string;
   designerName: string;
   status: string;
@@ -59,6 +60,7 @@ type ReservationForm = {
   reservationDate: string;
   startTime: string;
   customerName: string;
+  gender: string;
   designerName: string;
   status: string;
   note: string;
@@ -84,6 +86,7 @@ type ReservationRow = {
   reservation_date: string;
   start_time: string;
   customer_name: string;
+  gender?: string | null;
   designer_name: string;
   status: string;
   note: string | null;
@@ -218,6 +221,17 @@ function normalizePhoneDigits(raw?: string | null) {
   return (raw || '').replace(/\D/g, '');
 }
 
+function normalizeGenderForForm(raw?: string | null) {
+  const normalized = (raw || '').trim().toUpperCase();
+  if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
+    return 'M';
+  }
+  if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') {
+    return 'F';
+  }
+  return '';
+}
+
 function buildCalendarCells(monthCursor: Date) {
   const firstDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
   const startOffset = firstDay.getDay();
@@ -289,6 +303,7 @@ function mapReservationRowToRecord(
     reservationDate: row.reservation_date,
     startTime: normalizeTimeValue(row.start_time),
     customerName: row.customer_name,
+    gender: row.gender || '',
     customerPhone: phoneByName,
     designerName: row.designer_name,
     status: row.status,
@@ -339,6 +354,7 @@ function createEmptyForm(
     reservationDate: date,
     startTime: '10:00',
     customerName: '',
+    gender: '',
     designerName: '',
     status,
     note: '',
@@ -396,6 +412,17 @@ export default function ReservationCalendarPage() {
     const textKey = CATEGORY_TEXT_KEY_BY_CODE[code.toUpperCase()];
     if (textKey) return pt(textKey);
     return fallback || code;
+  };
+
+  const getGenderLabel = (gender?: string) => {
+    const normalized = (gender || '').trim().toUpperCase();
+    if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
+      return pt('t102');
+    }
+    if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') {
+      return pt('t103');
+    }
+    return gender?.trim() || '-';
   };
 
   const statusMap = useMemo(
@@ -751,6 +778,7 @@ export default function ReservationCalendarPage() {
       reservationDate: reservation.reservationDate,
       startTime: reservation.startTime,
       customerName: reservation.customerName,
+      gender: normalizeGenderForForm(reservation.gender),
       designerName: reservation.designerName,
       status: reservation.status,
       note: reservation.note,
@@ -839,6 +867,7 @@ export default function ReservationCalendarPage() {
             reservation_date: form.reservationDate,
             start_time: normalizeTimeValue(form.startTime),
             customer_name: form.customerName.trim(),
+            gender: form.gender || null,
             designer_name: form.designerName.trim(),
             status: form.status,
             note: form.note.trim() || null,
@@ -1049,6 +1078,7 @@ export default function ReservationCalendarPage() {
                 <tr className="bg-slate-900 text-slate-200">
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t008')}</th>
                   <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
@@ -1059,7 +1089,7 @@ export default function ReservationCalendarPage() {
               <tbody className="divide-y divide-slate-100">
                 {selectedDateReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm text-slate-400">
+                    <td colSpan={8} className="py-10 text-center text-sm text-slate-400">
                       {pt('t053')}
                     </td>
                   </tr>
@@ -1076,6 +1106,7 @@ export default function ReservationCalendarPage() {
                             <span className="font-semibold">{reservation.customerName}</span>
                           </div>
                         </td>
+                        <td className="py-3 px-4 text-sm text-slate-600">{getGenderLabel(reservation.gender)}</td>
                         <td className="py-3 px-4 text-sm text-slate-600">{reservation.designerName}</td>
                         <td className="py-3 px-4 text-sm text-slate-600">
                           {reservation.services.map((service) => service.serviceName).join(', ')}</td>
@@ -1219,12 +1250,13 @@ export default function ReservationCalendarPage() {
 
         <div className="p-4">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left min-w-[1040px]">
+            <table className="w-full border-collapse text-left min-w-[1140px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t021')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t098')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
                   <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
@@ -1237,7 +1269,7 @@ export default function ReservationCalendarPage() {
               <tbody className="divide-y divide-slate-100">
                 {listReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
+                    <td colSpan={11} className="py-10 text-center text-sm text-slate-400">
                       {pt('t099')}
                     </td>
                   </tr>
@@ -1250,6 +1282,7 @@ export default function ReservationCalendarPage() {
                         <td className="py-2.5 px-4 text-sm font-medium text-slate-700">{reservation.reservationDate}</td>
                         <td className="py-2.5 px-4 text-sm font-semibold text-slate-700">{reservation.startTime}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-700">{reservation.customerName}</td>
+                        <td className="py-2.5 px-4 text-sm text-slate-600">{getGenderLabel(reservation.gender)}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.customerPhone || '-'}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">
@@ -1379,6 +1412,19 @@ export default function ReservationCalendarPage() {
                     {memberNames.map((name) => (
                       <option key={name} value={name} />
                     ))}</datalist>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t100')}</label>
+                  <select
+                    value={form.gender}
+                    onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
+                  >
+                    <option value="">{pt('t101')}</option>
+                    <option value="M">{pt('t102')}</option>
+                    <option value="F">{pt('t103')}</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1">

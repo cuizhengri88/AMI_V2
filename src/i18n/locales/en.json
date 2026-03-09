@@ -501,7 +501,11 @@
       "t043": "Remarks",
       "t044": "Cancel",
       "t045": "Saving...",
-      "t046": "Save"
+      "t046": "Save",
+      "t047": "Gender",
+      "t048": "Select Gender",
+      "t049": "Male",
+      "t050": "Female"
     },
     "user_management_member_point_history": {
       "t001": "Payment Method",
@@ -684,7 +688,11 @@
       "t096": "Yearly Reservation List ({{year}})",
       "t097": "Monthly Reservation List ({{month}})",
       "t098": "Phone Number",
-      "t099": "No reservations match the current filters."
+      "t099": "No reservations match the current filters.",
+      "t100": "Gender",
+      "t101": "Select Gender",
+      "t102": "Male",
+      "t103": "Female"
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
@@ -863,7 +871,11 @@
       "t003": "Are you sure you want to delete this member?",
       "t004": "Enter notes",
       "t005": "Member Name",
-      "t006": "Member has been deleted."
+      "t006": "Member has been deleted.",
+      "t007": "Gender",
+      "t008": "Select Gender",
+      "t009": "Male",
+      "t010": "Female"
     }
   }
 }
