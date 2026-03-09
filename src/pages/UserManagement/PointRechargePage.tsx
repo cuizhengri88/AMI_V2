@@ -75,6 +75,7 @@ export default function MemberRechargePage() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
   const [amount, setAmount] = useState('');
+  const [receivedAmount, setReceivedAmount] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState<number>(0);
   const [couponCount, setCouponCount] = useState('');
   const [rechargeType, setRechargeType] = useState<RechargeType>('COUPON');
@@ -196,6 +197,7 @@ export default function MemberRechargePage() {
 
   const resetRechargeForm = (type: RechargeType) => {
     setAmount('');
+    setReceivedAmount(type === 'BALANCE' ? '0' : '');
     setCouponCount('');
     setRechargeType(type);
     setSelectedServiceId(serviceOptions[0]?.id || 0);
@@ -218,17 +220,23 @@ export default function MemberRechargePage() {
     if (!selectedMember) return;
 
     const parsedAmount = parseInt(amount, 10) || 0;
+    const parsedReceivedAmount = parseInt(receivedAmount, 10) || 0;
     const parsedCouponCount = parseInt(couponCount, 10) || 0;
 
-    if (rechargeType === 'BALANCE' && parsedAmount <= 0) {
-      alert(pt('t003'));
-      return;
-    }
-    if (rechargeType === 'COUPON' && parsedAmount < 0) {
-      alert(pt('t044'));
-      return;
-    }
-    if (rechargeType === 'COUPON') {
+    if (rechargeType === 'BALANCE') {
+      if (parsedAmount <= 0) {
+        alert(pt('t003'));
+        return;
+      }
+      if (parsedReceivedAmount < 0) {
+        alert(pt('t044'));
+        return;
+      }
+    } else {
+      if (parsedAmount < 0) {
+        alert(pt('t044'));
+        return;
+      }
       if (selectedServiceId <= 0) {
         alert(pt('t009'));
         return;
@@ -246,6 +254,7 @@ export default function MemberRechargePage() {
           user_id: selectedMember.id,
           recharge_type: rechargeType,
           amount: parsedAmount,
+          received_amount: rechargeType === 'BALANCE' ? parsedReceivedAmount : null,
           service_id: rechargeType === 'COUPON' ? selectedServiceId : null,
           coupon_count: rechargeType === 'COUPON' ? parsedCouponCount : null,
           payment_method_code: paymentMethodCode,
@@ -439,7 +448,10 @@ export default function MemberRechargePage() {
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setRechargeType('BALANCE')} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
+                        onClick={() => {
+                          setRechargeType('BALANCE');
+                          if (receivedAmount === '') setReceivedAmount('0');
+                        }} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
                           rechargeType === 'BALANCE'
                             ? 'border-primary text-primary bg-primary/5'
                             : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
@@ -449,7 +461,10 @@ export default function MemberRechargePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setRechargeType('COUPON')} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
+                        onClick={() => {
+                          setRechargeType('COUPON');
+                          setReceivedAmount('');
+                        }} className={`py-2 border rounded-lg text-xs font-bold transition-all ${
                           rechargeType === 'COUPON'
                             ? 'border-primary text-primary bg-primary/5'
                             : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
@@ -465,7 +480,7 @@ export default function MemberRechargePage() {
                   )}
 
                   <div className="space-y-4">
-                    {rechargeType === 'COUPON' && (
+                    {rechargeType === 'COUPON' ? (
                       <>
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
@@ -497,32 +512,72 @@ export default function MemberRechargePage() {
                             />
                           </div>
                         </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">{pt('t002')}</label>
+                          <div className="relative">
+                            <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="number"
+                              required
+                              min={0}
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[100, 500, 1000].map((value) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))} className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                            >
+                              +{value.toLocaleString()}</button>
+                          ))}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">{pt('t045')}</label>
+                          <div className="relative">
+                            <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="number"
+                              required
+                              min={1}
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[100, 500, 1000].map((value) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))} className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                            >
+                              +{value.toLocaleString()}</button>
+                          ))}</div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">{pt('t002')}</label>
+                          <div className="relative">
+                            <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="number"
+                              required={rechargeType === 'BALANCE'}
+                              min={0}
+                              value={receivedAmount}
+                              onChange={(e) => setReceivedAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
                       </>
                     )}
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t002')}</label>
-                      <div className="relative">
-                        <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="number"
-                          required
-                          min={rechargeType === 'COUPON' ? 0 : 1}
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[100, 500, 1000].map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setAmount(String((parseInt(amount || '0', 10) || 0) + value))} className="py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                        >
-                          +{value.toLocaleString()}</button>
-                      ))}</div>
                   </div>
 
                   <div className="space-y-1">

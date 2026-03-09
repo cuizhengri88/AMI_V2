@@ -289,6 +289,7 @@ export default function SalesHistoryPage() {
             created_at: string;
             recharge_type: string;
             amount: number | null;
+            received_amount: number | null;
             payment_method_code: string;
             is_cancelled: boolean;
           }>;
@@ -362,24 +363,29 @@ export default function SalesHistoryPage() {
       }));
 
       const pointRechargeRows: Settlement[] = (memberResult.histories || [])
-        .filter((entry) =>
-          entry.action_type === 'RECHARGE'
-          && !entry.is_cancelled
-          && Number(entry.amount || 0) > 0)
-        .map((entry) => ({
-          id: -entry.id,
-          sourceId: entry.id,
-          entryType: 'POINT_RECHARGE',
-          date: entry.created_at,
-          memberId: entry.user_id,
-          managerId: null,
-          procedureIds: [],
-          totalAmount: Number(entry.amount || 0),
-          totalTime: 0,
-          payments: [{ method: entry.payment_method_code, amount: Number(entry.amount || 0) }],
-          status: 'COMPLETED',
-          rechargeType: normalizeRechargeType(entry.recharge_type),
-        }));
+        .filter((entry) => {
+          if (entry.action_type !== 'RECHARGE' || entry.is_cancelled) return false;
+          const paidAmount = Number(entry.received_amount ?? entry.amount ?? 0);
+          return paidAmount > 0;
+        })
+        .map((entry) => {
+          const rechargeAmount = Number(entry.amount || 0);
+          const paidAmount = Number(entry.received_amount ?? entry.amount ?? 0);
+          return {
+            id: -entry.id,
+            sourceId: entry.id,
+            entryType: 'POINT_RECHARGE',
+            date: entry.created_at,
+            memberId: entry.user_id,
+            managerId: null,
+            procedureIds: [],
+            totalAmount: rechargeAmount,
+            totalTime: 0,
+            payments: [{ method: entry.payment_method_code, amount: paidAmount }],
+            status: 'COMPLETED',
+            rechargeType: normalizeRechargeType(entry.recharge_type),
+          };
+        });
 
       setSettlements(
         [...settlementRows, ...pointRechargeRows]

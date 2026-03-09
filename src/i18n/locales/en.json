@@ -551,7 +551,7 @@
     "user_management_point_recharge": {
       "t001": "Payment Method",
       "t002": "Received Amount (¥)",
-      "t003": "Please enter an amount of at least ¥1.",
+      "t003": "Please enter a recharge amount of at least ¥1.",
       "t004": "No Coupons Available",
       "t005": "Total Coupons Held",
       "t006": "Owned Coupons (Passes)",
@@ -592,7 +592,8 @@
       "t041": "Prepaid ¥{{amount}}",
       "t042": "Prepaid Balance",
       "t043": "Total Coupon Count",
-      "t044": "Please enter an amount of at least \u00a50."
+      "t044": "Please enter a received amount of at least ¥0.",
+      "t045": "Recharge Amount (¥)"
     },
     "user_management_reservation_calendar": {
       "t001": "Customer",

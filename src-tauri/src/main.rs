@@ -737,6 +737,7 @@ struct MemberPointRechargePayload {
     user_id: i64,
     recharge_type: String,
     amount: Option<i64>,
+    received_amount: Option<i64>,
     service_id: Option<i64>,
     coupon_count: Option<i32>,
     payment_method_code: String,
@@ -800,6 +801,7 @@ struct MemberPointHistoryDto {
     user_phone: Option<String>,
     recharge_type: String,
     amount: Option<i64>,
+    received_amount: Option<i64>,
     service_id: Option<i64>,
     service_name: Option<String>,
     coupon_count: Option<i32>,
@@ -2085,6 +2087,7 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
             user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
             recharge_type VARCHAR(20) NOT NULL CHECK (recharge_type IN ('BALANCE', 'COUPON')),
             amount BIGINT NULL CHECK (amount IS NULL OR amount >= 0),
+            received_amount BIGINT NULL CHECK (received_amount IS NULL OR received_amount >= 0),
             service_id BIGINT NULL REFERENCES service_catalog_management(service_id) ON DELETE SET NULL,
             coupon_count INTEGER NULL CHECK (coupon_count IS NULL OR coupon_count >= 0),
             payment_method_code VARCHAR(100) NOT NULL,
@@ -2145,6 +2148,9 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
 
         ALTER TABLE member_point_history
         ALTER COLUMN store_code SET NOT NULL;
+
+        ALTER TABLE member_point_history
+        ADD COLUMN IF NOT EXISTS received_amount BIGINT;
 
         ALTER TABLE member_point_usage_history
         ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
@@ -4874,6 +4880,7 @@ async fn get_member_point_management_data(
                     x.user_phone,
                     x.recharge_type,
                     x.amount::BIGINT,
+                    x.received_amount::BIGINT,
                     x.service_id::BIGINT,
                     x.service_name,
                     x.coupon_count,
@@ -4893,6 +4900,7 @@ async fn get_member_point_management_data(
                             u.phone AS user_phone,
                             h.recharge_type,
                             h.amount,
+                            h.received_amount,
                             h.service_id,
                             s.service_name,
                             h.coupon_count,
@@ -4925,6 +4933,7 @@ async fn get_member_point_management_data(
                             u.phone AS user_phone,
                             uh.use_type AS recharge_type,
                             uh.amount,
+                            NULL::BIGINT AS received_amount,
                             uh.service_id,
                             s.service_name,
                             uh.coupon_count,
@@ -4961,16 +4970,17 @@ async fn get_member_point_management_data(
                 user_phone: row.get::<_, Option<String>>(4),
                 recharge_type: row.get::<_, String>(5),
                 amount: row.get::<_, Option<i64>>(6),
-                service_id: row.get::<_, Option<i64>>(7),
-                service_name: row.get::<_, Option<String>>(8),
-                coupon_count: row.get::<_, Option<i32>>(9),
-                payment_method_code: row.get::<_, String>(10),
-                payment_method_name: row.get::<_, String>(11),
-                memo: row.get::<_, String>(12),
-                created_at: row.get::<_, String>(13),
-                is_cancelled: row.get::<_, bool>(14),
-                cancel_reason: row.get::<_, Option<String>>(15),
-                cancelled_at: row.get::<_, Option<String>>(16),
+                received_amount: row.get::<_, Option<i64>>(7),
+                service_id: row.get::<_, Option<i64>>(8),
+                service_name: row.get::<_, Option<String>>(9),
+                coupon_count: row.get::<_, Option<i32>>(10),
+                payment_method_code: row.get::<_, String>(11),
+                payment_method_name: row.get::<_, String>(12),
+                memo: row.get::<_, String>(13),
+                created_at: row.get::<_, String>(14),
+                is_cancelled: row.get::<_, bool>(15),
+                cancel_reason: row.get::<_, Option<String>>(16),
+                cancelled_at: row.get::<_, Option<String>>(17),
             })
             .collect::<Vec<_>>()
     } else {
@@ -5051,6 +5061,10 @@ async fn recharge_member_point(
         if amount <= 0 {
             return Err("예치금 충전 금액은 1원 이상이어야 합니다.".to_string());
         }
+        let received_amount = recharge.received_amount.unwrap_or(amount);
+        if received_amount < 0 {
+            return Err("실수납 금액은 0원 이상이어야 합니다.".to_string());
+        }
 
         tx.execute(
             r#"
@@ -5067,19 +5081,21 @@ async fn recharge_member_point(
         .map_err(|e| format!("예치금 충전 저장 실패: {e}"))?;
 
         let amount_option: Option<i64> = Some(amount);
+        let received_amount_option: Option<i64> = Some(received_amount);
         let none_service_id: Option<i64> = None;
         let none_coupon_count: Option<i32> = None;
         tx.execute(
             r#"
             INSERT INTO member_point_history (
-                store_code, user_id, recharge_type, amount, service_id, coupon_count, payment_method_code, memo
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                store_code, user_id, recharge_type, amount, received_amount, service_id, coupon_count, payment_method_code, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
             "#,
             &[
                 &store_code,
                 &recharge.user_id,
                 &recharge_type,
                 &amount_option,
+                &received_amount_option,
                 &none_service_id,
                 &none_coupon_count,
                 &payment_method_code,
@@ -5138,19 +5154,21 @@ async fn recharge_member_point(
         .map_err(|e| format!("쿠폰 충전 저장 실패: {e}"))?;
 
         let amount_option: Option<i64> = Some(amount);
+        let none_received_amount: Option<i64> = None;
         let service_id_option: Option<i64> = Some(service_id);
         let coupon_count_option: Option<i32> = Some(coupon_count);
         tx.execute(
             r#"
             INSERT INTO member_point_history (
-                store_code, user_id, recharge_type, amount, service_id, coupon_count, payment_method_code, memo
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                store_code, user_id, recharge_type, amount, received_amount, service_id, coupon_count, payment_method_code, memo
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
             "#,
             &[
                 &store_code,
                 &recharge.user_id,
                 &recharge_type,
                 &amount_option,
+                &none_received_amount,
                 &service_id_option,
                 &coupon_count_option,
                 &payment_method_code,

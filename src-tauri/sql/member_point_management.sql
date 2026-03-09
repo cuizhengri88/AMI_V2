@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS member_point_history (
   user_id BIGINT NOT NULL REFERENCES user_management(user_id) ON DELETE CASCADE,
   recharge_type VARCHAR(20) NOT NULL CHECK (recharge_type IN ('BALANCE', 'COUPON')),
   amount BIGINT NULL CHECK (amount IS NULL OR amount >= 0),
+  received_amount BIGINT NULL CHECK (received_amount IS NULL OR received_amount >= 0),
   service_id BIGINT NULL REFERENCES service_catalog_management(service_id) ON DELETE SET NULL,
   coupon_count INTEGER NULL CHECK (coupon_count IS NULL OR coupon_count >= 0),
   payment_method_code VARCHAR(100) NOT NULL,
