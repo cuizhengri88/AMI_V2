@@ -249,6 +249,18 @@ function buildCalendarCells(monthCursor: Date) {
   });
 }
 
+function getWeekendHeaderTone(dayOfWeek: number) {
+  if (dayOfWeek === 0) return 'text-rose-500';
+  if (dayOfWeek === 6) return 'text-blue-500';
+  return 'text-slate-600';
+}
+
+function getCalendarDateTone(dayOfWeek: number, inMonth: boolean) {
+  if (dayOfWeek === 0) return inMonth ? 'text-rose-500' : 'text-rose-300';
+  if (dayOfWeek === 6) return inMonth ? 'text-blue-500' : 'text-blue-300';
+  return inMonth ? 'text-slate-700' : 'text-slate-400';
+}
+
 function getExpectedMinutes(services: ReservationService[]) {
   return services.reduce((sum, service) => sum + service.durationMinutes, 0);
 }
@@ -1009,10 +1021,10 @@ export default function ReservationCalendarPage() {
           </div>
 
           <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-100">
-            {weekdayLabels.map((weekday) => (
+            {weekdayLabels.map((weekday, weekdayIndex) => (
               <div
-                key={weekday}
-                className="px-2 py-2 text-center text-xs font-bold text-slate-600 border-r border-slate-200 last:border-r-0"
+                key={`${weekday}-${weekdayIndex}`}
+                className={`px-2 py-2 text-center text-xs font-bold border-r border-slate-200 last:border-r-0 ${getWeekendHeaderTone(weekdayIndex)}`}
               >
                 {weekday}
               </div>
@@ -1023,6 +1035,8 @@ export default function ReservationCalendarPage() {
               const dayReservations = reservationsByDate.get(cell.isoDate) || [];
               const isToday = cell.isoDate === todayIso();
               const isSelected = cell.isoDate === selectedDate;
+              const dayOfWeek = cell.date.getDay();
+              const dayTone = getCalendarDateTone(dayOfWeek, cell.inMonth);
 
               return (
                 <button
@@ -1030,7 +1044,7 @@ export default function ReservationCalendarPage() {
                   onClick={() => setSelectedDate(cell.isoDate)} className={`min-h-[126px] border-r border-b border-slate-200 p-2 align-top text-left transition-colors ${cell.inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'} ${isSelected ? 'ring-2 ring-primary/40 ring-inset' : ''}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`text-xs font-semibold ${isToday ? 'text-primary' : ''}`}>{cell.date.getDate()}</span>
+                    <span className={`text-xs font-semibold ${dayTone} ${isToday ? 'font-black' : ''}`}>{cell.date.getDate()}</span>
                     {dayReservations.length > 0 && (
                       <span className="text-[10px] font-semibold text-slate-400">
                         {pt('t048', { count: dayReservations.length })}
