@@ -37,6 +37,8 @@ type Settlement = {
   date: string;
   memberId: number | 'GUEST';
   customerName?: string;
+  guestCustomerName?: string;
+  guestCustomerPhone?: string;
   managerId: number | null;
   procedureIds: number[];
   totalAmount: number;
@@ -256,17 +258,23 @@ export default function SalesHistoryPage() {
   }, [procedures, pt]);
 
   const getCustomerInfo = useCallback((entry: Settlement) => {
+    const guestName = entry.guestCustomerName?.trim() || '';
+    const guestPhone = entry.guestCustomerPhone?.trim() || '';
     const member =
       entry.memberId === 'GUEST'
         ? { name: pt('t015'), phone: '-' }
         : members.find((memberItem) => memberItem.id === entry.memberId) || { name: '-', phone: '-' };
     const customerName =
       entry.entryType === 'SETTLEMENT'
-        ? entry.customerName?.trim() || ''
+        ? entry.customerName?.trim() || guestName
         : '';
+    const customerPhone =
+      entry.entryType === 'SETTLEMENT' && entry.memberId === 'GUEST'
+        ? (guestPhone || '-')
+        : (member.phone || '-');
     return {
       name: customerName || member.name,
-      phone: member.phone || '-',
+      phone: customerPhone,
     };
   }, [members, pt]);
 
@@ -309,6 +317,8 @@ export default function SalesHistoryPage() {
             settlement_id: number;
             settlement_datetime: string;
             member_user_id: number | null;
+            guest_customer_name?: string | null;
+            guest_customer_phone?: string | null;
             manager_employee_id: number;
             service_ids: number[];
             total_amount: number;
@@ -370,6 +380,8 @@ export default function SalesHistoryPage() {
           date: entry.settlement_datetime,
           memberId: entry.member_user_id ?? 'GUEST',
           customerName: reservationId ? reservationCustomerNameById.get(reservationId) || undefined : undefined,
+          guestCustomerName: entry.guest_customer_name?.trim() || undefined,
+          guestCustomerPhone: entry.guest_customer_phone?.trim() || undefined,
           managerId: entry.manager_employee_id,
           procedureIds: entry.service_ids || [],
           totalAmount: entry.total_amount,

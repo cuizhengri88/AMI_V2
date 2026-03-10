@@ -84,6 +84,8 @@ type Settlement = {
   id: number;
   date: string;
   memberId: number | 'GUEST';
+  guestCustomerName?: string;
+  guestCustomerPhone?: string;
   managerId: number;
   procedureIds: number[];
   totalAmount: number;
@@ -118,6 +120,51 @@ function todayIso() {
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+// 전화번호 검색은 하이픈/공백/괄호 입력이 섞여도 동일하게 매칭되도록
+// 숫자만 남긴 비교용 문자열을 사용한다.
+function normalizePhoneDigits(raw?: string | null) {
+  return (raw || '').replace(/\D/g, '');
+}
+
+function normalizeNameKey(raw?: string | null) {
+  return (raw || '').trim().toLowerCase();
+}
+
+function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
+  const left = normalizePhoneDigits(lhs);
+  const right = normalizePhoneDigits(rhs);
+  if (!left || !right) return false;
+  return left === right || left.endsWith(right) || right.endsWith(left);
+}
+
+function findMatchedMemberByNameOrPhone(
+  members: Member[],
+  customerName?: string | null,
+  customerPhone?: string | null,
+) {
+  const normalizedName = normalizeNameKey(customerName);
+  const phoneCandidates = [
+    normalizePhoneDigits(customerPhone),
+    normalizePhoneDigits(customerName),
+  ].filter((digits) => digits.length >= 7);
+
+  for (const customerDigits of phoneCandidates) {
+    const matchedByPhone = members.find((member) => {
+      const memberPhoneDigits = normalizePhoneDigits(member.phone);
+      if (memberPhoneDigits.length < 7) return false;
+      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
+    });
+    if (matchedByPhone) return matchedByPhone;
+  }
+
+  if (normalizedName) {
+    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
+    if (matchedByName) return matchedByName;
+  }
+
+  return null;
 }
 
 const EMPTY_RESERVATIONS: Reservation[] = [];
@@ -207,6 +254,14 @@ export default function SalesEntryPage() {
 
   // [상태] 모달 입력값
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'GUEST'>('GUEST');
+  // 고객 검색 입력값(이름/전화번호 공용).
+  // 이 값은 "회원 자동완성 목록 필터"와 "비회원 fallback 고객명/전화 추론"에 동시에 사용된다.
+  const [customerLookupQuery, setCustomerLookupQuery] = useState('');
+  // 비회원 저장용 이름/전화. 회원이 선택되면 selectedMember 기준으로 동기화된다.
+  const [guestCustomerName, setGuestCustomerName] = useState('');
+  const [guestCustomerPhone, setGuestCustomerPhone] = useState('');
+  // 자동완성 드롭다운 표시 제어(onFocus/onBlur + 입력값 조건 기반)
+  const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
   const [couponAppliedServiceIds, setCouponAppliedServiceIds] = useState<number[]>([]);
@@ -222,6 +277,7 @@ export default function SalesEntryPage() {
 
   const isBusy = isLoading || isMutating;
   const isReservationEntryMode = !!modalReservationTarget && !editingSettlement;
+  const isCompletedSettlementReadOnly = editingSettlement?.status === 'COMPLETED';
 
   // [유틸] 결제수단 코드를 다국어 표시명으로 변환
   const getPaymentMethodLabel = (code: string, fallback?: string) => {
@@ -355,6 +411,8 @@ export default function SalesEntryPage() {
               settlement_id: number;
               settlement_datetime: string;
               member_user_id: number | null;
+              guest_customer_name?: string | null;
+              guest_customer_phone?: string | null;
               manager_employee_id: number;
               service_ids: number[];
               total_amount: number;
@@ -457,35 +515,63 @@ export default function SalesEntryPage() {
           }))
           .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
 
+        const reservationCustomerNameByRef = new Map(
+          (reservationResult.reservations || []).map((reservation) => [
+            String(reservation.reservation_id),
+            reservation.customer_name?.trim() || '',
+          ]),
+        );
+
         // [매핑] 정산 조회 결과 -> 목록/수정 모델
-        const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => ({
-          id: settlement.settlement_id,
-          date: settlement.settlement_datetime,
-          memberId: settlement.member_user_id ?? 'GUEST',
-          managerId: settlement.manager_employee_id,
-          procedureIds: settlement.service_ids || [],
-          totalAmount: settlement.total_amount,
-          totalTime: settlement.total_time_minutes,
-          payments: (settlement.payments || []).map((payment) => ({
-            method: payment.payment_method_code,
-            amount: payment.amount,
-            couponServiceId: payment.coupon_service_id ?? undefined,
-          })),
-          status: toSettlementStatus(settlement.status),
-          reservationId: settlement.reservation_ref || undefined,
-          cancelType:
-            settlement.cancel_type === 'PAYMENT' || settlement.cancel_type === 'PROCEDURE'
-              ? settlement.cancel_type
-              : undefined,
-          cancelReason: settlement.cancel_reason || undefined,
-          cancelledAt: settlement.cancelled_at || undefined,
-        }));
+        const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => {
+          const guestCustomerName = settlement.guest_customer_name?.trim() || '';
+          const guestCustomerPhone = settlement.guest_customer_phone?.trim() || '';
+          const reservationCustomerName =
+            (settlement.reservation_ref && reservationCustomerNameByRef.get(String(settlement.reservation_ref)))
+            || '';
+          const explicitMemberId =
+            Number.isFinite(settlement.member_user_id) && Number(settlement.member_user_id) > 0
+              ? Number(settlement.member_user_id)
+              : null;
+          const inferredMember = explicitMemberId
+            ? mappedMembers.find((member) => member.id === explicitMemberId) || null
+            : findMatchedMemberByNameOrPhone(
+              mappedMembers,
+              guestCustomerName || reservationCustomerName,
+              guestCustomerPhone || reservationCustomerName,
+            );
+
+          return {
+            id: settlement.settlement_id,
+            date: settlement.settlement_datetime,
+            memberId: inferredMember?.id || explicitMemberId || 'GUEST',
+            guestCustomerName: guestCustomerName || undefined,
+            guestCustomerPhone: guestCustomerPhone || undefined,
+            managerId: settlement.manager_employee_id,
+            procedureIds: settlement.service_ids || [],
+            totalAmount: settlement.total_amount,
+            totalTime: settlement.total_time_minutes,
+            payments: (settlement.payments || []).map((payment) => ({
+              method: payment.payment_method_code,
+              amount: payment.amount,
+              couponServiceId: payment.coupon_service_id ?? undefined,
+            })),
+            status: toSettlementStatus(settlement.status),
+            reservationId: settlement.reservation_ref || undefined,
+            cancelType:
+              settlement.cancel_type === 'PAYMENT' || settlement.cancel_type === 'PROCEDURE'
+                ? settlement.cancel_type
+                : undefined,
+            cancelReason: settlement.cancel_reason || undefined,
+            cancelledAt: settlement.cancelled_at || undefined,
+          };
+        });
 
         // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
         const mappedReservations: Reservation[] = (reservationResult.reservations || []).map((reservation) => {
           const customerName = reservation.customer_name?.trim() || '';
           const designerName = reservation.designer_name?.trim() || '';
-          const matchedMember = mappedMembers.find((member) => member.name.trim() === customerName);
+          const matchedMember = findMatchedMemberByNameOrPhone(mappedMembers, customerName);
           const matchedManager = mappedManagers.find((manager) => manager.name.trim() === designerName);
 
           return {
@@ -548,6 +634,36 @@ export default function SalesEntryPage() {
     return members.find((member) => member.id === memberId) || null;
   }, [selectedMemberId, members]);
 
+  const customerLookupQueryDigits = useMemo(
+    () => normalizePhoneDigits(customerLookupQuery),
+    [customerLookupQuery],
+  );
+
+  // 고객 입력창 자동완성 후보:
+  // - 이름 부분일치
+  // - 전화 원문 부분일치
+  // - 전화 숫자-only 부분일치
+  // 를 모두 허용해서 입력 방식에 상관없이 후보를 찾을 수 있게 한다.
+  // UI 과밀 방지를 위해 최대 8건만 노출한다.
+  const customerLookupMembers = useMemo(() => {
+    const query = customerLookupQuery.trim().toLowerCase();
+    const queryDigits = customerLookupQueryDigits;
+    if (!query && !queryDigits) return [];
+
+    return members
+      .filter((member) => {
+        const memberName = member.name.toLowerCase();
+        const memberPhone = member.phone || '';
+        const memberPhoneLower = memberPhone.toLowerCase();
+        const memberPhoneDigits = normalizePhoneDigits(memberPhone);
+
+        if (query && (memberName.includes(query) || memberPhoneLower.includes(query))) return true;
+        if (queryDigits && memberPhoneDigits.includes(queryDigits)) return true;
+        return false;
+      })
+      .slice(0, 8);
+  }, [customerLookupQuery, customerLookupQueryDigits, members]);
+
   // [계산] 선택 회원의 쿠폰 보유 수량 맵(serviceId -> count)
   const selectedMemberCouponMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -592,6 +708,38 @@ export default function SalesEntryPage() {
     return reservationName;
   }, [reservationCustomerNameById, selectedReservationId]);
 
+  // 현재 "비회원 표시 텍스트" 우선순위:
+  // 1) 비회원 이름+전화
+  // 2) 비회원 이름
+  // 3) 비회원 전화
+  // 4) 현재 입력창 원문
+  // 5) 예약에서 가져온 고객명
+  // 6) 기본 라벨(일반 방문객)
+  // 화면 라벨/옵션 표기와 저장 fallback 기준을 맞추기 위해 한 곳에서 계산한다.
+  const guestDisplayLabel = useMemo(() => {
+    const guestName = guestCustomerName.trim();
+    const guestPhone = guestCustomerPhone.trim();
+    const lookupValue = customerLookupQuery.trim();
+    if (guestName && guestPhone) return `${guestName} (${guestPhone})`;
+    if (guestName) return guestName;
+    if (guestPhone) return guestPhone;
+    if (lookupValue) return lookupValue;
+    if (selectedReservationGuestLabel) return selectedReservationGuestLabel;
+    return pt('t025');
+  }, [customerLookupQuery, guestCustomerName, guestCustomerPhone, pt, selectedReservationGuestLabel]);
+
+  // 상단 요약 라벨("고객명: ...") 표시값:
+  // - 회원 선택 시: 회원명(전화번호)
+  // - 비회원/직접입력 시: guestDisplayLabel
+  // 한 줄 요약 표기를 안정적으로 유지하기 위한 전용 계산값.
+  const selectedCustomerSummary = useMemo(() => {
+    if (selectedMember) {
+      const memberPhone = (selectedMember.phone || '').trim();
+      return memberPhone ? `${selectedMember.name} (${memberPhone})` : selectedMember.name;
+    }
+    return guestDisplayLabel;
+  }, [guestDisplayLabel, selectedMember]);
+
   const getSettlementCustomerName = useCallback(
     (settlement: Settlement, fallbackMemberName?: string) => {
       if (settlement.reservationId) {
@@ -601,6 +749,10 @@ export default function SalesEntryPage() {
 
       const memberName = fallbackMemberName?.trim();
       if (memberName) return memberName;
+      const guestName = settlement.guestCustomerName?.trim();
+      if (guestName) return guestName;
+      const guestPhone = settlement.guestCustomerPhone?.trim();
+      if (guestPhone) return guestPhone;
       return settlement.memberId === 'GUEST' ? pt('t025') : '';
     },
     [reservationCustomerNameById, pt],
@@ -636,6 +788,9 @@ export default function SalesEntryPage() {
 
   // [계산] 목록 검색(고객명/전화번호/담당자 + 날짜)
   const searchedSettlements = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    const queryDigits = normalizePhoneDigits(searchTerm);
+
     return settlements.filter((settlement) => {
       const member =
         settlement.memberId === 'GUEST'
@@ -643,13 +798,19 @@ export default function SalesEntryPage() {
           : members.find((entry) => entry.id === settlement.memberId);
       const manager = managers.find((entry) => entry.id === settlement.managerId);
       const customerName = getSettlementCustomerName(settlement, member?.name);
+      const guestName = (settlement.guestCustomerName || '').toLowerCase();
+      const guestPhone = settlement.guestCustomerPhone || '';
+      const guestPhoneDigits = normalizePhoneDigits(guestPhone);
+      const memberPhoneDigits = normalizePhoneDigits(member?.phone || '');
 
-      const query = searchTerm.trim().toLowerCase();
       const matchesSearch =
         query.length === 0 ||
         customerName.toLowerCase().includes(query) ||
         !!member?.name.toLowerCase().includes(query) ||
-        !!member?.phone.includes(searchTerm) ||
+        !!member?.phone.toLowerCase().includes(query) ||
+        !!guestName.includes(query) ||
+        !!guestPhone.toLowerCase().includes(query) ||
+        (queryDigits.length > 0 && (memberPhoneDigits.includes(queryDigits) || guestPhoneDigits.includes(queryDigits))) ||
         !!manager?.name.toLowerCase().includes(query);
 
       const matchesDate = settlement.date.startsWith(filterDate);
@@ -764,6 +925,10 @@ export default function SalesEntryPage() {
   const resetModalForm = () => {
     setSelectedReservationId('');
     setSelectedMemberId('GUEST');
+    setCustomerLookupQuery('');
+    setGuestCustomerName('');
+    setGuestCustomerPhone('');
+    setIsCustomerLookupOpen(false);
     setSelectedManagerId('');
     setSelectedProcs([]);
     setCouponAppliedServiceIds([]);
@@ -783,6 +948,11 @@ export default function SalesEntryPage() {
       const validProcedureIds = reservation.procedureIds.filter(
         (procedureId) => procedures.some((procedure) => procedure.id === procedureId),
       );
+      const reservationCustomerName = reservation.customerName.trim();
+      const resolvedMemberId =
+        (reservation.memberId && reservation.memberId > 0 ? reservation.memberId : null)
+        || findMatchedMemberByNameOrPhone(members, reservationCustomerName)?.id
+        || null;
 
       const resolvedManagerId =
         (reservation.managerId && reservation.managerId > 0
@@ -791,11 +961,11 @@ export default function SalesEntryPage() {
         || 0;
 
       setSelectedReservationId(reservation.id);
-      setSelectedMemberId(
-        reservation.memberId && reservation.memberId > 0
-          ? String(reservation.memberId)
-          : 'GUEST',
-      );
+      setSelectedMemberId(resolvedMemberId ? String(resolvedMemberId) : 'GUEST');
+      setGuestCustomerName(resolvedMemberId ? '' : reservationCustomerName);
+      setGuestCustomerPhone('');
+      setCustomerLookupQuery(reservationCustomerName);
+      setIsCustomerLookupOpen(false);
       setSelectedManagerId(
         resolvedManagerId > 0 ? String(resolvedManagerId) : '',
       );
@@ -814,7 +984,7 @@ export default function SalesEntryPage() {
         alert(pt('t014'));
       }
     },
-    [categories, managers, procedures, pt],
+    [categories, managers, members, procedures, pt],
   );
 
   // [동작] 모달 열기(신규/수정 모드 분기)
@@ -824,9 +994,34 @@ export default function SalesEntryPage() {
       setEditingSettlement(settlement);
       setSelectedReservationId(settlement.reservationId || '');
       setReservationImportDate(settlement.date.slice(0, 10));
-      setSelectedMemberId(
-        settlement.memberId === 'GUEST' ? 'GUEST' : String(settlement.memberId),
+      const fallbackGuestLabel = getSettlementCustomerName(settlement);
+      const normalizedFallbackGuestLabel =
+        fallbackGuestLabel && fallbackGuestLabel !== pt('t025')
+          ? fallbackGuestLabel
+          : '';
+      const inferredMember =
+        settlement.memberId !== 'GUEST'
+          ? members.find((member) => member.id === settlement.memberId) || null
+          : findMatchedMemberByNameOrPhone(
+            members,
+            settlement.guestCustomerName || normalizedFallbackGuestLabel,
+            settlement.guestCustomerPhone || normalizedFallbackGuestLabel,
+          );
+      setSelectedMemberId(inferredMember ? String(inferredMember.id) : 'GUEST');
+      const initialGuestName = settlement.guestCustomerName || normalizedFallbackGuestLabel;
+      const initialGuestPhone = settlement.guestCustomerPhone || '';
+      setGuestCustomerName(initialGuestName);
+      setGuestCustomerPhone(initialGuestPhone);
+      setCustomerLookupQuery(
+        inferredMember
+          ? (
+            inferredMember.phone && inferredMember.phone !== '-'
+              ? `${inferredMember.name} (${inferredMember.phone})`
+              : inferredMember.name
+          )
+          : (initialGuestName || initialGuestPhone),
       );
+      setIsCustomerLookupOpen(false);
       setSelectedManagerId(String(settlement.managerId));
       setSelectedProcs(settlement.procedureIds);
       const couponIds = settlement.payments
@@ -848,6 +1043,35 @@ export default function SalesEntryPage() {
     const reservation = importableReservations.find((entry) => entry.id === reservationId);
     if (!reservation) return;
     applyReservationToForm(reservation);
+  };
+
+  const handleCustomerLookupQueryChange = (value: string) => {
+    setCustomerLookupQuery(value);
+    // 회원이 선택된 상태에서 다시 직접 입력을 시작하면
+    // "수동 입력 우선"으로 전환하기 위해 회원 선택을 해제한다.
+    if (selectedMemberId !== 'GUEST') {
+      setSelectedMemberId('GUEST');
+    }
+    // 이전 입력에서 남아있던 비회원 이름/전화를 비워
+    // 현재 입력값이 요약 라벨/저장 fallback에 정확히 반영되도록 한다.
+    setGuestCustomerName('');
+    setGuestCustomerPhone('');
+    if (!value.trim()) {
+      setIsCustomerLookupOpen(false);
+      return;
+    }
+    setIsCustomerLookupOpen(true);
+  };
+
+  const handleSelectLookupMember = (member: Member) => {
+    const memberPhone = member.phone === '-' ? '' : member.phone;
+    // 자동완성에서 회원을 선택하면 회원 모드로 전환하고,
+    // 요약 라벨/저장값이 즉시 일치하도록 member 데이터를 guest 상태에도 동기화한다.
+    setSelectedMemberId(String(member.id));
+    setGuestCustomerName(member.name);
+    setGuestCustomerPhone(memberPhone);
+    setCustomerLookupQuery(memberPhone ? `${member.name} (${memberPhone})` : member.name);
+    setIsCustomerLookupOpen(false);
   };
 
   const handleOpenReservationActionModal = (reservation: Reservation) => {
@@ -908,7 +1132,7 @@ export default function SalesEntryPage() {
     const resolvedMemberId =
       (reservation.memberId && reservation.memberId > 0
         ? reservation.memberId
-        : members.find((member) => member.name.trim() === reservation.customerName.trim())?.id)
+        : findMatchedMemberByNameOrPhone(members, reservation.customerName)?.id)
       || null;
 
     const preservedPayments =
@@ -931,6 +1155,8 @@ export default function SalesEntryPage() {
                 ? linkedSettlement.id
                 : undefined,
             member_user_id: resolvedMemberId,
+            guest_customer_name: resolvedMemberId ? null : (reservation.customerName.trim() || null),
+            guest_customer_phone: null,
             manager_employee_id: resolvedManagerId,
             service_ids: validServiceIds,
             payments: preservedPayments,
@@ -1043,13 +1269,26 @@ export default function SalesEntryPage() {
     }
   };
 
-  // [동작] 예약 기준 날짜가 바뀌어 현재 선택 예약이 목록에서 사라지면 선택값만 정리한다.
+  // [동작] 신규 등록(예약 불러오기) 모드에서만 import 대상 유효성 동기화.
+  // 수정 모드는 이미 저장된 예약을 바라보므로 importable 목록 기준으로 선택값을 지우면 안 된다.
   useEffect(() => {
+    if (editingSettlement || modalReservationTarget) return;
     if (!selectedReservationId) return;
     if (!importableReservations.some((reservation) => reservation.id === selectedReservationId)) {
       setSelectedReservationId('');
     }
-  }, [selectedReservationId, importableReservations]);
+  }, [editingSettlement, importableReservations, modalReservationTarget, selectedReservationId]);
+
+  useEffect(() => {
+    if (!selectedMember) return;
+    const memberPhone = selectedMember.phone === '-' ? '' : selectedMember.phone;
+    // 회원 선택/변경 시 고객 표시/저장 상태를 회원 기준으로 재정렬한다.
+    // (입력창, 요약 라벨, 저장 payload 일관성 유지)
+    setGuestCustomerName(selectedMember.name);
+    setGuestCustomerPhone(memberPhone);
+    setCustomerLookupQuery(memberPhone ? `${selectedMember.name} (${memberPhone})` : selectedMember.name);
+    setIsCustomerLookupOpen(false);
+  }, [selectedMember]);
 
   // [동작] 선택 시술이 바뀌면 삭제된 시술에 연결된 쿠폰 적용 상태도 함께 정리
   useEffect(() => {
@@ -1100,6 +1339,7 @@ export default function SalesEntryPage() {
 
   // [동작] 정산 저장(작업중/결제완료)
   const handleSaveSettlement = async (status: 'PROCESSING' | 'COMPLETED') => {
+    if (isCompletedSettlementReadOnly) return;
     if (!selectedManagerId) {
       alert(pt('t010'));
       return;
@@ -1149,6 +1389,32 @@ export default function SalesEntryPage() {
         : Number.isFinite(Number(selectedMemberId))
           ? Number(selectedMemberId)
           : null;
+    const lookupValue = customerLookupQuery.trim();
+    const lookupCompactValue = lookupValue.replace(/[\s()-]/g, '');
+    const isLookupPhoneLike = lookupCompactValue.length >= 7 && /^\+?\d+$/.test(lookupCompactValue);
+
+    // 비회원 저장값 정규화:
+    // - 회원 선택 상태면 guest 필드는 항상 null
+    // - 비회원 상태면 explicit guest 상태 우선
+    // - 입력창 값만 있는 경우(매칭 실패 포함) 입력 원문을 name 또는 phone으로 추론해 저장
+    //   => "조회된 고객이 없어도 입력값 그대로 저장/표시" 요구사항 대응
+    const normalizedGuestCustomerName =
+      parsedMemberUserId === null
+        ? (
+          guestCustomerName.trim()
+          || (!isLookupPhoneLike ? lookupValue : '')
+          || selectedReservationGuestLabel.trim()
+          || null
+        )
+        : null;
+    const normalizedGuestCustomerPhone =
+      parsedMemberUserId === null
+        ? (
+          guestCustomerPhone.trim()
+          || (isLookupPhoneLike ? lookupValue : '')
+          || null
+        )
+        : null;
 
     // 쿠폰 사용은 "결제수단 COUPON + coupon_service_id" 라인으로 백엔드에 전달
     const couponPayments = couponAppliedServiceIds.map((serviceId) => ({
@@ -1165,6 +1431,8 @@ export default function SalesEntryPage() {
           settlement: {
             settlement_id: editingSettlement?.id || undefined,
             member_user_id: parsedMemberUserId,
+            guest_customer_name: normalizedGuestCustomerName,
+            guest_customer_phone: normalizedGuestCustomerPhone,
             manager_employee_id: managerId,
             service_ids: serviceIds,
             payments: [
@@ -1648,6 +1916,10 @@ export default function SalesEntryPage() {
               onClose={closeSettlementModal} icon={<Scissors size={20} className="text-primary" />}
             >
               <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                <fieldset
+                  disabled={isBusy || isCompletedSettlementReadOnly}
+                  className="space-y-6 border-0 m-0 p-0 min-w-0"
+                >
                 {/* 신규 등록 시 예약 정보를 선반영해 입력을 빠르게 채운다. */}
                 {!editingSettlement && (
                   <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl space-y-2">
@@ -1660,6 +1932,10 @@ export default function SalesEntryPage() {
                           onClick={() => {
                             setSelectedReservationId('');
                             setSelectedMemberId('GUEST');
+                            setCustomerLookupQuery('');
+                            setGuestCustomerName('');
+                            setGuestCustomerPhone('');
+                            setIsCustomerLookupOpen(false);
                             setSelectedManagerId('');
                             setSelectedProcs([]);
                             setModalReservationTarget(null);
@@ -1704,22 +1980,69 @@ export default function SalesEntryPage() {
                   </div>
                 )}
                 {/* 기본 입력: 회원/담당자 선택 */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t005')}</label>
-                    <select
-                      value={selectedMemberId}
-                      onChange={(event) => setSelectedMemberId(event.target.value as string | 'GUEST')} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      <option value="GUEST">{selectedReservationGuestLabel || pt('t025')}</option>
-                      {members.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name} ({member.phone})
-                        </option>
-                      ))}</select>
+                    {/* 고객 요약 라벨:
+                        요청사항에 맞춰 "고객 선택" 보조 라벨 없이
+                        한 줄로 고객명(전화번호)만 표시한다. */}
+                    <div className="h-5 flex items-center">
+                      <p className="text-sm font-semibold text-slate-700 truncate">
+                        {pt('t042')}: <span className="font-black text-slate-900">{selectedCustomerSummary || pt('t025')}</span>
+                      </p>
+                    </div>
+                    {/* 고객 검색 입력:
+                        이름/전화번호 모두 입력 가능하고,
+                        매칭 결과가 없어도 입력 원문은 요약 라벨 + 저장 fallback으로 사용된다. */}
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={customerLookupQuery}
+                        disabled={isBusy}
+                        onChange={(event) => handleCustomerLookupQueryChange(event.target.value)}
+                        onFocus={() => {
+                          if (!customerLookupQuery.trim()) return;
+                          setIsCustomerLookupOpen(true);
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => setIsCustomerLookupOpen(false), 120);
+                        }}
+                        placeholder={pt('t101')}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-100 disabled:text-slate-500"
+                      />
+                      {/* 자동완성 드롭다운:
+                          blur 시 바로 닫히면 클릭 선택이 끊기기 때문에
+                          onBlur 지연 + onMouseDown preventDefault 조합을 사용한다. */}
+                      {isCustomerLookupOpen && customerLookupQuery.trim() && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-40 overflow-y-auto shadow-lg">
+                          {customerLookupMembers.length === 0 ? (
+                            <p className="px-3 py-2 text-xs text-slate-400">{pt('t105')}</p>
+                          ) : (
+                            customerLookupMembers.map((member) => (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleSelectLookupMember(member);
+                                }}
+                                className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${
+                                  selectedMemberId === String(member.id) ? 'bg-primary/5' : ''
+                                }`}
+                              >
+                                <p className="text-sm font-semibold text-slate-700">{member.name}</p>
+                                <p className="text-xs text-slate-500">{member.phone || '-'}</p>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500">{pt('t104')}</p>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t008')}</label>
+                    <div className="h-5 flex items-center">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t008')}</label>
+                    </div>
                     <select
                       value={selectedManagerId}
                       onChange={(event) => setSelectedManagerId(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
@@ -1930,10 +2253,20 @@ export default function SalesEntryPage() {
                     </div>
                   </div>
                 </div>
+                </fieldset>
 
                 {/* 저장 동작: 일반 모드는 작업/결제 저장, 예약 상세입력 모드는 예약취소/작업시작 */}
                 <div className="flex gap-3 pt-4">
-                  {isReservationEntryMode ? (
+                  {isCompletedSettlementReadOnly ? (
+                    <button
+                      type="button"
+                      onClick={closeSettlementModal}
+                      className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                      disabled={isBusy}
+                    >
+                      {pt('t074')}
+                    </button>
+                  ) : isReservationEntryMode ? (
                     <>
                       <button
                         type="button"

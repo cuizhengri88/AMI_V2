@@ -844,6 +844,8 @@ struct SalesSettlementPayload {
     payments: Vec<SalesSettlementPaymentPayload>,
     status: String,
     reservation_ref: Option<String>,
+    guest_customer_name: Option<String>,
+    guest_customer_phone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -895,6 +897,8 @@ struct SalesSettlementDto {
     payments: Vec<SalesSettlementPaymentDto>,
     status: String,
     reservation_ref: Option<String>,
+    guest_customer_name: Option<String>,
+    guest_customer_phone: Option<String>,
     cancel_type: Option<String>,
     cancel_reason: Option<String>,
     cancelled_at: Option<String>,
@@ -2239,6 +2243,8 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
             total_time_minutes INTEGER NOT NULL CHECK (total_time_minutes >= 0),
             status VARCHAR(20) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED', 'CANCELLED')),
             reservation_ref VARCHAR(100) NULL,
+            guest_customer_name VARCHAR(100) NULL,
+            guest_customer_phone VARCHAR(30) NULL,
             cancel_type VARCHAR(20) NULL CHECK (cancel_type IS NULL OR cancel_type IN ('PAYMENT', 'PROCEDURE')),
             cancel_reason TEXT NULL,
             cancelled_at TIMESTAMPTZ NULL,
@@ -2296,6 +2302,12 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
 
         ALTER TABLE sales_settlement_management
         ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS guest_customer_name VARCHAR(100);
+
+        ALTER TABLE sales_settlement_management
+        ADD COLUMN IF NOT EXISTS guest_customer_phone VARCHAR(30);
 
         ALTER TABLE sales_settlement_management
         DROP CONSTRAINT IF EXISTS sales_settlement_management_status_check;
@@ -5504,6 +5516,8 @@ async fn get_sales_settlement_data(
                 s.total_time_minutes::INTEGER,
                 s.status,
                 s.reservation_ref,
+                s.guest_customer_name,
+                s.guest_customer_phone,
                 s.cancel_type,
                 s.cancel_reason,
                 TO_CHAR(s.cancelled_at, 'YYYY-MM-DD HH24:MI') AS cancelled_at
@@ -5603,9 +5617,11 @@ async fn get_sales_settlement_data(
                 total_time_minutes: row.get::<_, i32>(5),
                 status: row.get::<_, String>(6),
                 reservation_ref: row.get::<_, Option<String>>(7),
-                cancel_type: row.get::<_, Option<String>>(8),
-                cancel_reason: row.get::<_, Option<String>>(9),
-                cancelled_at: row.get::<_, Option<String>>(10),
+                guest_customer_name: row.get::<_, Option<String>>(8),
+                guest_customer_phone: row.get::<_, Option<String>>(9),
+                cancel_type: row.get::<_, Option<String>>(10),
+                cancel_reason: row.get::<_, Option<String>>(11),
+                cancelled_at: row.get::<_, Option<String>>(12),
                 service_ids,
                 payments,
             }
@@ -6161,6 +6177,33 @@ async fn upsert_sales_settlement(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
+    let mut guest_customer_name = settlement
+        .guest_customer_name
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mut guest_customer_phone = settlement
+        .guest_customer_phone
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if settlement.member_user_id.is_some() {
+        guest_customer_name = None;
+        guest_customer_phone = None;
+    }
+
+    if let Some(name) = guest_customer_name.as_ref() {
+        if name.chars().count() > 100 {
+            return Err("guest_customer_name은 100자 이하여야 합니다.".to_string());
+        }
+    }
+    if let Some(phone) = guest_customer_phone.as_ref() {
+        if phone.chars().count() > 30 {
+            return Err("guest_customer_phone은 30자 이하여야 합니다.".to_string());
+        }
+    }
+
     // 정산이 예약건에서 시작된 경우 reservation_ref를 예약 PK로 파싱해 존재 여부를 먼저 검증한다.
     let linked_reservation_id = if let Some(reservation_ref_value) = reservation_ref.as_ref() {
         let parsed_reservation_id = reservation_ref_value
@@ -6215,6 +6258,8 @@ async fn upsert_sales_settlement(
                        total_time_minutes = $6,
                        status = $7,
                        reservation_ref = $8,
+                       guest_customer_name = $9,
+                       guest_customer_phone = $10,
                        cancel_type = NULL,
                        cancel_reason = NULL,
                        cancelled_at = NULL,
@@ -6231,6 +6276,8 @@ async fn upsert_sales_settlement(
                     &total_time_minutes,
                     &status,
                     &reservation_ref,
+                    &guest_customer_name,
+                    &guest_customer_phone,
                 ],
             )
             .await
@@ -6266,10 +6313,12 @@ async fn upsert_sales_settlement(
                 total_time_minutes,
                 status,
                 reservation_ref,
+                guest_customer_name,
+                guest_customer_phone,
                 cancel_type,
                 cancel_reason,
                 cancelled_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,NULL,NULL)
             RETURNING settlement_id::BIGINT
             "#,
             &[
@@ -6280,6 +6329,8 @@ async fn upsert_sales_settlement(
                 &total_time_minutes,
                 &status,
                 &reservation_ref,
+                &guest_customer_name,
+                &guest_customer_phone,
             ],
         )
         .await

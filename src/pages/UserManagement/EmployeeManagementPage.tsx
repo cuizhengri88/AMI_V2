@@ -82,11 +82,15 @@ export default function EmployeeManagementPage() {
   }, []);
 
   useEffect(() => {
-    const filtered = employees.filter(emp =>
-      emp.employee_name.toLowerCase().includes(searchText.toLowerCase()) ||
-      emp.employee_code.toLowerCase().includes(searchText.toLowerCase()) ||
-      (emp.email || '').toLowerCase().includes(searchText.toLowerCase())
-    );
+    const normalizedSearchText = searchText.trim().toLowerCase();
+    const normalizedSearchPhone = searchText.replace(/\D/g, '');
+    const filtered = employees.filter((emp) => {
+      const nameMatched = emp.employee_name.toLowerCase().includes(normalizedSearchText);
+      const phoneMatched =
+        normalizedSearchPhone.length > 0 &&
+        (emp.phone || '').replace(/\D/g, '').includes(normalizedSearchPhone);
+      return nameMatched || phoneMatched;
+    });
     setFilteredEmployees(filtered);
   }, [searchText, employees]);
 
