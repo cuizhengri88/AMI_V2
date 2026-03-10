@@ -78,7 +78,7 @@ type PaymentDetail = {
 
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 type SettlementCancelType = 'PAYMENT' | 'PROCEDURE';
-type SettlementListTab = Extract<SettlementStatus, 'PROCESSING' | 'COMPLETED'>;
+type SettlementListTab = 'RESERVATION' | Extract<SettlementStatus, 'PROCESSING' | 'COMPLETED'>;
 
 type Settlement = {
   id: number;
@@ -196,6 +196,9 @@ export default function SalesEntryPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
+  const [modalReservationTarget, setModalReservationTarget] = useState<Reservation | null>(null);
+  const [isReservationActionModalOpen, setIsReservationActionModalOpen] = useState(false);
+  const [reservationActionTarget, setReservationActionTarget] = useState<Reservation | null>(null);
 
   // [상태] 목록 검색 조건
   const [searchTerm, setSearchTerm] = useState('');
@@ -218,6 +221,7 @@ export default function SalesEntryPage() {
   const loadDataInFlightRef = useRef<Promise<void> | null>(null);
 
   const isBusy = isLoading || isMutating;
+  const isReservationEntryMode = !!modalReservationTarget && !editingSettlement;
 
   // [유틸] 결제수단 코드를 다국어 표시명으로 변환
   const getPaymentMethodLabel = (code: string, fallback?: string) => {
@@ -245,6 +249,13 @@ export default function SalesEntryPage() {
     if (status === 'COMPLETED') return pt('t045');
     if (status === 'CANCELLED') return pt('t046');
     return pt('t047');
+  };
+
+  const getReservationStatusLabel = (status: Reservation['status']) => {
+    if (status === 'COMPLETED') return pt('t045');
+    if (status === 'CANCELLED') return pt('t046');
+    if (status === 'PROCESSING') return pt('t047');
+    return pt('t088');
   };
 
   // [계산] 카테고리 드롭다운 목록(공통코드 우선, 필요 시 시술 데이터로 보정)
@@ -574,6 +585,13 @@ export default function SalesEntryPage() {
     [todayReservations],
   );
 
+  const selectedReservationGuestLabel = useMemo(() => {
+    if (!selectedReservationId) return '';
+    const reservationName = reservationCustomerNameById.get(selectedReservationId)?.trim();
+    if (!reservationName) return '';
+    return reservationName;
+  }, [reservationCustomerNameById, selectedReservationId]);
+
   const getSettlementCustomerName = useCallback(
     (settlement: Settlement, fallbackMemberName?: string) => {
       if (settlement.reservationId) {
@@ -586,6 +604,34 @@ export default function SalesEntryPage() {
       return settlement.memberId === 'GUEST' ? pt('t025') : '';
     },
     [reservationCustomerNameById, pt],
+  );
+
+  const getReservationCustomerName = useCallback(
+    (reservation: Reservation) => {
+      const reservationName = reservation.customerName?.trim();
+      if (reservationName) return reservationName;
+
+      const matchedMember = reservation.memberId
+        ? members.find((member) => member.id === reservation.memberId)
+        : null;
+      const memberName = matchedMember?.name?.trim();
+      if (memberName) return memberName;
+      return pt('t025');
+    },
+    [members, pt],
+  );
+
+  const getReservationManagerName = useCallback(
+    (reservation: Reservation) => {
+      const designerName = reservation.designerName?.trim();
+      if (designerName) return designerName;
+
+      const matchedManager = reservation.managerId
+        ? managers.find((manager) => manager.id === reservation.managerId)
+        : null;
+      return matchedManager?.name?.trim() || '';
+    },
+    [managers],
   );
 
   // [계산] 목록 검색(고객명/전화번호/담당자 + 날짜)
@@ -611,22 +657,60 @@ export default function SalesEntryPage() {
     });
   }, [members, managers, settlements, searchTerm, filterDate, getSettlementCustomerName]);
 
+  const searchedReservationOnly = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return todayReservations.filter((reservation) => {
+      if (reservation.date !== filterDate) return false;
+      if (reservation.status === 'CANCELLED' || reservation.status === 'COMPLETED') return false;
+      if (settledReservationIdSet.has(reservation.id)) return false;
+
+      const member = reservation.memberId
+        ? members.find((entry) => entry.id === reservation.memberId)
+        : null;
+      const customerName = getReservationCustomerName(reservation);
+      const managerName = getReservationManagerName(reservation);
+      const matchesSearch =
+        query.length === 0 ||
+        customerName.toLowerCase().includes(query) ||
+        !!member?.name.toLowerCase().includes(query) ||
+        !!member?.phone.includes(searchTerm) ||
+        managerName.toLowerCase().includes(query);
+      return matchesSearch;
+    });
+  }, [
+    filterDate,
+    getReservationCustomerName,
+    getReservationManagerName,
+    members,
+    searchTerm,
+    settledReservationIdSet,
+    todayReservations,
+  ]);
+
   const settlementTabCounts = useMemo(
-    () =>
-      searchedSettlements.reduce<Record<SettlementListTab, number>>(
-        (acc, settlement) => {
-          if (settlement.status === 'PROCESSING' || settlement.status === 'COMPLETED') {
-            acc[settlement.status] += 1;
-          }
-          return acc;
-        },
-        { PROCESSING: 0, COMPLETED: 0 },
-      ),
-    [searchedSettlements],
+    () => {
+      const next: Record<SettlementListTab, number> = {
+        RESERVATION: searchedReservationOnly.length,
+        PROCESSING: 0,
+        COMPLETED: 0,
+      };
+      searchedSettlements.forEach((settlement) => {
+        if (settlement.status === 'PROCESSING' || settlement.status === 'COMPLETED') {
+          next[settlement.status] += 1;
+        }
+      });
+      return next;
+    },
+    [searchedReservationOnly.length, searchedSettlements],
   );
 
   const filteredSettlements = useMemo(
-    () => searchedSettlements.filter((settlement) => settlement.status === activeSettlementTab),
+    () =>
+      searchedSettlements.filter(
+        (settlement) =>
+          (activeSettlementTab === 'PROCESSING' || activeSettlementTab === 'COMPLETED')
+          && settlement.status === activeSettlementTab,
+      ),
     [searchedSettlements, activeSettlementTab],
   );
 
@@ -687,9 +771,56 @@ export default function SalesEntryPage() {
     setPayments([]);
   };
 
+  const closeSettlementModal = () => {
+    if (isMutating) return;
+    setIsModalOpen(false);
+    setEditingSettlement(null);
+    setModalReservationTarget(null);
+  };
+
+  const applyReservationToForm = useCallback(
+    (reservation: Reservation) => {
+      const validProcedureIds = reservation.procedureIds.filter(
+        (procedureId) => procedures.some((procedure) => procedure.id === procedureId),
+      );
+
+      const resolvedManagerId =
+        (reservation.managerId && reservation.managerId > 0
+          ? reservation.managerId
+          : managers.find((manager) => manager.name.trim() === reservation.designerName.trim())?.id)
+        || 0;
+
+      setSelectedReservationId(reservation.id);
+      setSelectedMemberId(
+        reservation.memberId && reservation.memberId > 0
+          ? String(reservation.memberId)
+          : 'GUEST',
+      );
+      setSelectedManagerId(
+        resolvedManagerId > 0 ? String(resolvedManagerId) : '',
+      );
+      setSelectedProcs(validProcedureIds);
+      setCouponAppliedServiceIds([]);
+      setPayments([]);
+
+      const firstProcedure = procedures.find((procedure) => procedure.id === validProcedureIds[0]);
+      if (firstProcedure) {
+        setSelectedCategory(firstProcedure.categoryCode);
+      } else if (categories.length > 0) {
+        setSelectedCategory(categories[0].code);
+      }
+
+      if (validProcedureIds.length === 0) {
+        alert(pt('t014'));
+      }
+    },
+    [categories, managers, procedures, pt],
+  );
+
   // [동작] 모달 열기(신규/수정 모드 분기)
   const handleOpenModal = (settlement?: Settlement) => {
     if (settlement) {
+      setModalReservationTarget(null);
       setEditingSettlement(settlement);
       setSelectedReservationId(settlement.reservationId || '');
       setReservationImportDate(settlement.date.slice(0, 10));
@@ -704,6 +835,7 @@ export default function SalesEntryPage() {
       setCouponAppliedServiceIds(Array.from(new Set(couponIds)));
       setPayments(settlement.payments.filter((payment) => payment.method !== 'COUPON'));
     } else {
+      setModalReservationTarget(null);
       setEditingSettlement(null);
       resetModalForm();
       setReservationImportDate(filterDate || todayIso());
@@ -715,32 +847,199 @@ export default function SalesEntryPage() {
   const handleImportReservation = (reservationId: string) => {
     const reservation = importableReservations.find((entry) => entry.id === reservationId);
     if (!reservation) return;
+    applyReservationToForm(reservation);
+  };
 
-    const validProcedureIds = reservation.procedureIds.filter(
+  const handleOpenReservationActionModal = (reservation: Reservation) => {
+    if (isBusy) return;
+    setReservationActionTarget(reservation);
+    setIsReservationActionModalOpen(true);
+  };
+
+  const handleCloseReservationActionModal = () => {
+    if (isBusy) return;
+    setIsReservationActionModalOpen(false);
+    setReservationActionTarget(null);
+  };
+
+  const handleOpenSettlementModalFromReservation = (reservation: Reservation) => {
+    if (isBusy) return;
+    setEditingSettlement(null);
+    setModalReservationTarget(reservation);
+    resetModalForm();
+    setReservationImportDate(reservation.date || filterDate || todayIso());
+    applyReservationToForm(reservation);
+    setIsModalOpen(true);
+    setIsReservationActionModalOpen(false);
+    setReservationActionTarget(null);
+  };
+
+  const startWorkFromReservation = async (
+    reservation: Reservation,
+    options?: {
+      closeReservationActionModal?: boolean;
+      closeEntryModal?: boolean;
+    },
+  ) => {
+    const validServiceIds = reservation.procedureIds.filter(
       (procedureId) => procedures.some((procedure) => procedure.id === procedureId),
     );
-
-    setSelectedReservationId(reservationId);
-    setSelectedMemberId(
-      reservation.memberId && reservation.memberId > 0
-        ? String(reservation.memberId)
-        : 'GUEST',
-    );
-    setSelectedManagerId(
-      reservation.managerId && reservation.managerId > 0
-        ? String(reservation.managerId)
-        : '',
-    );
-    setSelectedProcs(validProcedureIds);
-    setCouponAppliedServiceIds([]);
-
-    const firstProcedure = procedures.find((procedure) => procedure.id === validProcedureIds[0]);
-    if (firstProcedure) {
-      setSelectedCategory(firstProcedure.categoryCode);
+    if (validServiceIds.length === 0) {
+      alert(pt('t014'));
+      return;
     }
 
-    if (validProcedureIds.length === 0) {
-      alert(pt('t014'));
+    const resolvedManagerId =
+      (reservation.managerId && reservation.managerId > 0
+        ? reservation.managerId
+        : managers.find((manager) => manager.name.trim() === reservation.designerName.trim())?.id)
+      || 0;
+    if (resolvedManagerId <= 0) {
+      alert(pt('t010'));
+      return;
+    }
+
+    const linkedSettlement = settlements.find((settlement) => settlement.reservationId === reservation.id);
+    if (linkedSettlement?.status === 'COMPLETED') {
+      alert(pt('t092'));
+      return;
+    }
+
+    const resolvedMemberId =
+      (reservation.memberId && reservation.memberId > 0
+        ? reservation.memberId
+        : members.find((member) => member.name.trim() === reservation.customerName.trim())?.id)
+      || null;
+
+    const preservedPayments =
+      linkedSettlement && linkedSettlement.status !== 'CANCELLED'
+        ? linkedSettlement.payments.map((payment) => ({
+          payment_method_code: payment.method,
+          amount: payment.amount || 0,
+          coupon_service_id: typeof payment.couponServiceId === 'number' ? payment.couponServiceId : null,
+        }))
+        : [];
+
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'upsert_sales_settlement',
+        {
+          settlement: {
+            settlement_id:
+              linkedSettlement && linkedSettlement.status !== 'CANCELLED'
+                ? linkedSettlement.id
+                : undefined,
+            member_user_id: resolvedMemberId,
+            manager_employee_id: resolvedManagerId,
+            service_ids: validServiceIds,
+            payments: preservedPayments,
+            status: 'PROCESSING',
+            reservation_ref: reservation.id,
+          },
+        },
+      );
+
+      await loadData();
+      setActiveSettlementTab('PROCESSING');
+      if (options?.closeReservationActionModal) {
+        setIsReservationActionModalOpen(false);
+        setReservationActionTarget(null);
+      }
+      if (options?.closeEntryModal) {
+        setIsModalOpen(false);
+        setEditingSettlement(null);
+        setModalReservationTarget(null);
+        resetModalForm();
+      }
+      alert(result.message || pt('t093'));
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || pt('t094'));
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleStartWorkFromReservation = async () => {
+    if (!reservationActionTarget) return;
+    await startWorkFromReservation(reservationActionTarget, {
+      closeReservationActionModal: true,
+    });
+  };
+
+  const handleStartWorkFromEntryReservation = async () => {
+    if (!modalReservationTarget) return;
+    await startWorkFromReservation(modalReservationTarget, {
+      closeEntryModal: true,
+    });
+  };
+
+  const handleCancelReservationFromEntry = async () => {
+    if (!modalReservationTarget) return;
+    const reservation = modalReservationTarget;
+    const reservationId = Number(reservation.id);
+    if (!Number.isFinite(reservationId) || reservationId <= 0) {
+      alert(pt('t099'));
+      return;
+    }
+
+    const serviceIds = reservation.procedureIds
+      .map((procedureId) => Number(procedureId))
+      .filter((procedureId) => Number.isFinite(procedureId) && procedureId > 0);
+    if (serviceIds.length === 0) {
+      alert(pt('t021'));
+      return;
+    }
+
+    const designerName = getReservationManagerName(reservation).trim();
+    if (!designerName) {
+      alert(pt('t010'));
+      return;
+    }
+
+    const customerName = getReservationCustomerName(reservation).trim()
+      || selectedReservationGuestLabel
+      || pt('t025');
+
+    const linkedSettlement = settlements.find((settlement) => settlement.reservationId === reservation.id);
+
+    try {
+      setIsMutating(true);
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'upsert_reservation_calendar_item',
+        {
+          item: {
+            reservation_id: reservationId,
+            reservation_date: reservation.date,
+            start_time: reservation.time,
+            customer_name: customerName,
+            gender: null,
+            designer_name: designerName,
+            status: 'CANCELLED',
+            note: null,
+            service_ids: serviceIds,
+          },
+        },
+      );
+
+      if (linkedSettlement && linkedSettlement.status !== 'CANCELLED') {
+        await invokeDbCommand<{ success: boolean; message: string }>('cancel_sales_settlement', {
+          settlement_id: linkedSettlement.id,
+          cancel_type: linkedSettlement.status === 'COMPLETED' ? 'PAYMENT' : 'PROCEDURE',
+          cancel_reason: pt('t100'),
+        });
+      }
+
+      await loadData();
+      setIsModalOpen(false);
+      setEditingSettlement(null);
+      setModalReservationTarget(null);
+      resetModalForm();
+      alert(result.message || pt('t097'));
+    } catch (error: any) {
+      alert(typeof error === 'string' ? error : error?.message || pt('t098'));
+    } finally {
+      setIsMutating(false);
     }
   };
 
@@ -886,6 +1185,7 @@ export default function SalesEntryPage() {
       alert(result.message || pt('t037'));
       setIsModalOpen(false);
       setEditingSettlement(null);
+      setModalReservationTarget(null);
       resetModalForm();
     } catch (error: any) {
       alert(typeof error === 'string' ? error : error?.message || pt('t038'));
@@ -940,9 +1240,29 @@ export default function SalesEntryPage() {
   };
 
   const settlementTabs: Array<{ key: SettlementListTab; label: string }> = [
+    { key: 'RESERVATION', label: pt('t048') },
     { key: 'PROCESSING', label: pt('t047') },
     { key: 'COMPLETED', label: pt('t045') },
   ];
+
+  const reservationActionServices = useMemo(() => {
+    if (!reservationActionTarget) return [];
+    return reservationActionTarget.procedureIds
+      .map((procedureId) => procedures.find((procedure) => procedure.id === procedureId))
+      .filter(Boolean) as Procedure[];
+  }, [reservationActionTarget, procedures]);
+
+  const reservationActionTotal = useMemo(
+    () =>
+      reservationActionServices.reduce(
+        (acc, procedure) => ({
+          price: acc.price + procedure.price,
+          time: acc.time + procedure.time,
+        }),
+        { price: 0, time: 0 },
+      ),
+    [reservationActionServices],
+  );
 
   return (
     <motion.div
@@ -1027,134 +1347,305 @@ export default function SalesEntryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredSettlements.map((settlement) => {
-                const member =
-                  settlement.memberId === 'GUEST'
-                    ? null
-                    : members.find((entry) => entry.id === settlement.memberId);
-                const customerName = getSettlementCustomerName(settlement, member?.name);
-                const manager = managers.find((entry) => entry.id === settlement.managerId);
-                const procedureNames = settlement.procedureIds
-                  .map((id) => procedures.find((entry) => entry.id === id)?.name)
-                  .filter(Boolean)
-                  .join(', ');
+              {activeSettlementTab === 'RESERVATION' ? (
+                searchedReservationOnly.map((reservation) => {
+                  const customerName = getReservationCustomerName(reservation);
+                  const managerName = getReservationManagerName(reservation) || '-';
+                  const reservationServices = reservation.procedureIds
+                    .map((id) => procedures.find((entry) => entry.id === id))
+                    .filter(Boolean) as Procedure[];
+                  const procedureNames = reservationServices.map((service) => service.name).join(', ');
+                  const expectedAmount = reservationServices.reduce((sum, service) => sum + service.price, 0);
+                  const expectedTime = reservationServices.reduce((sum, service) => sum + service.time, 0);
+                  const statusLabel = getReservationStatusLabel(reservation.status);
+                  const statusClass =
+                    reservation.status === 'PROCESSING'
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'bg-amber-100 text-amber-700';
 
-                const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
-                const nonCouponPaidAmount = settlement.payments
-                  .filter((payment) => !isCouponPaymentMethod(payment.method))
-                  .reduce((sum, payment) => sum + payment.amount, 0);
-                const couponPaidAmount = settlement.payments
-                  .filter((payment) => isCouponPaymentMethod(payment.method))
-                  .reduce((sum, payment) => sum + payment.amount, 0);
-                // coupon 금액이 0으로 저장되는 경우가 있어 coupon_service_id 기준으로 실제 할인액을 환산
-                const couponCoveredAmount = settlement.payments
-                  .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
-                  .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
-                const effectiveCouponPaid = couponCoveredAmount > 0 ? couponCoveredAmount : couponPaidAmount;
-                const discount = settlement.status === 'COMPLETED'
-                  ? Math.max(0, settlement.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid))
-                  : 0;
-                const discountPercent = settlement.totalAmount > 0 ? Math.round((discount / settlement.totalAmount) * 100) : 0;
-                const statusClass =
-                  settlement.status === 'COMPLETED'
-                    ? 'bg-emerald-100 text-emerald-600'
-                    : settlement.status === 'CANCELLED'
-                      ? 'bg-rose-100 text-rose-600'
-                      : 'bg-blue-100 text-blue-600';
-                const statusLabel = getSettlementStatusLabel(settlement.status);
-
-                return (
-                  <tr
-                    key={settlement.id}
-                    onClick={() => {
-                      if (settlement.status !== 'CANCELLED') {
-                        handleOpenModal(settlement);
-                      }
-                    }}
-                    className={`hover:bg-slate-50 transition-colors group ${
-                      settlement.status === 'CANCELLED' ? 'cursor-default' : 'cursor-pointer'
-                    }`}
-                  >
-                    <td className="py-4 px-6 text-xs font-bold text-slate-500">{settlement.date}</td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`size-8 rounded-full flex items-center justify-center text-[10px] font-black ${
-                            settlement.memberId === 'GUEST' ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'
-                          }`}
-                        >
-                          {customerName?.[0] || '?'}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-900">{customerName || '-'}</span>
-                          {settlement.reservationId && (
-                          <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
+                  return (
+                    <tr
+                      key={`reservation-${reservation.id}`}
+                      onClick={() => handleOpenReservationActionModal(reservation)}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <td className="py-4 px-6 text-xs font-bold text-slate-500">
+                        {reservation.date} {reservation.time}
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-2">
+                          <div className="size-8 rounded-full flex items-center justify-center text-[10px] font-black bg-primary/10 text-primary">
+                            {customerName?.[0] || '?'}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-900">{customerName}</span>
+                            <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
                               <Calendar size={8} /> {pt('t048')}
                             </span>
-                          )}</div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
-                    <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
-                    <td className="py-4 px-6">
-                      <div className="text-sm font-black text-slate-900">¥{paidAmount.toLocaleString()}</div>
-                      {discount > 0 && <div className="text-[10px] text-slate-400 line-through">¥{settlement.totalAmount.toLocaleString()}</div>}
-                    </td>
-                    <td className="py-4 px-6">
-                      {discount > 0 ? (
-                        <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">
-                          {discountPercent}% (¥{discount.toLocaleString()})
-                        </span>
-                      ) : (
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-sm font-bold text-slate-700">{managerName}</td>
+                      <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm font-black text-slate-900">¥{expectedAmount.toLocaleString()}</div>
+                        <div className="text-[10px] text-slate-400">{pt('t062', { count: expectedTime })}</div>
+                      </td>
+                      <td className="py-4 px-6">
                         <span className="text-slate-300 text-[10px]">-</span>
-                      )}</td>
-                    <td className="py-4 px-6">
-                      <span
-                        className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}
-                      >
-                        {statusLabel}
-                      </span>
-                      {settlement.cancelReason && (
-                        <p
-                          className="mt-1 text-[10px] text-rose-600 max-w-[180px] truncate"
-                          title={settlement.cancelReason}
-                        >
-                          {pt('t049', { reason: settlement.cancelReason })}
-                        </p>
-                      )}</td>
-                    <td className="py-4 px-6 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-center">
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleOpenCancelModal(settlement);
+                            handleOpenReservationActionModal(reservation);
                           }}
-                          disabled={settlement.status === 'CANCELLED' || isBusy}
-                          className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
+                          disabled={isBusy}
+                          className="px-2 py-1 rounded border border-primary/20 bg-primary/5 text-primary text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {pt('t046')}
+                          {pt('t089')}
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })} {filteredSettlements.length === 0 && (
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                filteredSettlements.map((settlement) => {
+                  const member =
+                    settlement.memberId === 'GUEST'
+                      ? null
+                      : members.find((entry) => entry.id === settlement.memberId);
+                  const customerName = getSettlementCustomerName(settlement, member?.name);
+                  const manager = managers.find((entry) => entry.id === settlement.managerId);
+                  const procedureNames = settlement.procedureIds
+                    .map((id) => procedures.find((entry) => entry.id === id)?.name)
+                    .filter(Boolean)
+                    .join(', ');
+
+                  const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
+                  const nonCouponPaidAmount = settlement.payments
+                    .filter((payment) => !isCouponPaymentMethod(payment.method))
+                    .reduce((sum, payment) => sum + payment.amount, 0);
+                  const couponPaidAmount = settlement.payments
+                    .filter((payment) => isCouponPaymentMethod(payment.method))
+                    .reduce((sum, payment) => sum + payment.amount, 0);
+                  // coupon 금액이 0으로 저장되는 경우가 있어 coupon_service_id 기준으로 실제 할인액을 환산
+                  const couponCoveredAmount = settlement.payments
+                    .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
+                    .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
+                  const effectiveCouponPaid = couponCoveredAmount > 0 ? couponCoveredAmount : couponPaidAmount;
+                  const discount = settlement.status === 'COMPLETED'
+                    ? Math.max(0, settlement.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid))
+                    : 0;
+                  const discountPercent = settlement.totalAmount > 0 ? Math.round((discount / settlement.totalAmount) * 100) : 0;
+                  const statusClass =
+                    settlement.status === 'COMPLETED'
+                      ? 'bg-emerald-100 text-emerald-600'
+                      : settlement.status === 'CANCELLED'
+                        ? 'bg-rose-100 text-rose-600'
+                        : 'bg-blue-100 text-blue-600';
+                  const statusLabel = getSettlementStatusLabel(settlement.status);
+
+                  return (
+                    <tr
+                      key={settlement.id}
+                      onClick={() => {
+                        if (settlement.status !== 'CANCELLED') {
+                          handleOpenModal(settlement);
+                        }
+                      }}
+                      className={`hover:bg-slate-50 transition-colors group ${
+                        settlement.status === 'CANCELLED' ? 'cursor-default' : 'cursor-pointer'
+                      }`}
+                    >
+                      <td className="py-4 px-6 text-xs font-bold text-slate-500">{settlement.date}</td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`size-8 rounded-full flex items-center justify-center text-[10px] font-black ${
+                              settlement.memberId === 'GUEST' ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'
+                            }`}
+                          >
+                            {customerName?.[0] || '?'}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-900">{customerName || '-'}</span>
+                            {settlement.reservationId && (
+                              <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
+                                <Calendar size={8} /> {pt('t048')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
+                      <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm font-black text-slate-900">¥{paidAmount.toLocaleString()}</div>
+                        {discount > 0 && <div className="text-[10px] text-slate-400 line-through">¥{settlement.totalAmount.toLocaleString()}</div>}
+                      </td>
+                      <td className="py-4 px-6">
+                        {discount > 0 ? (
+                          <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-black">
+                            {discountPercent}% (¥{discount.toLocaleString()})
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-[10px]">-</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
+                        <span
+                          className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}
+                        >
+                          {statusLabel}
+                        </span>
+                        {settlement.cancelReason && (
+                          <p
+                            className="mt-1 text-[10px] text-rose-600 max-w-[180px] truncate"
+                            title={settlement.cancelReason}
+                          >
+                            {pt('t049', { reason: settlement.cancelReason })}
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenCancelModal(settlement);
+                            }}
+                            disabled={settlement.status === 'CANCELLED' || isBusy}
+                            className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {pt('t046')}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+              {((activeSettlementTab === 'RESERVATION' && searchedReservationOnly.length === 0)
+                || (activeSettlementTab !== 'RESERVATION' && filteredSettlements.length === 0)) && (
                 <tr>
                   <td colSpan={8} className="py-20 text-center text-slate-400 font-bold">
                     {pt('t051')}
                   </td>
                 </tr>
-              )}</tbody>
+              )}
+            </tbody>
           </table>
         </div>
       </div>
 
       <AnimatePresence>
+        {isReservationActionModalOpen && reservationActionTarget && (
+          <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <DraggableModal
+              title={pt('t089')}
+              onClose={handleCloseReservationActionModal}
+              icon={<Calendar size={20} className="text-primary" />}
+            >
+              <div className="p-6 space-y-5">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{pt('t026')}</p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {reservationActionTarget.date} {reservationActionTarget.time}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{pt('t042')}</p>
+                    <p className="text-sm font-bold text-slate-800">{getReservationCustomerName(reservationActionTarget)}</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{pt('t011')}</p>
+                    <p className="text-sm font-bold text-slate-800">{getReservationManagerName(reservationActionTarget) || '-'}</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{pt('t043')}</p>
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${
+                      reservationActionTarget.status === 'PROCESSING'
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                    >
+                      {getReservationStatusLabel(reservationActionTarget.status)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    {pt('t019')}
+                  </label>
+                  {reservationActionServices.length === 0 ? (
+                    <div className="text-[10px] text-slate-400 px-2 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+                      {pt('t091')}
+                    </div>
+                  ) : (
+                    reservationActionServices.map((procedure) => (
+                      <div
+                        key={`reservation-action-procedure-${procedure.id}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                      >
+                        <span className="text-xs font-bold text-slate-800">{procedure.name}</span>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {pt('t062', { count: procedure.time })} / ¥{procedure.price.toLocaleString()}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pt('t027')}</div>
+                  <div className="text-sm font-black text-slate-900">
+                    ¥{reservationActionTotal.price.toLocaleString()} / {pt('t062', { count: reservationActionTotal.time })}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCloseReservationActionModal}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                    disabled={isBusy}
+                  >
+                    {pt('t074')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSettlementModalFromReservation(reservationActionTarget)}
+                    className="flex-1 py-2.5 bg-primary/10 text-primary rounded-xl text-sm font-bold hover:bg-primary/20 transition-all"
+                    disabled={isBusy}
+                  >
+                    {pt('t095')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartWorkFromReservation}
+                    className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-60"
+                    disabled={isBusy}
+                  >
+                    {pt('t090')}
+                  </button>
+                </div>
+              </div>
+            </DraggableModal>
+          </div>
+        )}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
               title={editingSettlement ? pt('t052') : pt('t041')}
-              onClose={() => setIsModalOpen(false)} icon={<Scissors size={20} className="text-primary" />}
+              onClose={closeSettlementModal} icon={<Scissors size={20} className="text-primary" />}
             >
               <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
                 {/* 신규 등록 시 예약 정보를 선반영해 입력을 빠르게 채운다. */}
@@ -1171,6 +1662,7 @@ export default function SalesEntryPage() {
                             setSelectedMemberId('GUEST');
                             setSelectedManagerId('');
                             setSelectedProcs([]);
+                            setModalReservationTarget(null);
                           }}
                           className="text-[10px] font-bold text-slate-400 hover:text-red-500"
                         >
@@ -1219,7 +1711,7 @@ export default function SalesEntryPage() {
                       value={selectedMemberId}
                       onChange={(event) => setSelectedMemberId(event.target.value as string | 'GUEST')} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                     >
-                      <option value="GUEST">{pt('t025')}</option>
+                      <option value="GUEST">{selectedReservationGuestLabel || pt('t025')}</option>
                       {members.map((member) => (
                         <option key={member.id} value={member.id}>
                           {member.name} ({member.phone})
@@ -1439,18 +1931,41 @@ export default function SalesEntryPage() {
                   </div>
                 </div>
 
-                {/* 저장 동작: 작업중 상태 저장 또는 결제완료 저장 */}
+                {/* 저장 동작: 일반 모드는 작업/결제 저장, 예약 상세입력 모드는 예약취소/작업시작 */}
                 <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => handleSaveSettlement('PROCESSING')} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
-                  >
-                    {pt('t070')}
-                  </button>
-                  <button
-                    onClick={() => handleSaveSettlement('COMPLETED')} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                  >
-                    {pt('t071')}
-                  </button>
+                  {isReservationEntryMode ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleCancelReservationFromEntry}
+                        className="flex-1 py-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-bold border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-50"
+                        disabled={isBusy}
+                      >
+                        {pt('t096')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartWorkFromEntryReservation}
+                        className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
+                        disabled={isBusy}
+                      >
+                        {pt('t090')}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleSaveSettlement('PROCESSING')} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                      >
+                        {pt('t070')}
+                      </button>
+                      <button
+                        onClick={() => handleSaveSettlement('COMPLETED')} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                      >
+                        {pt('t071')}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </DraggableModal>

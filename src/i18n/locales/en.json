@@ -728,7 +728,8 @@
       "t134": "Payment cancellation completed.",
       "t135": "Failed to cancel payment.",
       "t136": "Customer Name (Phone)",
-      "t137": "Loading reservation info..."
+      "t137": "Loading reservation info...",
+      "t138": "Reservation saved, but failed to sync to in-progress sales entry."
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
@@ -815,7 +816,20 @@
       "t084": "Cut",
       "t085": "Perm",
       "t086": "Color",
-      "t087": "Other"
+      "t087": "Other",
+      "t088": "Reserved",
+      "t089": "Reservation Details",
+      "t090": "Start Work",
+      "t091": "No reserved service items.",
+      "t092": "Cannot start work because the reservation status has changed.",
+      "t093": "Work start completed.",
+      "t094": "Failed to start work.",
+      "t095": "Open Entry Form",
+      "t096": "Cancel Reservation",
+      "t097": "Reservation cancellation completed.",
+      "t098": "Failed to cancel reservation.",
+      "t099": "No valid reservation data was found.",
+      "t100": "Reservation canceled from sales entry detail"
     },
     "user_management_sales_history": {
       "t001": "Transaction Date/Time",

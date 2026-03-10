@@ -124,6 +124,8 @@ type SalesSettlementRow = {
   settlement_id: number;
   reservation_ref?: string | null;
   member_user_id?: number | null;
+  manager_employee_id?: number | null;
+  service_ids?: number[] | null;
   total_amount?: number;
   status?: string | null;
   payments: SalesSettlementPaymentRow[];
@@ -299,6 +301,11 @@ function isBalancePaymentMethod(code: string) {
 
 function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
   return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
+}
+
+function isReservationProcessingStatus(status: string) {
+  const normalized = status.trim().toUpperCase();
+  return normalized.includes('PROCESS') || normalized.includes('PROGRESS');
 }
 
 function normalizeSettlementState(raw?: string | null): LinkedSettlementState {
@@ -1387,14 +1394,98 @@ export default function ReservationCalendarPage() {
     );
   };
 
+  const syncProcessingSettlementForReservation = async (
+    reservationId: number,
+    targetForm: ReservationForm,
+  ) => {
+    const linkedSettlement = await findLinkedSettlementByReservationId(reservationId);
+    const linkedSettlementState = normalizeSettlementState(linkedSettlement?.status);
+    const canReuseLinkedSettlement =
+      linkedSettlement
+      && linkedSettlementState !== 'CANCELLED'
+      && linkedSettlementState !== 'COMPLETED';
+
+    const designerManagerId = designerIdByName.get(normalizeNameKey(targetForm.designerName));
+    const linkedManagerId = Number(linkedSettlement?.manager_employee_id);
+    const managerEmployeeId =
+      (typeof designerManagerId === 'number' && Number.isFinite(designerManagerId) && designerManagerId > 0)
+        ? designerManagerId
+        : (Number.isFinite(linkedManagerId) && linkedManagerId > 0 ? linkedManagerId : null);
+    if (!managerEmployeeId) {
+      throw new Error(pt('t064'));
+    }
+
+    const serviceIds = targetForm.services
+      .map((service) => Number(service.serviceId))
+      .filter((serviceId) => Number.isFinite(serviceId) && serviceId > 0);
+    if (serviceIds.length === 0) {
+      throw new Error(pt('t010'));
+    }
+
+    const linkedMemberUserId = Number(linkedSettlement?.member_user_id);
+    const memberUserId =
+      selectedMemberUserId
+      || (Number.isFinite(linkedMemberUserId) && linkedMemberUserId > 0 ? linkedMemberUserId : null);
+
+    const payments: Array<{
+      payment_method_code: string;
+      amount: number;
+      coupon_service_id: number | null;
+    }> = [];
+
+    if (canReuseLinkedSettlement) {
+      (linkedSettlement.payments || []).forEach((payment) => {
+        const methodCode = (payment.payment_method_code || '').trim().toUpperCase();
+        if (!methodCode) return;
+        const parsedCouponServiceId = Number(payment.coupon_service_id);
+        payments.push({
+          payment_method_code: methodCode,
+          amount: toAmountNumber(payment.amount),
+          coupon_service_id:
+            Number.isFinite(parsedCouponServiceId) && parsedCouponServiceId > 0
+              ? parsedCouponServiceId
+              : null,
+        });
+      });
+    }
+
+    await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
+      settlement: {
+        settlement_id: canReuseLinkedSettlement ? linkedSettlement.settlement_id : undefined,
+        member_user_id: memberUserId,
+        manager_employee_id: managerEmployeeId,
+        service_ids: serviceIds,
+        payments,
+        status: 'PROCESSING',
+        reservation_ref: String(reservationId),
+      },
+    });
+  };
+
   const saveReservationRecord = async (
     targetForm: ReservationForm,
     successFallbackText: string,
+    options?: {
+      forceSyncProcessingSettlement?: boolean;
+    },
   ) => {
     if (!validateReservationForm(targetForm)) return false;
+    let reservationSaved = false;
     try {
       setIsMutating(true);
       const result = await upsertReservationItem(targetForm);
+      reservationSaved = true;
+
+      const shouldSyncProcessingSettlement =
+        options?.forceSyncProcessingSettlement || isReservationProcessingStatus(targetForm.status);
+
+      if (shouldSyncProcessingSettlement) {
+        const savedReservationId = Number(result.reservation_id);
+        if (!Number.isFinite(savedReservationId) || savedReservationId <= 0) {
+          throw new Error('예약 저장 결과의 reservation_id가 올바르지 않습니다.');
+        }
+        await syncProcessingSettlementForReservation(savedReservationId, targetForm);
+      }
 
       await loadReservations();
       setSelectedDate(targetForm.reservationDate);
@@ -1405,7 +1496,8 @@ export default function ReservationCalendarPage() {
       alert(
         typeof error === 'string'
           ? error
-          : (error as { message?: string })?.message || pt('t038'),
+          : (error as { message?: string })?.message
+            || (reservationSaved ? pt('t138') : pt('t038')),
       );
       return false;
     } finally {
@@ -1413,7 +1505,7 @@ export default function ReservationCalendarPage() {
     }
   };
 
-  // 예약 등록/수정: 예약 정보만 저장한다.
+  // 예약 등록/수정: 진행중 상태 저장 시 매출 정산(PROCESSING)도 동기화한다.
   const saveReservation = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isCompletedSettlementLocked) return;
@@ -1429,7 +1521,9 @@ export default function ReservationCalendarPage() {
       ...form,
       status: serviceStartStatusCode,
     };
-    await saveReservationRecord(nextForm, pt('t128'));
+    await saveReservationRecord(nextForm, pt('t128'), {
+      forceSyncProcessingSettlement: true,
+    });
   };
 
   const cancelCompletedReservationPayment = async () => {
