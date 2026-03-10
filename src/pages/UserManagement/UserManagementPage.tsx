@@ -188,6 +188,11 @@ function isCompletedReservationStatus(status?: string | null) {
   return normalized === 'COMPLETED' || normalized === '완료';
 }
 
+function isCompletedSettlementStatus(status?: string | null) {
+  const normalized = (status || '').trim().toUpperCase();
+  return normalized === 'COMPLETED';
+}
+
 export default function UserManagementPage() {
   const pt = usePageText('user_management_user_management');
   const { t } = useTranslation();
@@ -208,6 +213,7 @@ export default function UserManagementPage() {
   const [memberTreatmentHistories, setMemberTreatmentHistories] = useState<MemberTreatmentHistoryRow[]>([]);
   const [memberReservationHistories, setMemberReservationHistories] = useState<MemberReservationHistoryRow[]>([]);
   const [hasNameMatchedReservation, setHasNameMatchedReservation] = useState(false);
+  const [expandedServiceHistoryKey, setExpandedServiceHistoryKey] = useState<string | null>(null);
 
   const loadUsers = async () => {
     try {
@@ -324,6 +330,11 @@ export default function UserManagementPage() {
     setMemberTreatmentHistories([]);
     setMemberReservationHistories([]);
     setHasNameMatchedReservation(false);
+    setExpandedServiceHistoryKey(null);
+  };
+
+  const toggleServiceList = (historyKey: string) => {
+    setExpandedServiceHistoryKey((prev) => (prev === historyKey ? null : historyKey));
   };
 
   const loadMemberHistory = async (user: User) => {
@@ -372,8 +383,32 @@ export default function UserManagementPage() {
           .map((entry) => [entry.code.trim().toUpperCase(), entry.name]),
       );
 
+      const nameMatchedReservationIdSet = new Set<number>();
+      (reservationResult.reservations || []).forEach((entry) => {
+        if (
+          isMatchedByNameOrPhone(
+            entry.customer_name,
+            null,
+            user.name,
+            user.phone,
+          )
+        ) {
+          nameMatchedReservationIdSet.add(entry.reservation_id);
+        }
+      });
+
       const matchedSettlements = (settlementResult.settlements || [])
         .filter((entry) => {
+          const reservationId = Number(entry.reservation_ref || 0);
+          if (
+            Number.isFinite(reservationId)
+            && reservationId > 0
+            && nameMatchedReservationIdSet.has(reservationId)
+            && isCompletedSettlementStatus(entry.status)
+          ) {
+            return true;
+          }
+
           const memberIdentifier = (entry.member_user_id || '').trim();
           if (memberIdentifier) {
             if (/^\d+$/.test(memberIdentifier) && Number(memberIdentifier) === targetUserId) {
@@ -433,12 +468,7 @@ export default function UserManagementPage() {
       const reservationMap = new Map<number, MemberReservationHistoryRow>();
       (reservationResult.reservations || []).forEach((entry) => {
         const isLinked = linkedReservationIdSet.has(entry.reservation_id);
-        const isNameOrPhoneMatched = isMatchedByNameOrPhone(
-          entry.customer_name,
-          null,
-          user.name,
-          user.phone,
-        );
+        const isNameOrPhoneMatched = nameMatchedReservationIdSet.has(entry.reservation_id);
         if (!isLinked && !isNameOrPhoneMatched) return;
         if (isNameOrPhoneMatched && !isLinked) nameMatchFlag = true;
 
@@ -811,7 +841,37 @@ export default function UserManagementPage() {
                                     )}
                                   </td>
                                   <td className="py-3 px-4 text-sm text-slate-700">{entry.manager_name}</td>
-                                  <td className="py-3 px-4 text-xs text-slate-600">{entry.service_names.length > 0 ? entry.service_names.join(', ') : '-'}</td>
+                                  <td className="py-3 px-4 text-xs text-slate-600">
+                                    {entry.service_names.length === 0 ? (
+                                      '-'
+                                    ) : (
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-slate-700">{entry.service_names[0]}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleServiceList(entry.history_key)}
+                                            className="px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                                          >
+                                            {expandedServiceHistoryKey === entry.history_key ? pt('t062') : pt('t061')}
+                                          </button>
+                                        </div>
+                                        {expandedServiceHistoryKey === entry.history_key && (
+                                          <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
+                                            {entry.service_names.map((serviceName, index) => (
+                                              <p
+                                                key={`${entry.history_key}-${index}`}
+                                                className="text-[11px] text-slate-600"
+                                              >
+                                                <span className="inline-block min-w-4 text-slate-400 font-bold">{index + 1}.</span>
+                                                {serviceName}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className="py-3 px-4 text-xs text-slate-600">{entry.payment_labels.length > 0 ? entry.payment_labels.join(', ') : '-'}</td>
                                   <td className="py-3 px-4 text-sm font-bold text-slate-900">{entry.total_amount === null ? '-' : formatCurrency(entry.total_amount)}</td>
                                 </tr>

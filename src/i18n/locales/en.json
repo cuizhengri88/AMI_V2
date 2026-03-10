@@ -980,7 +980,9 @@
       "t057": "Cancelled at: {{date}}",
       "t058": "Linked Reservation",
       "t059": "Name/Phone Match",
-      "t060": "Phone"
+      "t060": "Phone",
+      "t061": "View List",
+      "t062": "Hide"
     }
   }
 }
