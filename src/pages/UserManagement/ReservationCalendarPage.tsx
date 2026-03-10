@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
+import { useRef } from 'react';
 import { motion, useDragControls } from 'motion/react';
 import {
   CalendarDays,
@@ -10,6 +11,7 @@ import {
   Loader2,
   PlusCircle,
   Scissors,
+  Search,
   Trash2,
   UserRound,
   X,
@@ -81,6 +83,13 @@ type ReservationForm = {
   services: ReservationService[];
 };
 
+type MemberLookup = {
+  id: number;
+  name: string;
+  phone: string;
+  phoneDigits: string;
+};
+
 // 백엔드에서 내려주는 예약 시술 라인 원본 타입
 type ReservationServiceRow = {
   line_id: number;
@@ -114,8 +123,13 @@ type SalesSettlementPaymentRow = {
 type SalesSettlementRow = {
   settlement_id: number;
   reservation_ref?: string | null;
+  member_user_id?: number | null;
+  total_amount?: number;
+  status?: string | null;
   payments: SalesSettlementPaymentRow[];
 };
+
+type LinkedSettlementState = 'NONE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 
 type StatusTone = {
   badge: string;
@@ -267,6 +281,17 @@ function normalizePhoneDigits(raw?: string | null) {
   return (raw || '').replace(/\D/g, '');
 }
 
+function extractPhoneText(raw?: string | null) {
+  const source = (raw || '').trim();
+  if (!source) return '';
+
+  const fullPhoneLike = source.match(/^\+?[\d\s-]{7,}$/);
+  if (fullPhoneLike) return source;
+
+  const embeddedPhoneLike = source.match(/(\+?\d[\d\s-]{6,}\d)/);
+  return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
+}
+
 function isBalancePaymentMethod(code: string) {
   const normalized = code.trim().toUpperCase();
   return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
@@ -274,6 +299,37 @@ function isBalancePaymentMethod(code: string) {
 
 function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
   return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
+}
+
+function normalizeSettlementState(raw?: string | null): LinkedSettlementState {
+  const normalized = (raw || '').trim().toUpperCase();
+  if (normalized === 'COMPLETED') return 'COMPLETED';
+  if (normalized === 'CANCELLED') return 'CANCELLED';
+  if (normalized === 'PROCESSING') return 'PROCESSING';
+  return 'NONE';
+}
+
+function buildQuickCalculatorSnapshotFromSettlement(
+  settlement: SalesSettlementRow,
+): { discountAmount: number; paymentLines: QuickPaymentLine[] } {
+  const payments = settlement.payments || [];
+  const nonCouponPayments = payments
+    .filter((payment) => payment.payment_method_code?.trim().toUpperCase() !== 'COUPON')
+    .map((payment, index) => ({
+      lineId: index + 1,
+      methodCode: payment.payment_method_code?.trim().toUpperCase() || '',
+      amount: toAmountNumber(payment.amount),
+    }))
+    .filter((payment) => payment.methodCode.length > 0);
+
+  const nonCouponPaidAmount = nonCouponPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const settlementTotalAmount = toAmountNumber(settlement.total_amount ?? 0);
+  const discountAmount = Math.max(settlementTotalAmount - nonCouponPaidAmount, 0);
+
+  return {
+    discountAmount,
+    paymentLines: nonCouponPayments,
+  };
 }
 
 function normalizeGenderForForm(raw?: string | null) {
@@ -365,13 +421,14 @@ function mapReservationRowToRecord(
   memberPhoneByName: Map<string, string>,
 ): ReservationRecord {
   const phoneByName = memberPhoneByName.get(normalizeNameKey(row.customer_name)) || '';
+  const phoneFromCustomerName = extractPhoneText(row.customer_name);
   return {
     id: row.reservation_id,
     reservationDate: row.reservation_date,
     startTime: normalizeTimeValue(row.start_time),
     customerName: row.customer_name,
     gender: row.gender || '',
-    customerPhone: phoneByName,
+    customerPhone: phoneByName || phoneFromCustomerName,
     designerName: row.designer_name,
     status: row.status,
     note: row.note || '',
@@ -438,7 +495,7 @@ export default function ReservationCalendarPage() {
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] =
     useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
-  const [memberNames, setMemberNames] = useState<string[]>([]);
+  const [members, setMembers] = useState<MemberLookup[]>([]);
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
   const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
   const [designerNames, setDesignerNames] = useState<string[]>([]);
@@ -463,6 +520,13 @@ export default function ReservationCalendarPage() {
   const [calculatorDiscountAmount, setCalculatorDiscountAmount] = useState(0);
   const [quickPaymentLines, setQuickPaymentLines] = useState<QuickPaymentLine[]>([]);
   const [nextQuickPaymentLineId, setNextQuickPaymentLineId] = useState(1);
+  const [customerPhoneQuery, setCustomerPhoneQuery] = useState('');
+  const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
+  const [selectedCustomerMemberId, setSelectedCustomerMemberId] = useState<string>('');
+  const [linkedSettlementState, setLinkedSettlementState] =
+    useState<LinkedSettlementState>('NONE');
+  const [isSettlementStateLoading, setIsSettlementStateLoading] = useState(false);
+  const linkedSettlementRequestIdRef = useRef(0);
   const [form, setForm] = useState<ReservationForm>(() =>
     createEmptyForm(
       todayIso(),
@@ -473,6 +537,12 @@ export default function ReservationCalendarPage() {
   );
 
   const isDbBusy = isLoading || isMutating;
+  const isOverlayVisible = isDbBusy || isSettlementStateLoading;
+  const overlayMessage = isMutating
+    ? pt('t042')
+    : isSettlementStateLoading
+      ? pt('t137')
+      : pt('t041');
 
   const weekdayLabels = WEEKDAY_TEXT_KEYS.map((key) => pt(key));
 
@@ -598,14 +668,88 @@ export default function ReservationCalendarPage() {
     [form.services],
   );
 
+  const customerPhoneQueryDigits = useMemo(
+    () => normalizePhoneDigits(customerPhoneQuery),
+    [customerPhoneQuery],
+  );
+
+  const filteredCustomerMembers = useMemo(() => {
+    if (!customerPhoneQueryDigits) return members;
+    return members.filter((member) => member.phoneDigits.includes(customerPhoneQueryDigits));
+  }, [customerPhoneQueryDigits, members]);
+
+  const selectedCustomerMember = useMemo(() => {
+    const memberId = Number.parseInt(selectedCustomerMemberId, 10);
+    if (!Number.isFinite(memberId) || memberId <= 0) return null;
+    return members.find((member) => member.id === memberId) || null;
+  }, [members, selectedCustomerMemberId]);
+
+  const customerLookupMembers = useMemo(() => {
+    if (!customerPhoneQueryDigits) return [];
+    if (!selectedCustomerMember) return filteredCustomerMembers.slice(0, 8);
+    if (filteredCustomerMembers.some((member) => member.id === selectedCustomerMember.id)) {
+      return filteredCustomerMembers.slice(0, 8);
+    }
+    return [selectedCustomerMember, ...filteredCustomerMembers].slice(0, 8);
+  }, [customerPhoneQueryDigits, filteredCustomerMembers, selectedCustomerMember]);
+
+  const selectedCustomerSummary = useMemo(() => {
+    const memberName = (selectedCustomerMember?.name || '').trim();
+    const memberPhone = (selectedCustomerMember?.phone || '').trim();
+    if (memberName) {
+      return memberPhone ? `${memberName} (${memberPhone})` : memberName;
+    }
+
+    const fallbackName = (form.customerName || '').trim();
+    const fallbackPhone = (customerPhoneQuery || '').trim();
+    if (fallbackName && fallbackPhone) {
+      const fallbackNameDigits = normalizePhoneDigits(fallbackName);
+      const fallbackPhoneDigits = normalizePhoneDigits(fallbackPhone);
+      if (fallbackNameDigits && fallbackNameDigits === fallbackPhoneDigits) return fallbackPhone;
+      return `${fallbackName} (${fallbackPhone})`;
+    }
+    if (fallbackName) return fallbackName;
+    if (fallbackPhone) return fallbackPhone;
+    return '';
+  }, [customerPhoneQuery, form.customerName, selectedCustomerMember]);
+
   const selectedMemberUserId = useMemo(() => {
+    const selectedMemberId = Number.parseInt(selectedCustomerMemberId, 10);
+    if (Number.isFinite(selectedMemberId) && selectedMemberId > 0) {
+      return selectedMemberId;
+    }
     const key = normalizeNameKey(form.customerName);
     if (!key) return null;
     const memberId = memberIdByName.get(key);
     return typeof memberId === 'number' && Number.isFinite(memberId) && memberId > 0
       ? memberId
       : null;
-  }, [form.customerName, memberIdByName]);
+  }, [form.customerName, memberIdByName, selectedCustomerMemberId]);
+
+  const serviceStartStatusCode = useMemo(() => {
+    const processingStatus = statusOptions.find((status) =>
+      status.code.trim().toUpperCase().includes('PROCESS'),
+    )?.code;
+    if (processingStatus) return processingStatus;
+
+    const reservedStatus = statusOptions.find((status) =>
+      status.code.trim().toUpperCase().includes('RESERV'),
+    )?.code;
+    if (reservedStatus) return reservedStatus;
+
+    return statusOptions[0]?.code || FALLBACK_STATUSES[0].code;
+  }, [statusOptions]);
+
+  const isPaymentCompleted = linkedSettlementState === 'COMPLETED';
+  const isCompletedSettlementLocked = modalMode === 'edit' && isPaymentCompleted;
+  const isReservationFormLocked =
+    isDbBusy || isSettlementStateLoading || isCompletedSettlementLocked;
+  const isQuickPaymentReadOnly = isPaymentCompleted || isSettlementStateLoading;
+  const isPaymentCancelAction = modalMode === 'edit' && isPaymentCompleted;
+  const isPaymentActionDisabled = isPaymentCancelAction
+    ? isDbBusy || isSettlementStateLoading || !editingId
+    : isDbBusy || isSettlementStateLoading || isPaymentCompleted;
+  const paymentActionLabel = isPaymentCancelAction ? pt('t130') : pt('t122');
 
   const manualPaymentMethodOptions = useMemo(
     () => {
@@ -759,10 +903,27 @@ export default function ReservationCalendarPage() {
           label: getPaymentMethodLabelByCode(method.code),
         }));
 
-    // 고객/디자이너는 각각 회원/직원 테이블의 이름 목록을 선택 소스로 사용한다.
-    const nextMemberNames = toUniqueSortedNames(
-      (memberResult.users || []).map((user) => user.name || ''),
-    );
+    // 고객 선택은 회원명/전화번호를 함께 제공해 예약 등록 시 식별 정확도를 높인다.
+    const nextMembers = (memberResult.users || [])
+      .map((user) => {
+        const memberId = Number(user.user_id);
+        const memberName = (user.name || '').trim();
+        const memberPhone = (user.phone || '').trim();
+        if (!Number.isFinite(memberId) || memberId <= 0 || !memberName) return null;
+        return {
+          id: memberId,
+          name: memberName,
+          phone: memberPhone,
+          phoneDigits: normalizePhoneDigits(memberPhone),
+        };
+      })
+      .filter((member): member is MemberLookup => member !== null)
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name, 'ko')
+          || a.phone.localeCompare(b.phone)
+          || (a.id - b.id),
+      );
     const nextMemberPhoneByName = (memberResult.users || []).reduce((map, user) => {
       const key = normalizeNameKey(user.name || '');
       const phone = (user.phone || '').trim();
@@ -803,7 +964,7 @@ export default function ReservationCalendarPage() {
     setCategories(nextCategories);
     setServiceItems(loadedServices);
     setPaymentMethodOptions(nextPaymentMethods);
-    setMemberNames(nextMemberNames);
+    setMembers(nextMembers);
     setMemberPhoneByName(nextMemberPhoneByName);
     setMemberIdByName(nextMemberIdByName);
     setDesignerNames(nextDesignerNames);
@@ -841,6 +1002,39 @@ export default function ReservationCalendarPage() {
     }) || null;
   };
 
+  const loadLinkedSettlementState = async (
+    reservation: ReservationRecord,
+    requestId: number,
+  ) => {
+    try {
+      setIsSettlementStateLoading(true);
+      const linkedSettlement = await findLinkedSettlementByReservationId(reservation.id);
+      if (linkedSettlementRequestIdRef.current !== requestId) return;
+      const settlementState = normalizeSettlementState(linkedSettlement?.status);
+      setLinkedSettlementState(settlementState);
+
+      if (settlementState !== 'COMPLETED' || !linkedSettlement) return;
+
+      const settlementMemberId = Number(linkedSettlement.member_user_id);
+      if (Number.isFinite(settlementMemberId) && settlementMemberId > 0) {
+        setSelectedCustomerMemberId(String(settlementMemberId));
+      }
+
+      const quickSnapshot = buildQuickCalculatorSnapshotFromSettlement(linkedSettlement);
+      setCalculatorDiscountAmount(quickSnapshot.discountAmount);
+      setQuickPaymentLines(quickSnapshot.paymentLines);
+      setNextQuickPaymentLineId(quickSnapshot.paymentLines.length + 1);
+    } catch (error) {
+      if (linkedSettlementRequestIdRef.current !== requestId) return;
+      console.error('Failed to load linked settlement state:', error);
+      setLinkedSettlementState('NONE');
+    } finally {
+      if (linkedSettlementRequestIdRef.current === requestId) {
+        setIsSettlementStateLoading(false);
+      }
+    }
+  };
+
   // 초기 진입 시 조회성 데이터는 한 번에 불러와 화면 깜빡임을 줄인다.
   const loadInitialData = async () => {
     try {
@@ -852,7 +1046,7 @@ export default function ReservationCalendarPage() {
       setStatusOptions(FALLBACK_STATUSES);
       setCategories(FALLBACK_CATEGORIES);
       setPaymentMethodOptions(FALLBACK_PAYMENT_METHODS);
-      setMemberNames([]);
+      setMembers([]);
       setMemberPhoneByName(new Map());
       setMemberIdByName(new Map());
       setDesignerNames([]);
@@ -933,6 +1127,7 @@ export default function ReservationCalendarPage() {
   };
 
   const addQuickPaymentLine = () => {
+    if (isQuickPaymentReadOnly) return;
     if (calculatorRemainingAmount <= 0) return;
     const defaultMethodCode =
       manualPaymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code;
@@ -949,6 +1144,7 @@ export default function ReservationCalendarPage() {
   };
 
   const removeQuickPaymentLine = (lineId: number) => {
+    if (isQuickPaymentReadOnly) return;
     setQuickPaymentLines((prev) => prev.filter((line) => line.lineId !== lineId));
   };
 
@@ -957,6 +1153,7 @@ export default function ReservationCalendarPage() {
     field: 'methodCode' | 'amount',
     value: string | number,
   ) => {
+    if (isQuickPaymentReadOnly) return;
     setQuickPaymentLines((prev) =>
       prev.map((line) => (line.lineId === lineId
         ? {
@@ -975,8 +1172,14 @@ export default function ReservationCalendarPage() {
       serviceItems.find((service) => service.categoryCode === defaultCategory)?.id;
     const defaultDesignerName = designerNames[0] || '';
 
+    linkedSettlementRequestIdRef.current += 1;
     setModalMode('create');
     setEditingId(null);
+    setLinkedSettlementState('NONE');
+    setIsSettlementStateLoading(false);
+    setSelectedCustomerMemberId('');
+    setCustomerPhoneQuery('');
+    setIsCustomerLookupOpen(false);
     setForm(
       {
         ...createEmptyForm(
@@ -1001,9 +1204,30 @@ export default function ReservationCalendarPage() {
       || FALLBACK_CATEGORIES[0].code;
     const defaultServiceId =
       serviceItems.find((service) => service.categoryCode === preferredCategory)?.id;
+    const customerNameKey = normalizeNameKey(reservation.customerName);
+    const mappedMemberId = memberIdByName.get(customerNameKey);
+    const customerPhoneDigits = normalizePhoneDigits(reservation.customerPhone);
+    const matchedMemberByPhone = customerPhoneDigits
+      ? members.find(
+        (member) =>
+          member.phoneDigits === customerPhoneDigits
+          && normalizeNameKey(member.name) === customerNameKey,
+      ) || members.find((member) => member.phoneDigits === customerPhoneDigits)
+      : null;
+    const matchedMemberByName =
+      typeof mappedMemberId === 'number'
+        ? members.find((member) => member.id === mappedMemberId) || null
+        : null;
+    const matchedMember = matchedMemberByPhone || matchedMemberByName;
+    const nextRequestId = linkedSettlementRequestIdRef.current + 1;
+    linkedSettlementRequestIdRef.current = nextRequestId;
 
     setModalMode('edit');
     setEditingId(reservation.id);
+    setLinkedSettlementState('NONE');
+    setSelectedCustomerMemberId(matchedMember ? String(matchedMember.id) : '');
+    setCustomerPhoneQuery(matchedMember?.phone || reservation.customerPhone || '');
+    setIsCustomerLookupOpen(false);
     setForm({
       reservationDate: reservation.reservationDate,
       startTime: reservation.startTime,
@@ -1021,14 +1245,65 @@ export default function ReservationCalendarPage() {
     });
     resetQuickCalculator();
     setIsModalOpen(true);
+    void loadLinkedSettlementState(reservation, nextRequestId);
   };
 
   const closeModal = () => {
+    linkedSettlementRequestIdRef.current += 1;
     resetQuickCalculator();
+    setLinkedSettlementState('NONE');
+    setIsSettlementStateLoading(false);
+    setSelectedCustomerMemberId('');
+    setCustomerPhoneQuery('');
+    setIsCustomerLookupOpen(false);
     setIsModalOpen(false);
   };
 
+  const handleCustomerMemberSelect = (memberIdRaw: string) => {
+    if (isCompletedSettlementLocked) return;
+    setIsCustomerLookupOpen(false);
+    setSelectedCustomerMemberId(memberIdRaw);
+    const memberId = Number.parseInt(memberIdRaw, 10);
+    if (!Number.isFinite(memberId) || memberId <= 0) return;
+    const matchedMember = members.find((member) => member.id === memberId);
+    if (!matchedMember) return;
+    setForm((prev) => ({
+      ...prev,
+      customerName: matchedMember.name,
+    }));
+    setCustomerPhoneQuery(matchedMember.phone);
+  };
+
+  const handleCustomerPhoneQueryChange = (value: string) => {
+    if (isCompletedSettlementLocked) return;
+    setCustomerPhoneQuery(value);
+    setIsCustomerLookupOpen(true);
+    const digits = normalizePhoneDigits(value);
+    if (!digits) {
+      setIsCustomerLookupOpen(false);
+      if (!value.trim()) {
+        setSelectedCustomerMemberId('');
+        setForm((prev) => ({ ...prev, customerName: '' }));
+      }
+      return;
+    }
+    if (selectedCustomerMember && !selectedCustomerMember.phoneDigits.includes(digits)) {
+      setSelectedCustomerMemberId('');
+      setForm((prev) => ({ ...prev, customerName: '' }));
+    }
+    const matchedMembers = members.filter((member) => member.phoneDigits.includes(digits));
+    if (matchedMembers.length !== 1) return;
+    const matchedMember = matchedMembers[0];
+    setSelectedCustomerMemberId(String(matchedMember.id));
+    setForm((prev) => ({
+      ...prev,
+      customerName: matchedMember.name,
+    }));
+    setIsCustomerLookupOpen(false);
+  };
+
   const addSelectedService = () => {
+    if (isCompletedSettlementLocked) return;
     if (!selectedService) {
       alert(pt('t011'));
       return;
@@ -1062,33 +1337,34 @@ export default function ReservationCalendarPage() {
   };
 
   const removeService = (lineId: number) => {
+    if (isCompletedSettlementLocked) return;
     setForm((prev) => ({
       ...prev,
       services: prev.services.filter((service) => service.lineId !== lineId),
     }));
   };
 
-  const validateReservationForm = () => {
-    if (!form.reservationDate || !form.startTime) {
+  const validateReservationForm = (targetForm: ReservationForm) => {
+    if (!targetForm.reservationDate || !targetForm.startTime) {
       alert(pt('t017'));
       return false;
     }
-    if (!form.customerName.trim() || !form.designerName.trim()) {
+    if (!targetForm.customerName.trim() || !targetForm.designerName.trim()) {
       alert(pt('t002'));
       return false;
     }
-    if (!form.status) {
+    if (!targetForm.status) {
       alert(pt('t018'));
       return false;
     }
-    if (form.services.length === 0) {
+    if (targetForm.services.length === 0) {
       alert(pt('t010'));
       return false;
     }
     return true;
   };
 
-  const upsertReservationItem = async () => {
+  const upsertReservationItem = async (targetForm: ReservationForm) => {
     return invokeDbCommand<{
       success: boolean;
       message: string;
@@ -1098,38 +1374,97 @@ export default function ReservationCalendarPage() {
       {
         item: {
           reservation_id: modalMode === 'edit' ? editingId : undefined,
-          reservation_date: form.reservationDate,
-          start_time: normalizeTimeValue(form.startTime),
-          customer_name: form.customerName.trim(),
-          gender: form.gender || null,
-          designer_name: form.designerName.trim(),
-          status: form.status,
-          note: form.note.trim() || null,
-          service_ids: form.services.map((service) => service.serviceId),
+          reservation_date: targetForm.reservationDate,
+          start_time: normalizeTimeValue(targetForm.startTime),
+          customer_name: targetForm.customerName.trim(),
+          gender: targetForm.gender || null,
+          designer_name: targetForm.designerName.trim(),
+          status: targetForm.status,
+          note: targetForm.note.trim() || null,
+          service_ids: targetForm.services.map((service) => service.serviceId),
         },
       },
     );
   };
 
-  // 예약 등록/수정: 예약 정보만 저장한다.
-  const saveReservation = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (!validateReservationForm()) return;
-
+  const saveReservationRecord = async (
+    targetForm: ReservationForm,
+    successFallbackText: string,
+  ) => {
+    if (!validateReservationForm(targetForm)) return false;
     try {
       setIsMutating(true);
-      const result = await upsertReservationItem();
+      const result = await upsertReservationItem(targetForm);
 
       await loadReservations();
-      setSelectedDate(form.reservationDate);
+      setSelectedDate(targetForm.reservationDate);
       closeModal();
-      alert(result.message || (modalMode === 'edit' ? pt('t036') : pt('t037')));
+      alert(result.message || successFallbackText);
+      return true;
     } catch (error) {
       alert(
         typeof error === 'string'
           ? error
           : (error as { message?: string })?.message || pt('t038'),
+      );
+      return false;
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  // 예약 등록/수정: 예약 정보만 저장한다.
+  const saveReservation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isCompletedSettlementLocked) return;
+    await saveReservationRecord(
+      form,
+      modalMode === 'edit' ? pt('t036') : pt('t037'),
+    );
+  };
+
+  const startReservationService = async () => {
+    if (isCompletedSettlementLocked) return;
+    const nextForm: ReservationForm = {
+      ...form,
+      status: serviceStartStatusCode,
+    };
+    await saveReservationRecord(nextForm, pt('t128'));
+  };
+
+  const cancelCompletedReservationPayment = async () => {
+    if (modalMode !== 'edit' || !editingId) return;
+    if (!window.confirm(pt('t131'))) return;
+
+    try {
+      setIsMutating(true);
+      const latestLinkedSettlement = await findLinkedSettlementByReservationId(editingId);
+      const latestState = normalizeSettlementState(latestLinkedSettlement?.status);
+      setLinkedSettlementState(latestState);
+
+      if (!latestLinkedSettlement || latestState !== 'COMPLETED') {
+        alert(pt('t132'));
+        return;
+      }
+
+      const result = await invokeDbCommand<{ success: boolean; message: string }>(
+        'cancel_sales_settlement',
+        {
+          settlement_id: latestLinkedSettlement.settlement_id,
+          cancel_type: 'PAYMENT',
+          cancel_reason: pt('t133'),
+        },
+      );
+
+      await loadReservations();
+      setSelectedDate(form.reservationDate);
+      closeModal();
+      alert(result.message || pt('t134'));
+    } catch (error) {
+      alert(
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message || pt('t135'),
       );
     } finally {
       setIsMutating(false);
@@ -1138,7 +1473,28 @@ export default function ReservationCalendarPage() {
 
   // 결제 처리: 예약 저장 후 정산 저장(회원 충전금 차감 포함)을 수행한다.
   const processReservationPayment = async () => {
-    if (!validateReservationForm()) return;
+    if (!validateReservationForm(form)) return;
+    if (isPaymentCompleted) {
+      alert(pt('t129'));
+      return;
+    }
+    if (modalMode === 'edit' && editingId) {
+      try {
+        const latestLinkedSettlement = await findLinkedSettlementByReservationId(editingId);
+        if (normalizeSettlementState(latestLinkedSettlement?.status) === 'COMPLETED') {
+          setLinkedSettlementState('COMPLETED');
+          alert(pt('t129'));
+          return;
+        }
+      } catch (error) {
+        alert(
+          typeof error === 'string'
+            ? error
+            : (error as { message?: string })?.message || pt('t038'),
+        );
+        return;
+      }
+    }
     const normalizedQuickPayments = quickPaymentLines
       .map((line) => ({
         methodCode: line.methodCode.trim().toUpperCase(),
@@ -1173,7 +1529,7 @@ export default function ReservationCalendarPage() {
 
     try {
       setIsMutating(true);
-      const result = await upsertReservationItem();
+      const result = await upsertReservationItem(form);
       reservationSaved = true;
 
       const savedReservationId = Number(result.reservation_id);
@@ -1293,7 +1649,7 @@ export default function ReservationCalendarPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
-      <LoadingOverlay visible={isDbBusy} message={isMutating ? pt('t042') : pt('t041')} zIndex={90} />
+      <LoadingOverlay visible={isOverlayVisible} message={overlayMessage} zIndex={90} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
@@ -1725,10 +2081,11 @@ export default function ReservationCalendarPage() {
                   <input
                     type="date"
                     value={form.reservationDate}
+                    disabled={isReservationFormLocked}
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, reservationDate: event.target.value }))
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -1738,6 +2095,7 @@ export default function ReservationCalendarPage() {
                     type="time"
                     step={60}
                     value={form.startTime}
+                    disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   />
                 </div>
@@ -1746,6 +2104,7 @@ export default function ReservationCalendarPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t020')}</label>
                   <select
                     value={form.status}
+                    disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                   >
                     {statusOptions.map((status) => (
@@ -1755,24 +2114,59 @@ export default function ReservationCalendarPage() {
                     ))}</select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t062')}</label>
-                  <input
-                    value={form.customerName}
-                    onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))} list="reservation-customer-options"
-                    placeholder={pt('t027')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
-                  {/* 고객명은 회원 목록 추천 + 직접 입력을 동시에 허용하기 위해 datalist를 사용한다. */}
-                  <datalist id="reservation-customer-options">
-                    {memberNames.map((name) => (
-                      <option key={name} value={name} />
-                    ))}</datalist>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-700">
+                    {pt('t001')}: <span className="font-black text-slate-900">{selectedCustomerSummary || pt('t136')}</span>
+                  </p>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={customerPhoneQuery}
+                        disabled={isReservationFormLocked}
+                        onChange={(event) => handleCustomerPhoneQueryChange(event.target.value)}
+                        onFocus={() => {
+                          if (isReservationFormLocked) return;
+                          if (!customerPhoneQueryDigits) return;
+                          setIsCustomerLookupOpen(true);
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => setIsCustomerLookupOpen(false), 120);
+                        }}
+                        placeholder={pt('t094')}
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      />
+                      {isCustomerLookupOpen && customerPhoneQueryDigits && !isReservationFormLocked && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-36 overflow-y-auto shadow-lg">
+                          {customerLookupMembers.length === 0 ? (
+                            <p className="px-3 py-2 text-xs text-slate-400">{pt('t027')}</p>
+                          ) : (
+                            customerLookupMembers.map((member) => (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleCustomerMemberSelect(String(member.id));
+                                }}
+                                className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${
+                                  selectedCustomerMemberId === String(member.id) ? 'bg-primary/5' : ''
+                                }`}
+                              >
+                                <p className="text-sm font-semibold text-slate-700">{member.name}</p>
+                                <p className="text-xs text-slate-500">{member.phone || '-'}</p>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t100')}</label>
                   <select
                     value={form.gender}
+                    disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
                   >
@@ -1786,6 +2180,7 @@ export default function ReservationCalendarPage() {
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t004')}</label>
                   <select
                     value={form.designerName}
+                    disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, designerName: event.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
                   >
                     <option value="">
@@ -1803,11 +2198,15 @@ export default function ReservationCalendarPage() {
                     )}</select>
                 </div>
 
-                <div className="space-y-1 md:col-span-2 lg:col-span-1">
+                <div className="space-y-1 md:col-span-2 lg:col-span-3">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t066')}</label>
-                  <input
+                  <textarea
                     value={form.note}
-                    onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))} placeholder={pt('t025')} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    rows={4}
+                    disabled={isReservationFormLocked}
+                    onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
+                    placeholder={pt('t025')}
+                    className="w-full min-h-[105px] px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -1824,6 +2223,7 @@ export default function ReservationCalendarPage() {
                       <label className="text-xs font-bold text-slate-500 uppercase">{pt('t068')}</label>
                       <select
                         value={form.selectedCategory}
+                        disabled={isReservationFormLocked}
                         onChange={(event) => {
                           const nextCategory = event.target.value;
                           const firstService = serviceItems.find(
@@ -1848,6 +2248,7 @@ export default function ReservationCalendarPage() {
                       <label className="text-xs font-bold text-slate-500 uppercase">{pt('t009')}</label>
                       <select
                         value={form.selectedServiceId}
+                        disabled={isReservationFormLocked}
                         onChange={(event) =>
                           setForm((prev) => ({ ...prev, selectedServiceId: event.target.value }))
                         }
@@ -1873,7 +2274,7 @@ export default function ReservationCalendarPage() {
                     )}<button
                       type="button"
                       onClick={addSelectedService}
-                      disabled={!selectedService || isDbBusy}
+                      disabled={!selectedService || isReservationFormLocked}
                       className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
                     >
                       <PlusCircle size={16} />
@@ -1914,7 +2315,7 @@ export default function ReservationCalendarPage() {
                               <td className="py-2.5 px-3 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => removeService(service.lineId)} disabled={isDbBusy}
+                                  onClick={() => removeService(service.lineId)} disabled={isReservationFormLocked}
                                   className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                 >
                                   <Trash2 size={14} />
@@ -1931,7 +2332,9 @@ export default function ReservationCalendarPage() {
               <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <h4 className="text-sm font-bold text-slate-700">{pt('t104')}</h4>
-                  <p className="text-[11px] text-slate-500">{pt('t117')}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {isPaymentCompleted ? pt('t129') : pt('t117')}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1941,10 +2344,11 @@ export default function ReservationCalendarPage() {
                       type="number"
                       min={0}
                       value={calculatorDiscountAmount}
+                      disabled={isQuickPaymentReadOnly || isReservationFormLocked}
                       onChange={(event) =>
                         setCalculatorDiscountAmount(Math.min(toAmountNumber(event.target.value), formExpectedAmount))
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -1963,7 +2367,7 @@ export default function ReservationCalendarPage() {
                     <button
                       type="button"
                       onClick={addQuickPaymentLine}
-                      disabled={manualPaymentMethodOptions.length === 0 || calculatorRemainingAmount <= 0}
+                      disabled={isQuickPaymentReadOnly || isReservationFormLocked || manualPaymentMethodOptions.length === 0 || calculatorRemainingAmount <= 0}
                       className="text-xs font-bold text-primary disabled:opacity-40 flex items-center gap-1"
                     >
                       <PlusCircle size={14} />
@@ -1985,8 +2389,9 @@ export default function ReservationCalendarPage() {
                         <div key={line.lineId} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                           <select
                             value={line.methodCode}
+                            disabled={isQuickPaymentReadOnly || isReservationFormLocked}
                             onChange={(event) => updateQuickPaymentLine(line.lineId, 'methodCode', event.target.value)}
-                            className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20"
+                            className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                           >
                             {manualPaymentMethodOptions.map((method) => (
                               <option key={method.code} value={method.code}>
@@ -1998,13 +2403,15 @@ export default function ReservationCalendarPage() {
                             type="number"
                             min={0}
                             value={line.amount}
+                            disabled={isQuickPaymentReadOnly || isReservationFormLocked}
                             onChange={(event) => updateQuickPaymentLine(line.lineId, 'amount', event.target.value)}
-                            className="w-36 px-2 py-1.5 border border-slate-200 rounded text-xs font-black text-right outline-none focus:ring-2 focus:ring-primary/20"
+                            className="w-36 px-2 py-1.5 border border-slate-200 rounded text-xs font-black text-right outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                           />
                           <button
                             type="button"
+                            disabled={isQuickPaymentReadOnly || isReservationFormLocked}
                             onClick={() => removeQuickPaymentLine(line.lineId)}
-                            className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-400"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -2048,30 +2455,42 @@ export default function ReservationCalendarPage() {
 
                 <div className="flex items-center gap-2">
                   <button
-                    type="button"
-                    onClick={closeModal}
-                    disabled={isDbBusy}
-                    className="px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  >
-                    {pt('t076')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={processReservationPayment}
-                    disabled={isDbBusy}
-                    className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2"
-                  >
-                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
-                    {pt('t122')}
-                  </button>
-                  <button
                     type="submit"
-                    disabled={isDbBusy}
+                    disabled={isReservationFormLocked}
                     className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
                   >
                     {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
                     {pt('t121')}
                   </button>
+                  <button
+                    type="button"
+                    onClick={startReservationService}
+                    disabled={isReservationFormLocked}
+                    className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
+                      isReservationFormLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'
+                    }`}
+                  >
+                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
+                    {pt('t127')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={isPaymentCancelAction ? cancelCompletedReservationPayment : processReservationPayment}
+                    disabled={isPaymentActionDisabled}
+                    className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
+                      isPaymentActionDisabled
+                        ? 'bg-slate-400 cursor-not-allowed'
+                        : isPaymentCancelAction
+                          ? 'bg-rose-600 hover:bg-rose-700'
+                          : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
+                  >
+                    {(isMutating || isSettlementStateLoading)
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <Clock3 size={15} />}
+                    {paymentActionLabel}
+                  </button>
+                  
                 </div>
               </div>
             </form>

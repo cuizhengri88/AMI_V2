@@ -716,7 +716,19 @@
       "t122": "Process Payment",
       "t123": "Please add at least one payment line to process payment.",
       "t124": "Set reservation status to Completed before processing payment.",
-      "t125": "Payment processed successfully."
+      "t125": "Payment processed successfully.",
+      "t126": "Payment Completed",
+      "t127": "Start Service",
+      "t128": "Saved as service-start status.",
+      "t129": "This reservation has already been paid.",
+      "t130": "Cancel Payment",
+      "t131": "Do you want to cancel this completed payment?",
+      "t132": "No completed settlement available for payment cancellation.",
+      "t133": "Payment canceled from reservation edit popup",
+      "t134": "Payment cancellation completed.",
+      "t135": "Failed to cancel payment.",
+      "t136": "Customer Name (Phone)",
+      "t137": "Loading reservation info..."
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",

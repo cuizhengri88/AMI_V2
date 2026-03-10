@@ -78,6 +78,7 @@ type PaymentDetail = {
 
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 type SettlementCancelType = 'PAYMENT' | 'PROCEDURE';
+type SettlementListTab = Extract<SettlementStatus, 'PROCESSING' | 'COMPLETED'>;
 
 type Settlement = {
   id: number;
@@ -199,6 +200,7 @@ export default function SalesEntryPage() {
   // [상태] 목록 검색 조건
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState(todayIso());
+  const [activeSettlementTab, setActiveSettlementTab] = useState<SettlementListTab>('PROCESSING');
 
   // [상태] 모달 입력값
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'GUEST'>('GUEST');
@@ -563,18 +565,43 @@ export default function SalesEntryPage() {
     );
   }, [todayReservations, reservationImportDate, settledReservationIdSet]);
 
+  // [계산] 예약 연동 정산은 예약 등록 당시 고객명을 우선 표기한다.
+  const reservationCustomerNameById = useMemo(
+    () =>
+      new Map(
+        todayReservations.map((reservation) => [reservation.id, reservation.customerName.trim()]),
+      ),
+    [todayReservations],
+  );
+
+  const getSettlementCustomerName = useCallback(
+    (settlement: Settlement, fallbackMemberName?: string) => {
+      if (settlement.reservationId) {
+        const reservationCustomerName = reservationCustomerNameById.get(settlement.reservationId)?.trim();
+        if (reservationCustomerName) return reservationCustomerName;
+      }
+
+      const memberName = fallbackMemberName?.trim();
+      if (memberName) return memberName;
+      return settlement.memberId === 'GUEST' ? pt('t025') : '';
+    },
+    [reservationCustomerNameById, pt],
+  );
+
   // [계산] 목록 검색(고객명/전화번호/담당자 + 날짜)
-  const filteredSettlements = useMemo(() => {
+  const searchedSettlements = useMemo(() => {
     return settlements.filter((settlement) => {
       const member =
         settlement.memberId === 'GUEST'
-          ? { name: pt('t025'), phone: '' }
+          ? { name: '', phone: '' }
           : members.find((entry) => entry.id === settlement.memberId);
       const manager = managers.find((entry) => entry.id === settlement.managerId);
+      const customerName = getSettlementCustomerName(settlement, member?.name);
 
       const query = searchTerm.trim().toLowerCase();
       const matchesSearch =
         query.length === 0 ||
+        customerName.toLowerCase().includes(query) ||
         !!member?.name.toLowerCase().includes(query) ||
         !!member?.phone.includes(searchTerm) ||
         !!manager?.name.toLowerCase().includes(query);
@@ -582,7 +609,26 @@ export default function SalesEntryPage() {
       const matchesDate = settlement.date.startsWith(filterDate);
       return matchesSearch && matchesDate;
     });
-  }, [members, managers, settlements, searchTerm, filterDate]);
+  }, [members, managers, settlements, searchTerm, filterDate, getSettlementCustomerName]);
+
+  const settlementTabCounts = useMemo(
+    () =>
+      searchedSettlements.reduce<Record<SettlementListTab, number>>(
+        (acc, settlement) => {
+          if (settlement.status === 'PROCESSING' || settlement.status === 'COMPLETED') {
+            acc[settlement.status] += 1;
+          }
+          return acc;
+        },
+        { PROCESSING: 0, COMPLETED: 0 },
+      ),
+    [searchedSettlements],
+  );
+
+  const filteredSettlements = useMemo(
+    () => searchedSettlements.filter((settlement) => settlement.status === activeSettlementTab),
+    [searchedSettlements, activeSettlementTab],
+  );
 
   // [계산] 선택한 시술의 총 금액/총 시간
   const totals = useMemo(() => {
@@ -893,6 +939,11 @@ export default function SalesEntryPage() {
     }
   };
 
+  const settlementTabs: Array<{ key: SettlementListTab; label: string }> = [
+    { key: 'PROCESSING', label: pt('t047') },
+    { key: 'COMPLETED', label: pt('t045') },
+  ];
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -937,6 +988,30 @@ export default function SalesEntryPage() {
 
       {/* 정산 목록 테이블: 클릭 시 수정 모달 오픈, 우측 버튼으로 취소 모달 오픈 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-1">
+        <div className="px-4 pt-4 border-b border-slate-100 bg-slate-50/60">
+          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1 gap-1">
+            {settlementTabs.map((tab) => {
+              const isActive = activeSettlementTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveSettlementTab(tab.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-colors ${
+                    isActive
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`ml-1.5 ${isActive ? 'text-white/90' : 'text-slate-400'}`}>
+                    {settlementTabCounts[tab.key]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[980px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
@@ -953,7 +1028,11 @@ export default function SalesEntryPage() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredSettlements.map((settlement) => {
-                const member = settlement.memberId === 'GUEST' ? { name: pt('t025') } : members.find((entry) => entry.id === settlement.memberId);
+                const member =
+                  settlement.memberId === 'GUEST'
+                    ? null
+                    : members.find((entry) => entry.id === settlement.memberId);
+                const customerName = getSettlementCustomerName(settlement, member?.name);
                 const manager = managers.find((entry) => entry.id === settlement.managerId);
                 const procedureNames = settlement.procedureIds
                   .map((id) => procedures.find((entry) => entry.id === id)?.name)
@@ -1004,10 +1083,10 @@ export default function SalesEntryPage() {
                             settlement.memberId === 'GUEST' ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'
                           }`}
                         >
-                          {member?.name?.[0] || '?'}
+                          {customerName?.[0] || '?'}
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-900">{member?.name}</span>
+                          <span className="text-sm font-bold text-slate-900">{customerName || '-'}</span>
                           {settlement.reservationId && (
                           <span className="text-[9px] font-black text-primary flex items-center gap-0.5">
                               <Calendar size={8} /> {pt('t048')}
@@ -1117,7 +1196,7 @@ export default function SalesEntryPage() {
                         const member = reservation.memberId
                           ? members.find((entry) => entry.id === reservation.memberId)
                           : null;
-                        const customerLabel = member?.name || reservation.customerName || pt('t025');
+                        const customerLabel = reservation.customerName || member?.name || pt('t025');
                         const procLabel = reservation.procedureIds
                           .map((id) => procedures.find((entry) => entry.id === id)?.name)
                           .filter(Boolean)

@@ -36,6 +36,7 @@ type Settlement = {
   entryType: HistoryEntryType;
   date: string;
   memberId: number | 'GUEST';
+  customerName?: string;
   managerId: number | null;
   procedureIds: number[];
   totalAmount: number;
@@ -254,16 +255,25 @@ export default function SalesHistoryPage() {
     return labels.length > 0 ? labels : DEFAULT_CATEGORY_TEXT_KEYS.map((key) => pt(key));
   }, [procedures, pt]);
 
-  const getMemberInfo = (memberId: number | 'GUEST') => {
-    if (memberId === 'GUEST') return { name: pt('t015'), phone: '-' };
-    const member = members.find((entry) => entry.id === memberId);
-    return { name: member?.name || '-', phone: member?.phone || '-' };
-  };
+  const getCustomerInfo = useCallback((entry: Settlement) => {
+    const member =
+      entry.memberId === 'GUEST'
+        ? { name: pt('t015'), phone: '-' }
+        : members.find((memberItem) => memberItem.id === entry.memberId) || { name: '-', phone: '-' };
+    const customerName =
+      entry.entryType === 'SETTLEMENT'
+        ? entry.customerName?.trim() || ''
+        : '';
+    return {
+      name: customerName || member.name,
+      phone: member.phone || '-',
+    };
+  }, [members, pt]);
 
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [codeResult, managerResult, procedureResult, memberResult, settlementResult] = await Promise.all([
+      const [codeResult, managerResult, procedureResult, memberResult, settlementResult, reservationResult] = await Promise.all([
         invokeDbCommand<{
           details: Array<{ group: string; code: string; name: string; order: number; use_yn: 'Y' | 'N' }>;
         }>('get_common_code_management_data'),
@@ -310,6 +320,12 @@ export default function SalesHistoryPage() {
             cancelled_at: string | null;
           }>;
         }>('get_sales_settlement_data'),
+        invokeDbCommand<{
+          reservations: Array<{
+            reservation_id: number;
+            customer_name: string;
+          }>;
+        }>('get_reservation_calendar_data'),
       ]);
 
       setMembers((memberResult.members || []).map((entry) => ({
@@ -341,26 +357,34 @@ export default function SalesHistoryPage() {
         .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code));
       setPaymentMethods(methods.length > 0 ? methods : FALLBACK_PAYMENT_METHODS);
 
-      const settlementRows: Settlement[] = (settlementResult.settlements || []).map((entry) => ({
-        id: entry.settlement_id,
-        sourceId: entry.settlement_id,
-        entryType: 'SETTLEMENT',
-        date: entry.settlement_datetime,
-        memberId: entry.member_user_id ?? 'GUEST',
-        managerId: entry.manager_employee_id,
-        procedureIds: entry.service_ids || [],
-        totalAmount: entry.total_amount,
-        totalTime: entry.total_time_minutes,
-        payments: (entry.payments || []).map((payment) => ({
-          method: payment.payment_method_code,
-          amount: payment.amount,
-          couponServiceId: payment.coupon_service_id ?? undefined,
-        })),
-        status: toSettlementStatus(entry.status),
-        reservationId: entry.reservation_ref || undefined,
-        cancelReason: entry.cancel_reason || undefined,
-        cancelledAt: entry.cancelled_at || undefined,
-      }));
+      const reservationCustomerNameById = new Map(
+        (reservationResult.reservations || []).map((entry) => [String(entry.reservation_id), entry.customer_name?.trim() || '']),
+      );
+
+      const settlementRows: Settlement[] = (settlementResult.settlements || []).map((entry) => {
+        const reservationId = entry.reservation_ref?.trim() || '';
+        return {
+          id: entry.settlement_id,
+          sourceId: entry.settlement_id,
+          entryType: 'SETTLEMENT',
+          date: entry.settlement_datetime,
+          memberId: entry.member_user_id ?? 'GUEST',
+          customerName: reservationId ? reservationCustomerNameById.get(reservationId) || undefined : undefined,
+          managerId: entry.manager_employee_id,
+          procedureIds: entry.service_ids || [],
+          totalAmount: entry.total_amount,
+          totalTime: entry.total_time_minutes,
+          payments: (entry.payments || []).map((payment) => ({
+            method: payment.payment_method_code,
+            amount: payment.amount,
+            couponServiceId: payment.coupon_service_id ?? undefined,
+          })),
+          status: toSettlementStatus(entry.status),
+          reservationId: reservationId || undefined,
+          cancelReason: entry.cancel_reason || undefined,
+          cancelledAt: entry.cancelled_at || undefined,
+        };
+      });
 
       const pointRechargeRows: Settlement[] = (memberResult.histories || [])
         .filter((entry) => {
@@ -428,9 +452,7 @@ export default function SalesHistoryPage() {
     const keyword = searchMember.trim().toLowerCase();
     const searchPhone = searchMember.replace(/-/g, '').trim();
     return settlements.filter((entry) => {
-      const member = entry.memberId === 'GUEST'
-        ? { name: pt('t015'), phone: '' }
-        : members.find((memberItem) => memberItem.id === entry.memberId) || { name: '-', phone: '' };
+      const customer = getCustomerInfo(entry);
       const procedureRows = entry.procedureIds.map((id) => procedures.find((procedure) => procedure.id === id)).filter(Boolean) as Procedure[];
       const day = toDateOnly(entry.date);
 
@@ -438,8 +460,8 @@ export default function SalesHistoryPage() {
         && (!startDate || day >= startDate)
         && (!endDate || day <= endDate);
       const matchesMember = keyword.length === 0
-        || member.name.toLowerCase().includes(keyword)
-        || member.phone.replace(/-/g, '').includes(searchPhone);
+        || customer.name.toLowerCase().includes(keyword)
+        || customer.phone.replace(/-/g, '').includes(searchPhone);
       const matchesManager = selectedManager === ''
         || (entry.managerId != null && String(entry.managerId) === selectedManager);
       const matchesCategory = selectedCategory === ''
@@ -451,7 +473,7 @@ export default function SalesHistoryPage() {
 
       return matchesDate && matchesMember && matchesManager && matchesCategory && matchesProcedure && matchesPayment;
     });
-  }, [settlements, searchMember, members, procedures, startDate, endDate, selectedManager, selectedCategory, selectedProcedure, selectedPayment, pt]);
+  }, [settlements, searchMember, procedures, startDate, endDate, selectedManager, selectedCategory, selectedProcedure, selectedPayment, getCustomerInfo]);
 
   const stats = useMemo(() => {
     return filteredHistory.reduce((acc, entry) => {
@@ -541,7 +563,7 @@ export default function SalesHistoryPage() {
     ];
 
     const rows = filteredHistory.map((entry) => {
-      const member = getMemberInfo(entry.memberId);
+      const customer = getCustomerInfo(entry);
       const managerName = entry.entryType === 'POINT_RECHARGE'
         ? '-'
         : managers.find((manager) => manager.id === entry.managerId)?.name || '-';
@@ -556,8 +578,8 @@ export default function SalesHistoryPage() {
         getEntryTypeLabel(entry.entryType),
         entry.sourceId,
         formatDateTime(entry.date),
-        member.name,
-        member.phone || '-',
+        customer.name,
+        customer.phone || '-',
         managerName,
         procedureNames,
         paymentNames,
@@ -582,6 +604,8 @@ export default function SalesHistoryPage() {
       alert(`파일 저장 완료\n${result.outputPath}`);
     }
   };
+
+  const selectedCustomerInfo = selectedHistory ? getCustomerInfo(selectedHistory) : null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="max-w-7xl mx-auto space-y-6 pb-20">
@@ -711,7 +735,7 @@ export default function SalesHistoryPage() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredHistory.map((entry) => {
-                const member = getMemberInfo(entry.memberId);
+                const customer = getCustomerInfo(entry);
                 const managerName = entry.entryType === 'POINT_RECHARGE'
                   ? '-'
                   : managers.find((manager) => manager.id === entry.managerId)?.name || '-';
@@ -730,12 +754,12 @@ export default function SalesHistoryPage() {
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2">
                         <div className={`size-8 rounded-full flex items-center justify-center text-[10px] font-black ${entry.memberId === 'GUEST' ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'}`}>
-                          {member.name[0]}
+                          {customer.name[0] || '?'}
                         </div>
-                        <span className="text-sm font-bold text-slate-900">{member.name}</span>
+                        <span className="text-sm font-bold text-slate-900">{customer.name}</span>
                       </div>
                     </td>
-                    <td className="py-4 px-6 text-xs text-slate-600 font-mono">{member.phone || '-'}</td>
+                    <td className="py-4 px-6 text-xs text-slate-600 font-mono">{customer.phone || '-'}</td>
                     <td className="py-4 px-6 text-sm font-bold text-slate-700">{managerName}</td>
                     <td className="py-4 px-6 text-xs text-slate-500 max-w-[200px] truncate">{procedureNames || '-'}</td>
                     <td className="py-4 px-6">
@@ -828,14 +852,11 @@ export default function SalesHistoryPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 bg-slate-50 rounded-2xl">
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{pt('t003')}</p>
-                    {selectedHistory.memberId === 'GUEST' ? (
-                      <p className="text-sm font-bold text-slate-900">{pt('t015')}</p>
-                    ) : (
-                      <div>
-                        <p className="text-sm font-black text-slate-900">{getMemberInfo(selectedHistory.memberId).name}</p>
-                        <p className="text-xs text-slate-500 font-bold">{getMemberInfo(selectedHistory.memberId).phone}</p>
-                      </div>
-                    )}</div>
+                    <div>
+                      <p className="text-sm font-black text-slate-900">{selectedCustomerInfo?.name || '-'}</p>
+                      <p className="text-xs text-slate-500 font-bold">{selectedCustomerInfo?.phone || '-'}</p>
+                    </div>
+                  </div>
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{pt('t006')}</p>
                     {selectedHistory.entryType === 'POINT_RECHARGE' ? (
