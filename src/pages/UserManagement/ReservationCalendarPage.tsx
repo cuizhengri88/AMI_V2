@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRef } from 'react';
 import { motion, useDragControls } from 'motion/react';
 import {
@@ -123,7 +123,7 @@ type SalesSettlementPaymentRow = {
 type SalesSettlementRow = {
   settlement_id: number;
   reservation_ref?: string | null;
-  member_user_id?: number | null;
+  member_user_id?: string | null;
   manager_employee_id?: number | null;
   service_ids?: number[] | null;
   total_amount?: number;
@@ -733,6 +733,44 @@ export default function ReservationCalendarPage() {
       : null;
   }, [form.customerName, memberIdByName, selectedCustomerMemberId]);
 
+  const resolveMemberUserIdFromIdentifier = useCallback((identifier?: string | null) => {
+    const raw = (identifier || '').trim();
+    if (!raw) return null;
+
+    if (/^\d+$/.test(raw)) {
+      const numericId = Number(raw);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        const matchedById = members.find((member) => member.id === numericId);
+        if (matchedById) return matchedById.id;
+      }
+    }
+
+    const digits = normalizePhoneDigits(raw);
+    if (digits.length >= 7) {
+      const matchedByPhone = members.find((member) => {
+        const memberDigits = member.phoneDigits;
+        if (!memberDigits || memberDigits.length < 7) return false;
+        return memberDigits === digits || memberDigits.endsWith(digits) || digits.endsWith(memberDigits);
+      });
+      if (matchedByPhone) return matchedByPhone.id;
+    }
+
+    const nameKey = normalizeNameKey(raw);
+    if (!nameKey) return null;
+    const matchedByName = members.find((member) => normalizeNameKey(member.name) === nameKey);
+    return matchedByName?.id || null;
+  }, [members]);
+
+  const resolveMemberIdentifierByUserId = useCallback((memberId?: number | null) => {
+    if (!memberId || !Number.isFinite(memberId) || memberId <= 0) return null;
+    const matchedMember = members.find((member) => member.id === memberId);
+    if (!matchedMember) return null;
+    const phone = matchedMember.phone.trim();
+    if (phone) return phone;
+    const name = matchedMember.name.trim();
+    return name || null;
+  }, [members]);
+
   const serviceStartStatusCode = useMemo(() => {
     const processingStatus = statusOptions.find((status) =>
       status.code.trim().toUpperCase().includes('PROCESS'),
@@ -1022,8 +1060,8 @@ export default function ReservationCalendarPage() {
 
       if (settlementState !== 'COMPLETED' || !linkedSettlement) return;
 
-      const settlementMemberId = Number(linkedSettlement.member_user_id);
-      if (Number.isFinite(settlementMemberId) && settlementMemberId > 0) {
+      const settlementMemberId = resolveMemberUserIdFromIdentifier(linkedSettlement.member_user_id);
+      if (settlementMemberId) {
         setSelectedCustomerMemberId(String(settlementMemberId));
       }
 
@@ -1422,10 +1460,18 @@ export default function ReservationCalendarPage() {
       throw new Error(pt('t010'));
     }
 
-    const linkedMemberUserId = Number(linkedSettlement?.member_user_id);
+    const linkedMemberUserId = resolveMemberUserIdFromIdentifier(linkedSettlement?.member_user_id);
     const memberUserId =
       selectedMemberUserId
-      || (Number.isFinite(linkedMemberUserId) && linkedMemberUserId > 0 ? linkedMemberUserId : null);
+      || linkedMemberUserId
+      || null;
+    const linkedMemberIdentifier = (linkedSettlement?.member_user_id || '').trim();
+    const memberIdentifier =
+      resolveMemberIdentifierByUserId(memberUserId)
+      || linkedMemberIdentifier
+      || (customerPhoneQuery || '').trim()
+      || targetForm.customerName.trim()
+      || null;
 
     const payments: Array<{
       payment_method_code: string;
@@ -1452,7 +1498,7 @@ export default function ReservationCalendarPage() {
     await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
       settlement: {
         settlement_id: canReuseLinkedSettlement ? linkedSettlement.settlement_id : undefined,
-        member_user_id: memberUserId,
+        member_user_id: memberIdentifier,
         manager_employee_id: managerEmployeeId,
         service_ids: serviceIds,
         payments,
@@ -1660,7 +1706,11 @@ export default function ReservationCalendarPage() {
       const settlementResult = await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
         settlement: {
           settlement_id: linkedSettlement?.settlement_id || undefined,
-          member_user_id: selectedMemberUserId,
+          member_user_id:
+            resolveMemberIdentifierByUserId(selectedMemberUserId)
+            || (customerPhoneQuery || '').trim()
+            || form.customerName.trim()
+            || null,
           manager_employee_id: managerEmployeeIdForSettlement!,
           service_ids: serviceIds,
           payments: [

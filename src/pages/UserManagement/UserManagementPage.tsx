@@ -49,7 +49,7 @@ type SalesSettlementPayment = {
 type SalesSettlement = {
   settlement_id: number;
   settlement_datetime: string;
-  member_user_id: number | null;
+  member_user_id: string | null;
   guest_customer_name?: string | null;
   guest_customer_phone?: string | null;
   manager_employee_id: number;
@@ -374,8 +374,15 @@ export default function UserManagementPage() {
 
       const matchedSettlements = (settlementResult.settlements || [])
         .filter((entry) => {
-          if (entry.member_user_id === targetUserId) return true;
-          if (entry.member_user_id !== null) return false;
+          const memberIdentifier = (entry.member_user_id || '').trim();
+          if (memberIdentifier) {
+            if (/^\d+$/.test(memberIdentifier) && Number(memberIdentifier) === targetUserId) {
+              return true;
+            }
+            if (isMatchedByNameOrPhone(memberIdentifier, memberIdentifier, user.name, user.phone)) {
+              return true;
+            }
+          }
           return isMatchedByNameOrPhone(
             entry.guest_customer_name,
             entry.guest_customer_phone,

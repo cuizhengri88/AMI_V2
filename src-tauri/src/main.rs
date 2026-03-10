@@ -838,7 +838,7 @@ struct SalesSettlementPaymentPayload {
 #[derive(Debug, Deserialize)]
 struct SalesSettlementPayload {
     settlement_id: Option<i64>,
-    member_user_id: Option<i64>,
+    member_user_id: Option<String>,
     manager_employee_id: i64,
     service_ids: Vec<i64>,
     payments: Vec<SalesSettlementPaymentPayload>,
@@ -889,7 +889,7 @@ struct SalesSettlementPaymentDto {
 struct SalesSettlementDto {
     settlement_id: i64,
     settlement_datetime: String,
-    member_user_id: Option<i64>,
+    member_user_id: Option<String>,
     manager_employee_id: i64,
     service_ids: Vec<i64>,
     total_amount: i64,
@@ -1027,6 +1027,99 @@ fn normalize_store_code(value: Option<&str>) -> String {
     } else {
         normalized
     }
+}
+
+fn normalize_phone_digits(value: &str) -> String {
+    value.chars().filter(|ch| ch.is_ascii_digit()).collect()
+}
+
+async fn resolve_member_snapshot_by_identifier(
+    client: &Client,
+    store_code: &str,
+    identifier: &str,
+) -> Result<Option<(i64, String, Option<String>)>, String> {
+    let trimmed = identifier.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
+        let member_by_id = client
+            .query_opt(
+                r#"
+                SELECT user_id::BIGINT, name, phone
+                  FROM user_management
+                 WHERE store_code = $1
+                   AND user_id::TEXT = $2
+                 LIMIT 1
+                "#,
+                &[&store_code, &trimmed],
+            )
+            .await
+            .map_err(|e| format!("회원 ID 조회 실패: {e}"))?;
+
+        if let Some(row) = member_by_id {
+            return Ok(Some((
+                row.get::<_, i64>(0),
+                row.get::<_, String>(1),
+                row.get::<_, Option<String>>(2),
+            )));
+        }
+    }
+
+    let member_by_phone_or_name = client
+        .query_opt(
+            r#"
+            SELECT user_id::BIGINT, name, phone
+              FROM user_management
+             WHERE store_code = $1
+               AND (
+                    LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+                    OR BTRIM(COALESCE(phone, '')) = BTRIM($2)
+               )
+             ORDER BY user_id ASC
+             LIMIT 1
+            "#,
+            &[&store_code, &trimmed],
+        )
+        .await
+        .map_err(|e| format!("회원 식별자 조회 실패: {e}"))?;
+
+    if let Some(row) = member_by_phone_or_name {
+        return Ok(Some((
+            row.get::<_, i64>(0),
+            row.get::<_, String>(1),
+            row.get::<_, Option<String>>(2),
+        )));
+    }
+
+    let digits = normalize_phone_digits(trimmed);
+    if digits.len() < 7 {
+        return Ok(None);
+    }
+
+    let member_by_phone_digits = client
+        .query_opt(
+            r#"
+            SELECT user_id::BIGINT, name, phone
+              FROM user_management
+             WHERE store_code = $1
+               AND REGEXP_REPLACE(COALESCE(phone, ''), '\D', '', 'g') = $2
+             ORDER BY user_id ASC
+             LIMIT 1
+            "#,
+            &[&store_code, &digits],
+        )
+        .await
+        .map_err(|e| format!("회원 전화번호 조회 실패: {e}"))?;
+
+    Ok(member_by_phone_digits.map(|row| {
+        (
+            row.get::<_, i64>(0),
+            row.get::<_, String>(1),
+            row.get::<_, Option<String>>(2),
+        )
+    }))
 }
 
 fn sanitize_hardware_token(value: &str) -> Option<String> {
@@ -2237,7 +2330,7 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
         CREATE TABLE IF NOT EXISTS sales_settlement_management (
             settlement_id BIGSERIAL PRIMARY KEY,
             store_code VARCHAR(50) NOT NULL DEFAULT 'HAIR_001',
-            member_user_id BIGINT NULL REFERENCES user_management(user_id) ON DELETE SET NULL,
+            member_user_id VARCHAR(100) NULL,
             manager_employee_id BIGINT NOT NULL REFERENCES employee_management(employee_id) ON DELETE RESTRICT,
             total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
             total_time_minutes INTEGER NOT NULL CHECK (total_time_minutes >= 0),
@@ -2308,6 +2401,13 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
 
         ALTER TABLE sales_settlement_management
         ADD COLUMN IF NOT EXISTS guest_customer_phone VARCHAR(30);
+
+        ALTER TABLE sales_settlement_management
+        DROP CONSTRAINT IF EXISTS sales_settlement_management_member_user_id_fkey;
+
+        ALTER TABLE sales_settlement_management
+        ALTER COLUMN member_user_id TYPE VARCHAR(100)
+        USING member_user_id::TEXT;
 
         ALTER TABLE sales_settlement_management
         DROP CONSTRAINT IF EXISTS sales_settlement_management_status_check;
@@ -5510,7 +5610,7 @@ async fn get_sales_settlement_data(
             SELECT
                 s.settlement_id::BIGINT,
                 TO_CHAR(s.settlement_datetime, 'YYYY-MM-DD HH24:MI') AS settlement_datetime,
-                s.member_user_id::BIGINT,
+                s.member_user_id,
                 s.manager_employee_id::BIGINT,
                 s.total_amount::BIGINT,
                 s.total_time_minutes::INTEGER,
@@ -5611,7 +5711,7 @@ async fn get_sales_settlement_data(
             SalesSettlementDto {
                 settlement_id,
                 settlement_datetime: row.get::<_, String>(1),
-                member_user_id: row.get::<_, Option<i64>>(2),
+                member_user_id: row.get::<_, Option<String>>(2),
                 manager_employee_id: row.get::<_, i64>(3),
                 total_amount: row.get::<_, i64>(4),
                 total_time_minutes: row.get::<_, i32>(5),
@@ -5943,19 +6043,29 @@ async fn upsert_sales_settlement(
         return Err("status는 PROCESSING 또는 COMPLETED 이어야 합니다.".to_string());
     }
 
-    if let Some(member_user_id) = settlement.member_user_id {
-        if member_user_id <= 0 {
-            return Err("member_user_id는 1 이상이어야 합니다.".to_string());
-        }
-        let member_exists = client
-            .query_opt(
-                "SELECT 1 FROM user_management WHERE store_code = $1 AND user_id::BIGINT = $2",
-                &[&store_code, &member_user_id],
-            )
-            .await
-            .map_err(|e| format!("회원 확인 실패: {e}"))?;
-        if member_exists.is_none() {
-            return Err("선택한 점포의 회원이 존재하지 않습니다.".to_string());
+    let mut member_identifier = settlement
+        .member_user_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mut resolved_member_user_id: Option<i64> = None;
+    let mut member_snapshot_name: Option<String> = None;
+    let mut member_snapshot_phone: Option<String> = None;
+
+    if let Some(identifier) = member_identifier.as_deref() {
+        if let Some((member_user_id, member_name, member_phone)) =
+            resolve_member_snapshot_by_identifier(&client, &store_code, identifier).await?
+        {
+            resolved_member_user_id = Some(member_user_id);
+            member_snapshot_name = Some(member_name.trim().to_string()).filter(|value| !value.is_empty());
+            member_snapshot_phone = member_phone
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+
+            // 회원 정산은 member_user_id 컬럼에 회원 전화번호(없으면 이름)를 저장한다.
+            member_identifier = member_snapshot_phone
+                .clone()
+                .or_else(|| member_snapshot_name.clone());
         }
     }
 
@@ -6088,7 +6198,7 @@ async fn upsert_sales_settlement(
         if payment.amount < 0 {
             return Err("결제 금액은 0 이상이어야 합니다.".to_string());
         }
-        if settlement.member_user_id.is_none()
+        if resolved_member_user_id.is_none()
             && (is_sales_balance_payment_code(&code) || code == "COUPON")
         {
             return Err(
@@ -6188,9 +6298,16 @@ async fn upsert_sales_settlement(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    if settlement.member_user_id.is_some() {
-        guest_customer_name = None;
-        guest_customer_phone = None;
+    if resolved_member_user_id.is_some() {
+        // 회원 정산도 고객명/전화번호 스냅샷을 함께 저장해 이름/전화 기반 조회를 지원한다.
+        guest_customer_name = member_snapshot_name;
+        guest_customer_phone = member_snapshot_phone;
+    }
+
+    if let Some(identifier) = member_identifier.as_ref() {
+        if identifier.chars().count() > 100 {
+            return Err("member_user_id는 100자 이하여야 합니다.".to_string());
+        }
     }
 
     if let Some(name) = guest_customer_name.as_ref() {
@@ -6270,7 +6387,7 @@ async fn upsert_sales_settlement(
                 &[
                     &settlement_id,
                     &store_code,
-                    &settlement.member_user_id,
+                    &member_identifier,
                     &settlement.manager_employee_id,
                     &total_amount,
                     &total_time_minutes,
@@ -6323,7 +6440,7 @@ async fn upsert_sales_settlement(
             "#,
             &[
                 &store_code,
-                &settlement.member_user_id,
+                &member_identifier,
                 &settlement.manager_employee_id,
                 &total_amount,
                 &total_time_minutes,
@@ -6426,7 +6543,7 @@ async fn upsert_sales_settlement(
 
     if status == "COMPLETED" && (!coupon_usage_lines.is_empty() || !balance_usage_lines.is_empty())
     {
-        let Some(member_user_id) = settlement.member_user_id else {
+        let Some(member_user_id) = resolved_member_user_id else {
             return Err("회원 충전금/쿠폰 결제는 회원 지정이 필요합니다.".to_string());
         };
 

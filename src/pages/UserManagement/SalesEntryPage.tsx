@@ -167,6 +167,14 @@ function findMatchedMemberByNameOrPhone(
   return null;
 }
 
+function getMemberIdentifier(member?: Member | null) {
+  if (!member) return null;
+  const phone = (member.phone || '').trim();
+  if (phone && phone !== '-') return phone;
+  const name = (member.name || '').trim();
+  return name || null;
+}
+
 const EMPTY_RESERVATIONS: Reservation[] = [];
 
 function toReservationStatus(value: string): Reservation['status'] {
@@ -410,7 +418,7 @@ export default function SalesEntryPage() {
             settlements: Array<{
               settlement_id: number;
               settlement_datetime: string;
-              member_user_id: number | null;
+              member_user_id: string | null;
               guest_customer_name?: string | null;
               guest_customer_phone?: string | null;
               manager_employee_id: number;
@@ -526,16 +534,19 @@ export default function SalesEntryPage() {
         const mappedSettlements: Settlement[] = (settlementResult.settlements || []).map((settlement) => {
           const guestCustomerName = settlement.guest_customer_name?.trim() || '';
           const guestCustomerPhone = settlement.guest_customer_phone?.trim() || '';
+          const memberIdentifier = settlement.member_user_id?.trim() || '';
           const reservationCustomerName =
             (settlement.reservation_ref && reservationCustomerNameByRef.get(String(settlement.reservation_ref)))
             || '';
-          const explicitMemberId =
-            Number.isFinite(settlement.member_user_id) && Number(settlement.member_user_id) > 0
-              ? Number(settlement.member_user_id)
+          const inferredMemberByIdentifier =
+            memberIdentifier.length > 0
+              ? (
+                (/^\d+$/.test(memberIdentifier) && mappedMembers.find((member) => member.id === Number(memberIdentifier)))
+                || findMatchedMemberByNameOrPhone(mappedMembers, memberIdentifier, memberIdentifier)
+              )
               : null;
-          const inferredMember = explicitMemberId
-            ? mappedMembers.find((member) => member.id === explicitMemberId) || null
-            : findMatchedMemberByNameOrPhone(
+          const inferredMember = inferredMemberByIdentifier
+            || findMatchedMemberByNameOrPhone(
               mappedMembers,
               guestCustomerName || reservationCustomerName,
               guestCustomerPhone || reservationCustomerName,
@@ -544,7 +555,7 @@ export default function SalesEntryPage() {
           return {
             id: settlement.settlement_id,
             date: settlement.settlement_datetime,
-            memberId: inferredMember?.id || explicitMemberId || 'GUEST',
+            memberId: inferredMember?.id || 'GUEST',
             guestCustomerName: guestCustomerName || undefined,
             guestCustomerPhone: guestCustomerPhone || undefined,
             managerId: settlement.manager_employee_id,
@@ -1134,6 +1145,12 @@ export default function SalesEntryPage() {
         ? reservation.memberId
         : findMatchedMemberByNameOrPhone(members, reservation.customerName)?.id)
       || null;
+    const resolvedMember =
+      resolvedMemberId
+        ? members.find((member) => member.id === resolvedMemberId) || null
+        : null;
+    const resolvedMemberIdentifier = getMemberIdentifier(resolvedMember);
+    const reservationGuestIdentifier = reservation.customerName.trim() || null;
 
     const preservedPayments =
       linkedSettlement && linkedSettlement.status !== 'CANCELLED'
@@ -1154,8 +1171,8 @@ export default function SalesEntryPage() {
               linkedSettlement && linkedSettlement.status !== 'CANCELLED'
                 ? linkedSettlement.id
                 : undefined,
-            member_user_id: resolvedMemberId,
-            guest_customer_name: resolvedMemberId ? null : (reservation.customerName.trim() || null),
+            member_user_id: resolvedMemberIdentifier || reservationGuestIdentifier,
+            guest_customer_name: resolvedMemberIdentifier ? null : (reservation.customerName.trim() || null),
             guest_customer_phone: null,
             manager_employee_id: resolvedManagerId,
             service_ids: validServiceIds,
@@ -1383,12 +1400,7 @@ export default function SalesEntryPage() {
       return;
     }
 
-    const parsedMemberUserId =
-      selectedMemberId === 'GUEST'
-        ? null
-        : Number.isFinite(Number(selectedMemberId))
-          ? Number(selectedMemberId)
-          : null;
+    const selectedMemberIdentifier = getMemberIdentifier(selectedMember);
     const lookupValue = customerLookupQuery.trim();
     const lookupCompactValue = lookupValue.replace(/[\s()-]/g, '');
     const isLookupPhoneLike = lookupCompactValue.length >= 7 && /^\+?\d+$/.test(lookupCompactValue);
@@ -1399,7 +1411,7 @@ export default function SalesEntryPage() {
     // - 입력창 값만 있는 경우(매칭 실패 포함) 입력 원문을 name 또는 phone으로 추론해 저장
     //   => "조회된 고객이 없어도 입력값 그대로 저장/표시" 요구사항 대응
     const normalizedGuestCustomerName =
-      parsedMemberUserId === null
+      selectedMemberIdentifier === null
         ? (
           guestCustomerName.trim()
           || (!isLookupPhoneLike ? lookupValue : '')
@@ -1408,13 +1420,18 @@ export default function SalesEntryPage() {
         )
         : null;
     const normalizedGuestCustomerPhone =
-      parsedMemberUserId === null
+      selectedMemberIdentifier === null
         ? (
           guestCustomerPhone.trim()
           || (isLookupPhoneLike ? lookupValue : '')
           || null
         )
         : null;
+    const settlementMemberIdentifier =
+      selectedMemberIdentifier
+      || normalizedGuestCustomerPhone
+      || normalizedGuestCustomerName
+      || null;
 
     // 쿠폰 사용은 "결제수단 COUPON + coupon_service_id" 라인으로 백엔드에 전달
     const couponPayments = couponAppliedServiceIds.map((serviceId) => ({
@@ -1430,7 +1447,7 @@ export default function SalesEntryPage() {
         {
           settlement: {
             settlement_id: editingSettlement?.id || undefined,
-            member_user_id: parsedMemberUserId,
+            member_user_id: settlementMemberIdentifier,
             guest_customer_name: normalizedGuestCustomerName,
             guest_customer_phone: normalizedGuestCustomerPhone,
             manager_employee_id: managerId,

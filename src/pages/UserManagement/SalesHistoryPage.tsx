@@ -203,6 +203,49 @@ function normalizePaymentMethodCode(value: string) {
   return normalized;
 }
 
+function normalizeNameKey(raw?: string | null) {
+  return (raw || '').trim().toLowerCase();
+}
+
+function normalizePhoneDigits(raw?: string | null) {
+  return (raw || '').replace(/\D/g, '');
+}
+
+function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
+  const left = normalizePhoneDigits(lhs);
+  const right = normalizePhoneDigits(rhs);
+  if (!left || !right) return false;
+  return left === right || left.endsWith(right) || right.endsWith(left);
+}
+
+function findMatchedMemberByNameOrPhone(
+  members: Member[],
+  customerName?: string | null,
+  customerPhone?: string | null,
+) {
+  const normalizedName = normalizeNameKey(customerName);
+  const phoneCandidates = [
+    normalizePhoneDigits(customerPhone),
+    normalizePhoneDigits(customerName),
+  ].filter((digits) => digits.length >= 7);
+
+  for (const customerDigits of phoneCandidates) {
+    const matchedByPhone = members.find((member) => {
+      const memberPhoneDigits = normalizePhoneDigits(member.phone);
+      if (memberPhoneDigits.length < 7) return false;
+      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
+    });
+    if (matchedByPhone) return matchedByPhone;
+  }
+
+  if (normalizedName) {
+    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
+    if (matchedByName) return matchedByName;
+  }
+
+  return null;
+}
+
 function isActualSalesExcludedPaymentCode(code: string) {
   const normalized = code?.trim().toUpperCase();
   return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
@@ -316,7 +359,7 @@ export default function SalesHistoryPage() {
           settlements: Array<{
             settlement_id: number;
             settlement_datetime: string;
-            member_user_id: number | null;
+            member_user_id: string | null;
             guest_customer_name?: string | null;
             guest_customer_phone?: string | null;
             manager_employee_id: number;
@@ -338,12 +381,13 @@ export default function SalesHistoryPage() {
         }>('get_reservation_calendar_data'),
       ]);
 
-      setMembers((memberResult.members || []).map((entry) => ({
+      const mappedMembers: Member[] = (memberResult.members || []).map((entry) => ({
         id: entry.user_id,
         name: entry.user_name,
         phone: entry.phone || '',
         balance: entry.point_balance || 0,
-      })));
+      }));
+      setMembers(mappedMembers);
 
       setManagers((managerResult.employees || []).map((entry) => ({
         id: entry.employee_id,
@@ -373,12 +417,29 @@ export default function SalesHistoryPage() {
 
       const settlementRows: Settlement[] = (settlementResult.settlements || []).map((entry) => {
         const reservationId = entry.reservation_ref?.trim() || '';
+        const memberIdentifier = (entry.member_user_id || '').trim();
+        const inferredMember =
+          (
+            memberIdentifier
+              ? (
+                (/^\d+$/.test(memberIdentifier)
+                  ? mappedMembers.find((member) => member.id === Number(memberIdentifier))
+                  : null)
+                || findMatchedMemberByNameOrPhone(mappedMembers, memberIdentifier, memberIdentifier)
+              )
+              : null
+          )
+          || findMatchedMemberByNameOrPhone(
+            mappedMembers,
+            entry.guest_customer_name,
+            entry.guest_customer_phone,
+          );
         return {
           id: entry.settlement_id,
           sourceId: entry.settlement_id,
           entryType: 'SETTLEMENT',
           date: entry.settlement_datetime,
-          memberId: entry.member_user_id ?? 'GUEST',
+          memberId: inferredMember?.id || 'GUEST',
           customerName: reservationId ? reservationCustomerNameById.get(reservationId) || undefined : undefined,
           guestCustomerName: entry.guest_customer_name?.trim() || undefined,
           guestCustomerPhone: entry.guest_customer_phone?.trim() || undefined,
