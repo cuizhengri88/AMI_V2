@@ -93,19 +93,29 @@ type ReservationForm = {
 
 // 고객 회원 자동매칭(이름/전화)용 모델
 type MemberLookup = {
+  // 회원 ID
   id: number;
+  // 회원명
   name: string;
+  // 전화 원문
   phone: string;
+  // 숫자만 남긴 전화번호(검색/매칭용)
   phoneDigits: string;
 };
 
+// 예약 1건의 고객 정보 스냅샷(저장 직전 정규화 결과)
 type ReservationCustomerSnapshot = {
+  // 저장할 고객명
   customerName: string;
+  // 연결된 회원 ID(비회원이면 null)
   customerId: number | null;
+  // 저장할 고객 연락처
   customerPhone: string;
 };
 
+// 고객 스냅샷 생성 시 추가 옵션
 type ReservationCustomerSnapshotOptions = {
+  // 자동탐지 대신 강제로 사용할 회원 정보
   forcedMember?: MemberLookup | null;
 };
 
@@ -136,31 +146,49 @@ type ReservationRow = {
 };
 
 type SalesSettlementPaymentRow = {
+  // 결제수단 코드
   payment_method_code: string;
+  // 결제 금액
   amount: number;
+  // 쿠폰 결제 시 연결된 시술 ID
   coupon_service_id?: number | null;
 };
 
 type SalesSettlementRow = {
+  // 정산 ID
   settlement_id: number;
+  // 연결 예약 ID 문자열
   reservation_ref?: string | null;
+  // 회원 식별자(ID/전화/이름 혼합 저장 가능)
   member_user_id?: string | null;
+  // 담당 직원 ID
   manager_employee_id?: number | null;
+  // 시술 ID 목록
   service_ids?: number[] | null;
+  // 총 결제금액
   total_amount?: number;
+  // 정산 상태
   status?: string | null;
+  // 결제 상세 라인
   payments: SalesSettlementPaymentRow[];
 };
 
+// 예약과 연결된 정산 상태를 화면에서 단순화한 값
 type LinkedSettlementState = 'NONE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 
+// 예약 상태별 배지/칩 색상 묶음
 type StatusTone = {
+  // 메인 배지 스타일
   badge: string;
+  // 칩 스타일
   chip: string;
+  // 점(dot) 표시 색상
   dot: string;
 };
 
+// 화면 표시 모드(달력/리스트)
 type ReservationViewMode = 'calendar' | 'list';
+// 리스트 모드의 날짜 범위(일/월/년)
 type ListRangeMode = 'day' | 'month' | 'year';
 
 // 공통코드 그룹 키(백엔드와 약속된 값)
@@ -559,44 +587,75 @@ function createEmptyForm(
 export default function ReservationCalendarPage() {
   const pt = usePageText('user_management_reservation_calendar');
   // 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)
+  // 예약 상태 코드 목록
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
+  // 시술 카테고리 코드 목록
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
+  // 시술 카탈로그 목록
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  // 결제수단 목록
   const [paymentMethodOptions, setPaymentMethodOptions] =
     useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
+  // 회원 자동매칭 대상 목록
   const [members, setMembers] = useState<MemberLookup[]>([]);
+  // 회원명 -> 전화번호 매핑(이름 기반 보조 매칭)
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
+  // 회원명 -> 회원ID 매핑(저장 시 ID 해석용)
   const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
+  // 디자이너명 목록(셀렉트 표출용)
   const [designerNames, setDesignerNames] = useState<string[]>([]);
+  // 디자이너명 -> 직원ID 매핑(정산 저장용)
   const [designerIdByName, setDesignerIdByName] = useState<Map<string, number>>(new Map());
   // 예약 목록/화면 범위 상태
+  // 화면에서 관리하는 예약 원본 목록
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
+  // 달력 헤더 기준 월(항상 해당 월 1일을 보관)
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  // 선택된 기준 날짜(yyyy-mm-dd)
   const [selectedDate, setSelectedDate] = useState(todayIso());
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 저장/수정/삭제 작업 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 화면 모드(달력/리스트)
   const [viewMode, setViewMode] = useState<ReservationViewMode>('calendar');
+  // 리스트 모드 범위(일/월/년)
   const [listRangeMode, setListRangeMode] = useState<ListRangeMode>('day');
+  // 리스트 모드 검색어(이름/전화)
   const [listSearchKeyword, setListSearchKeyword] = useState('');
+  // 예약 모달 드래그 컨트롤 객체
   const modalDragControls = useDragControls();
 
   // 모달 상태(등록/수정/결제 계산/고객 조회)
+  // 등록/수정 모달 열림 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // 모달 모드(create/edit)
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  // 수정 중인 예약 ID
   const [editingId, setEditingId] = useState<number | null>(null);
+  // 신규 시술 라인에 부여할 다음 임시 lineId
   const [nextLineId, setNextLineId] = useState(2000);
+  // 빠른 결제 계산기 할인 금액
   const [calculatorDiscountAmount, setCalculatorDiscountAmount] = useState(0);
+  // 빠른 결제 입력 라인 목록
   const [quickPaymentLines, setQuickPaymentLines] = useState<QuickPaymentLine[]>([]);
+  // 빠른 결제 라인에 부여할 다음 lineId
   const [nextQuickPaymentLineId, setNextQuickPaymentLineId] = useState(1);
+  // 고객 조회 입력값(전화 기준)
   const [customerPhoneQuery, setCustomerPhoneQuery] = useState('');
+  // 고객 자동완성 패널 노출 여부
   const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
+  // 모달에서 선택된 회원 ID(문자열 상태)
   const [selectedCustomerMemberId, setSelectedCustomerMemberId] = useState<string>('');
+  // 연결 정산 상태(NONE/PROCESSING/COMPLETED/CANCELLED)
   const [linkedSettlementState, setLinkedSettlementState] =
     useState<LinkedSettlementState>('NONE');
+  // 연결 정산 상태 조회 중 여부
   const [isSettlementStateLoading, setIsSettlementStateLoading] = useState(false);
+  // 비동기 경쟁 상태 방지용 요청 번호 ref
   const linkedSettlementRequestIdRef = useRef(0);
   // 예약 폼 상태
   const [form, setForm] = useState<ReservationForm>(() =>
@@ -608,14 +667,18 @@ export default function ReservationCalendarPage() {
     ),
   );
 
+  // DB 요청(조회/저장) 진행 여부
   const isDbBusy = isLoading || isMutating;
+  // 오버레이 표시 여부(DB 작업 또는 정산 상태 조회 중)
   const isOverlayVisible = isDbBusy || isSettlementStateLoading;
+  // 오버레이 메시지(저장/정산조회/일반조회 상황별)
   const overlayMessage = isMutating
     ? pt('t042')
     : isSettlementStateLoading
       ? pt('t137')
       : pt('t041');
 
+  // 요일 라벨 배열(달력 헤더/날짜 라벨 공용)
   const weekdayLabels = WEEKDAY_TEXT_KEYS.map((key) => pt(key));
 
   // 코드 -> 라벨 변환 헬퍼

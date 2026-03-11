@@ -150,11 +150,6 @@ function isCouponPaymentMethod(method: string) {
   return method?.trim().toUpperCase() === 'COUPON';
 }
 
-function isBalancePaymentMethod(method: string) {
-  const normalized = method?.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
-}
-
 function formatCurrency(value: number) {
   return `¥${Math.round(value).toLocaleString('ko-KR')}`;
 }
@@ -240,11 +235,7 @@ export default function HairSalesStatisticsPage() {
           .reduce((sum, payment) => sum + (servicePriceById.get(payment.coupon_service_id as number) || 0), 0);
         const effectiveCouponPaid = couponCovered > 0 ? couponCovered : couponPaid;
         const netPaid = (row.payments || [])
-          .filter(
-            (payment) =>
-              !isCouponPaymentMethod(payment.payment_method_code)
-              && !isBalancePaymentMethod(payment.payment_method_code),
-          )
+          .filter((payment) => !isCouponPaymentMethod(payment.payment_method_code))
           .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         return {
           id: row.settlement_id,

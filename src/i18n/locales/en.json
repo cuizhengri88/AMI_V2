@@ -546,7 +546,8 @@
       "t036": "Close",
       "t037": "Confirm Cancel",
       "t038": "Start Date",
-      "t039": "End Date"
+      "t039": "End Date",
+      "t040": "Received Amount"
     },
     "user_management_point_recharge": {
       "t001": "Payment Method",

@@ -15,40 +15,61 @@ import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 
+// 회원이 보유한 쿠폰 1종 정보
 type Coupon = {
+  // 시술 ID(쿠폰 사용 대상 식별값)
   serviceId: number;
+  // 시술명
   name: string;
+  // 해당 시술 쿠폰 보유 수량
   count: number;
 };
 
+// 화면에서 사용하는 회원 모델(포인트/쿠폰 포함)
 type Member = {
+  // 회원 ID
   id: number;
+  // 회원명
   name: string;
+  // 연락처
   phone: string;
+  // 충전금 잔액
   balance: number;
+  // 보유 쿠폰 목록
   coupons: Coupon[];
 };
 
+// 충전 유형(포인트 금액 충전 / 쿠폰 충전)
 type RechargeType = 'BALANCE' | 'COUPON';
 
+// 쿠폰 충전 시 선택 가능한 시술 옵션
 type ServiceOption = {
+  // 시술 ID
   id: number;
+  // 시술명
   name: string;
+  // 사용 여부(Y: 사용)
   useYn: 'Y' | 'N';
 };
 
+// 결제수단 선택 옵션
 type PaymentMethodOption = {
+  // 결제수단 코드
   code: string;
+  // 결제수단 표시명
   label: string;
+  // 정렬 순서
   order: number;
 };
 
+// 공통코드 조회 실패 시 사용할 기본 결제수단 목록
 const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'WECHAT_PAY', label: 'WECHAT_PAY', order: 1 },
   { code: 'ALIPAY', label: 'ALIPAY', order: 2 },
   { code: 'CASH', label: 'CASH', order: 3 },
 ];
 
+// 결제수단 코드 -> i18n 키 매핑
 const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   WECHAT_PAY: 't031', // 위챗페이
   WECHAT: 't031', // 위챗페이
@@ -61,34 +82,52 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
 };
 
 export default function MemberRechargePage() {
+  // 페이지 i18n 접근 헬퍼
   const pt = usePageText('user_management_point_recharge');
+  // 회원 목록 원본
   const [members, setMembers] = useState<Member[]>([]);
+  // 쿠폰 충전용 시술 옵션
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  // 결제수단 옵션(공통코드 + fallback)
   const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodOption[]>(
     FALLBACK_PAYMENT_METHODS,
   );
 
+  // 회원 검색어(이름/전화)
   const [searchTerm, setSearchTerm] = useState('');
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 충전 저장 중 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 충전 모달 열림 여부
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
+  // 현재 충전 대상 회원
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
+  // 충전 금액 입력값(문자열 상태로 입력 제어)
   const [amount, setAmount] = useState('');
+  // 실수령 금액 입력값(BALANCE 충전에서 사용)
   const [receivedAmount, setReceivedAmount] = useState('');
+  // 쿠폰 충전 대상 시술 ID
   const [selectedServiceId, setSelectedServiceId] = useState<number>(0);
+  // 충전할 쿠폰 수량
   const [couponCount, setCouponCount] = useState('');
+  // 현재 충전 타입(BALANCE / COUPON)
   const [rechargeType, setRechargeType] = useState<RechargeType>('COUPON');
+  // 선택 결제수단 코드
   const [paymentMethodCode, setPaymentMethodCode] = useState(FALLBACK_PAYMENT_METHODS[0].code);
 
+  // 전체 화면 작업중 여부(로딩 + 저장)
   const isBusy = isLoading || isMutating;
 
+  // 결제수단 코드로 화면 표시 라벨 획득(없으면 fallback/code 사용)
   const getPaymentMethodLabelByCode = (code: string, fallback?: string) => {
     const key = PAYMENT_METHOD_TEXT_KEY_BY_CODE[code.toUpperCase()];
     if (key) return pt(key);
     return fallback || code;
   };
 
+  // 회원 포인트/쿠폰 데이터 조회
   const loadPointData = async () => {
     const result = await invokeDbCommand<{
       success: boolean;
@@ -121,6 +160,7 @@ export default function MemberRechargePage() {
     setMembers(mappedMembers);
   };
 
+  // 시술 옵션 + 결제수단 옵션 조회
   const loadReferenceData = async () => {
     const [serviceResult, commonCodeResult] = await Promise.all([
       invokeDbCommand<{
@@ -167,6 +207,7 @@ export default function MemberRechargePage() {
     setPaymentMethodOptions(paymentMethods.length > 0 ? paymentMethods : FALLBACK_PAYMENT_METHODS);
   };
 
+  // 초기 렌더/새로고침 시 필요한 데이터 일괄 조회
   const loadData = async () => {
     try {
       setIsLoading(true);
@@ -178,23 +219,27 @@ export default function MemberRechargePage() {
     }
   };
 
+  // 최초 진입 시 데이터 로드
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 현재 선택 결제수단이 옵션 목록에서 사라졌다면 첫 옵션으로 보정
   useEffect(() => {
     if (paymentMethodOptions.length > 0 && !paymentMethodOptions.some((item) => item.code === paymentMethodCode)) {
       setPaymentMethodCode(paymentMethodOptions[0].code);
     }
   }, [paymentMethodCode, paymentMethodOptions]);
 
+  // 현재 선택 시술이 옵션 목록에서 사라졌다면 첫 옵션으로 보정
   useEffect(() => {
     if (serviceOptions.length > 0 && !serviceOptions.some((service) => service.id === selectedServiceId)) {
       setSelectedServiceId(serviceOptions[0].id);
     }
   }, [selectedServiceId, serviceOptions]);
 
+  // 충전 모달 입력값 초기화
   const resetRechargeForm = (type: RechargeType) => {
     setAmount('');
     setReceivedAmount(type === 'BALANCE' ? '0' : '');
@@ -204,17 +249,20 @@ export default function MemberRechargePage() {
     setPaymentMethodCode(paymentMethodOptions[0]?.code || FALLBACK_PAYMENT_METHODS[0].code);
   };
 
+  // 충전 모달 열기 + 대상 회원/기본값 세팅
   const openRechargeModal = (member: Member, type: RechargeType) => {
     setSelectedMember(member);
     resetRechargeForm(type);
     setIsRechargeModalOpen(true);
   };
 
+  // 충전 모달 닫기 + 대상 회원 해제
   const closeRechargeModal = () => {
     setIsRechargeModalOpen(false);
     setSelectedMember(null);
   };
 
+  // 충전 저장 처리(유형별 유효성 검증 포함)
   const handleRecharge = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedMember) return;
@@ -272,6 +320,7 @@ export default function MemberRechargePage() {
     }
   };
 
+  // 검색어가 적용된 회원 목록
   const filteredMembers = useMemo(
     () =>
       members.filter(
@@ -281,6 +330,7 @@ export default function MemberRechargePage() {
     [members, searchTerm],
   );
 
+  // 전체 회원의 보유 쿠폰 총합
   const totalCoupons = useMemo(
     () =>
       members.reduce(
@@ -290,6 +340,7 @@ export default function MemberRechargePage() {
     [members],
   );
 
+  // 특정 회원의 쿠폰 총 개수 계산
   const getMemberCouponTotal = (member: Member) =>
     member.coupons.reduce((sum, coupon) => sum + coupon.count, 0);
 
@@ -634,6 +685,7 @@ function DraggableModal({
   onClose: () => void;
   icon: React.ReactNode;
 }) {
+  // 모달 헤더 드래그 핸들 제어 객체
   const dragControls = useDragControls();
 
   return (
