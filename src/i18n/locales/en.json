@@ -742,7 +742,8 @@
       "t147": "To save payment, please reselect the assigned staff from the employee list.",
       "t148": "The reservation was saved, but an error occurred while saving payment.",
       "t149": "Member",
-      "t150": "Non-member"
+      "t150": "Non-member",
+      "t151": "Close"
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
