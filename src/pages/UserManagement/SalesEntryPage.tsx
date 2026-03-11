@@ -193,6 +193,10 @@ function toSettlementStatus(value: string): SettlementStatus {
   return 'PROCESSING';
 }
 
+function isClosedSettlementStatus(status: SettlementStatus) {
+  return status === 'COMPLETED' || status === 'CANCELLED';
+}
+
 function isCouponPaymentMethod(method: string) {
   return method?.trim().toUpperCase() === 'COUPON';
 }
@@ -867,8 +871,12 @@ export default function SalesEntryPage() {
         COMPLETED: 0,
       };
       searchedSettlements.forEach((settlement) => {
-        if (settlement.status === 'PROCESSING' || settlement.status === 'COMPLETED') {
-          next[settlement.status] += 1;
+        if (settlement.status === 'PROCESSING') {
+          next.PROCESSING += 1;
+          return;
+        }
+        if (isClosedSettlementStatus(settlement.status)) {
+          next.COMPLETED += 1;
         }
       });
       return next;
@@ -878,11 +886,15 @@ export default function SalesEntryPage() {
 
   const filteredSettlements = useMemo(
     () =>
-      searchedSettlements.filter(
-        (settlement) =>
-          (activeSettlementTab === 'PROCESSING' || activeSettlementTab === 'COMPLETED')
-          && settlement.status === activeSettlementTab,
-      ),
+      searchedSettlements.filter((settlement) => {
+        if (activeSettlementTab === 'PROCESSING') {
+          return settlement.status === 'PROCESSING';
+        }
+        if (activeSettlementTab === 'COMPLETED') {
+          return isClosedSettlementStatus(settlement.status);
+        }
+        return false;
+      }),
     [searchedSettlements, activeSettlementTab],
   );
 

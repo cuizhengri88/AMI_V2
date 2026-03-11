@@ -1323,12 +1323,16 @@ export default function ReservationCalendarPage() {
     if (isCompletedSettlementLocked) return;
     setCustomerPhoneQuery(value);
     setIsCustomerLookupOpen(true);
+    const trimmedValue = value.trim();
     const digits = normalizePhoneDigits(value);
     if (!digits) {
       setIsCustomerLookupOpen(false);
       if (!value.trim()) {
         setSelectedCustomerMemberId('');
         setForm((prev) => ({ ...prev, customerName: '' }));
+      } else {
+        setSelectedCustomerMemberId('');
+        setForm((prev) => ({ ...prev, customerName: trimmedValue }));
       }
       return;
     }
@@ -1337,7 +1341,13 @@ export default function ReservationCalendarPage() {
       setForm((prev) => ({ ...prev, customerName: '' }));
     }
     const matchedMembers = members.filter((member) => member.phoneDigits.includes(digits));
-    if (matchedMembers.length !== 1) return;
+    if (matchedMembers.length !== 1) {
+      if (matchedMembers.length === 0) {
+        setSelectedCustomerMemberId('');
+        setForm((prev) => ({ ...prev, customerName: trimmedValue }));
+      }
+      return;
+    }
     const matchedMember = matchedMembers[0];
     setSelectedCustomerMemberId(String(matchedMember.id));
     setForm((prev) => ({
@@ -1389,12 +1399,19 @@ export default function ReservationCalendarPage() {
     }));
   };
 
+  const resolveReservationCustomerName = useCallback((targetForm: ReservationForm) => {
+    const directName = targetForm.customerName.trim();
+    if (directName) return directName;
+    return (customerPhoneQuery || '').trim();
+  }, [customerPhoneQuery]);
+
   const validateReservationForm = (targetForm: ReservationForm) => {
+    const customerDisplayName = resolveReservationCustomerName(targetForm);
     if (!targetForm.reservationDate || !targetForm.startTime) {
       alert(pt('t017'));
       return false;
     }
-    if (!targetForm.customerName.trim() || !targetForm.designerName.trim()) {
+    if (!customerDisplayName || !targetForm.designerName.trim()) {
       alert(pt('t002'));
       return false;
     }
@@ -1410,6 +1427,7 @@ export default function ReservationCalendarPage() {
   };
 
   const upsertReservationItem = async (targetForm: ReservationForm) => {
+    const customerDisplayName = resolveReservationCustomerName(targetForm);
     return invokeDbCommand<{
       success: boolean;
       message: string;
@@ -1421,7 +1439,7 @@ export default function ReservationCalendarPage() {
           reservation_id: modalMode === 'edit' ? editingId : undefined,
           reservation_date: targetForm.reservationDate,
           start_time: normalizeTimeValue(targetForm.startTime),
-          customer_name: targetForm.customerName.trim(),
+          customer_name: customerDisplayName,
           gender: targetForm.gender || null,
           designer_name: targetForm.designerName.trim(),
           status: targetForm.status,
