@@ -20,24 +20,28 @@ import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 
+// 공통코드(상태/카테고리 등) 선택 옵션 타입
 type CodeOption = {
   code: string;
   label: string;
   order: number;
 };
 
+// 결제수단 옵션 타입
 type PaymentMethodOption = {
   code: string;
   label: string;
   order: number;
 };
 
+// 모달 하단 빠른 결제 계산기 라인 타입
 type QuickPaymentLine = {
   lineId: number;
   methodCode: string;
   amount: number;
 };
 
+// 시술 카탈로그 화면 모델
 type ServiceItem = {
   id: number;
   categoryCode: string;
@@ -47,6 +51,7 @@ type ServiceItem = {
   durationMinutes: number;
 };
 
+// 예약 1건에 포함되는 시술 라인 타입
 type ReservationService = {
   lineId: number;
   serviceId: number;
@@ -57,11 +62,13 @@ type ReservationService = {
   durationMinutes: number;
 };
 
+// 화면에서 사용하는 예약 레코드 타입
 type ReservationRecord = {
   id: number;
   reservationDate: string;
   startTime: string;
   customerName: string;
+  customerId: number | null;
   gender?: string;
   customerPhone: string;
   designerName: string;
@@ -70,6 +77,7 @@ type ReservationRecord = {
   services: ReservationService[];
 };
 
+// 예약 등록/수정 모달 폼 타입
 type ReservationForm = {
   reservationDate: string;
   startTime: string;
@@ -83,11 +91,22 @@ type ReservationForm = {
   services: ReservationService[];
 };
 
+// 고객 회원 자동매칭(이름/전화)용 모델
 type MemberLookup = {
   id: number;
   name: string;
   phone: string;
   phoneDigits: string;
+};
+
+type ReservationCustomerSnapshot = {
+  customerName: string;
+  customerId: number | null;
+  customerPhone: string;
+};
+
+type ReservationCustomerSnapshotOptions = {
+  forcedMember?: MemberLookup | null;
 };
 
 // 백엔드에서 내려주는 예약 시술 라인 원본 타입
@@ -107,6 +126,8 @@ type ReservationRow = {
   reservation_date: string;
   start_time: string;
   customer_name: string;
+  customer_id?: number | null;
+  customer_phone?: string | null;
   gender?: string | null;
   designer_name: string;
   status: string;
@@ -142,6 +163,7 @@ type StatusTone = {
 type ReservationViewMode = 'calendar' | 'list';
 type ListRangeMode = 'day' | 'month' | 'year';
 
+// 공통코드 그룹 키(백엔드와 약속된 값)
 const STATUS_GROUP_ID = 'RESERVATION_STATUS';
 const CATEGORY_GROUP_ID = 'T_CATEGORY';
 const PAYMENT_METHOD_GROUP_ID = 'PAYMENT_METHOD';
@@ -168,6 +190,7 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'ALIPAY', label: '', order: 4 },
 ];
 
+// 요일 헤더 i18n 키
 const WEEKDAY_TEXT_KEYS = [
   't028', // 일
   't029', // 월
@@ -178,18 +201,21 @@ const WEEKDAY_TEXT_KEYS = [
   't034', // 토
 ] as const;
 
+// 상태 코드별 i18n 키
 const STATUS_TEXT_KEY_BY_CODE: Record<string, string> = {
   RESERVED: 't080', // 예약중
   COMPLETED: 't081', // 완료
   CANCELLED: 't082', // 예약취소
 };
 
+// 카테고리 코드별 i18n 키
 const CATEGORY_TEXT_KEY_BY_CODE: Record<string, string> = {
   CUT: 't083', // 커트
   PERM: 't084', // 파마
   COLOR: 't085', // 염색
 };
 
+// 결제수단 코드별 i18n 키
 const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   CASH: 't112',
   CARD: 't113',
@@ -198,6 +224,7 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   PREPAID: 't116',
 };
 
+// 접근성 라벨 i18n 키
 const A11Y_TEXT_KEYS = {
   PREVIOUS_MONTH: 't086', // 이전 달
   NEXT_MONTH: 't087', // 다음 달
@@ -207,6 +234,7 @@ const A11Y_TEXT_KEYS = {
 // 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
 const INITIAL_RESERVATIONS: ReservationRecord[] = [];
 
+// Date -> yyyy-mm-dd ISO 문자열 변환
 function toIsoDate(date: Date) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -214,21 +242,25 @@ function toIsoDate(date: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// 오늘 날짜 ISO 문자열 반환
 function todayIso() {
   return toIsoDate(new Date());
 }
 
+// yyyy-mm-dd 문자열을 Date로 변환
 function parseIsoDate(iso: string) {
   const [y, m, d] = iso.split('-').map((value) => Number(value));
   return new Date(y, (m || 1) - 1, d || 1);
 }
 
+// 날짜를 일 단위로 이동
 function shiftDate(iso: string, diffDays: number) {
   const base = parseIsoDate(iso);
   base.setDate(base.getDate() + diffDays);
   return toIsoDate(base);
 }
 
+// 날짜를 월 단위로 이동
 function shiftMonth(iso: string, diffMonths: number) {
   const base = parseIsoDate(iso);
   base.setDate(1);
@@ -236,6 +268,7 @@ function shiftMonth(iso: string, diffMonths: number) {
   return toIsoDate(base);
 }
 
+// 날짜를 연 단위로 이동
 function shiftYear(iso: string, diffYears: number) {
   const base = parseIsoDate(iso);
   base.setDate(1);
@@ -244,28 +277,33 @@ function shiftYear(iso: string, diffYears: number) {
   return toIsoDate(base);
 }
 
+// 통화 포맷터
 function formatCurrency(value: number) {
   return `¥${value.toLocaleString()}`;
 }
 
+// 문자열 입력 포함 금액값을 안전한 숫자로 변환
 function toAmountNumber(value: string | number) {
   const numeric = typeof value === 'number' ? value : Number.parseInt(value, 10);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, numeric);
 }
 
+// 달력 헤더용 yyyy.mm 라벨 생성
 function formatMonthLabel(date: Date) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   return `${yyyy}.${mm}`;
 }
 
+// 날짜 + 요일 라벨 생성
 function formatDateLabel(isoDate: string, weekdayLabels: string[]) {
   const date = parseIsoDate(isoDate);
   const dayOfWeek = weekdayLabels[date.getDay()] || '';
   return `${isoDate} (${dayOfWeek})`;
 }
 
+// 시간 문자열을 HH:mm 형태로 정규화
 function normalizeTimeValue(raw: string) {
   if (!raw) return '';
   const match = raw.match(/^(\d{2}:\d{2})/);
@@ -275,14 +313,17 @@ function normalizeTimeValue(raw: string) {
   return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
 }
 
+// 이름 비교용 키(공백 제거 + 소문자)
 function normalizeNameKey(raw: string) {
   return raw.trim().toLowerCase();
 }
 
+// 전화번호 숫자만 추출
 function normalizePhoneDigits(raw?: string | null) {
   return (raw || '').replace(/\D/g, '');
 }
 
+// 고객명 문자열에서 전화번호 형태 텍스트를 추출
 function extractPhoneText(raw?: string | null) {
   const source = (raw || '').trim();
   if (!source) return '';
@@ -294,20 +335,24 @@ function extractPhoneText(raw?: string | null) {
   return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
 }
 
+// 회원 잔액 계열 결제수단 여부
 function isBalancePaymentMethod(code: string) {
   const normalized = code.trim().toUpperCase();
   return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
+// 예약 상태를 정산 상태로 변환
 function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
   return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
 }
 
+// 예약 상태가 진행중 계열인지 판정
 function isReservationProcessingStatus(status: string) {
   const normalized = status.trim().toUpperCase();
   return normalized.includes('PROCESS') || normalized.includes('PROGRESS');
 }
 
+// 정산 상태 문자열을 화면 상태값으로 정규화
 function normalizeSettlementState(raw?: string | null): LinkedSettlementState {
   const normalized = (raw || '').trim().toUpperCase();
   if (normalized === 'COMPLETED') return 'COMPLETED';
@@ -316,6 +361,7 @@ function normalizeSettlementState(raw?: string | null): LinkedSettlementState {
   return 'NONE';
 }
 
+// 완료된 정산 데이터를 빠른 결제 계산기 스냅샷으로 변환
 function buildQuickCalculatorSnapshotFromSettlement(
   settlement: SalesSettlementRow,
 ): { discountAmount: number; paymentLines: QuickPaymentLine[] } {
@@ -339,6 +385,7 @@ function buildQuickCalculatorSnapshotFromSettlement(
   };
 }
 
+// 성별 문자열을 폼 저장용 값(M/F/빈값)으로 정규화
 function normalizeGenderForForm(raw?: string | null) {
   const normalized = (raw || '').trim().toUpperCase();
   if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
@@ -350,6 +397,7 @@ function normalizeGenderForForm(raw?: string | null) {
   return '';
 }
 
+// 달력 6주(42칸) 셀 생성
 function buildCalendarCells(monthCursor: Date) {
   const firstDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
   const startOffset = firstDay.getDay();
@@ -367,30 +415,36 @@ function buildCalendarCells(monthCursor: Date) {
   });
 }
 
+// 요일 헤더 색상 결정
 function getWeekendHeaderTone(dayOfWeek: number) {
   if (dayOfWeek === 0) return 'text-rose-500';
   if (dayOfWeek === 6) return 'text-blue-500';
   return 'text-slate-600';
 }
 
+// 날짜 셀 텍스트 색상 결정(주말/당월 여부 반영)
 function getCalendarDateTone(dayOfWeek: number, inMonth: boolean) {
   if (dayOfWeek === 0) return inMonth ? 'text-rose-500' : 'text-rose-300';
   if (dayOfWeek === 6) return inMonth ? 'text-blue-500' : 'text-blue-300';
   return inMonth ? 'text-slate-700' : 'text-slate-400';
 }
 
+// 시술 합계 소요시간 계산
 function getExpectedMinutes(services: ReservationService[]) {
   return services.reduce((sum, service) => sum + service.durationMinutes, 0);
 }
 
+// 시술 합계 예상금액 계산
 function getExpectedAmount(services: ReservationService[]) {
   return services.reduce((sum, service) => sum + service.unitPrice, 0);
 }
 
+// 상태 스타일 분기를 위한 비교 문자열 생성
 function normalizeStatusText(code: string, label: string) {
   return `${code} ${label}`.toUpperCase();
 }
 
+// 상태별 배지/칩 톤 반환
 function getStatusTone(code: string, label: string): StatusTone {
   const normalized = normalizeStatusText(code, label);
   if (normalized.includes('CANCEL')) {
@@ -414,6 +468,7 @@ function getStatusTone(code: string, label: string): StatusTone {
   };
 }
 
+// 날짜/시간 기준 예약 정렬
 function sortReservations(items: ReservationRecord[]) {
   return [...items].sort((a, b) => {
     const dateCompare = a.reservationDate.localeCompare(b.reservationDate);
@@ -427,6 +482,7 @@ function mapReservationRowToRecord(
   row: ReservationRow,
   memberPhoneByName: Map<string, string>,
 ): ReservationRecord {
+  const explicitPhone = (row.customer_phone || '').trim();
   const phoneByName = memberPhoneByName.get(normalizeNameKey(row.customer_name)) || '';
   const phoneFromCustomerName = extractPhoneText(row.customer_name);
   return {
@@ -434,8 +490,12 @@ function mapReservationRowToRecord(
     reservationDate: row.reservation_date,
     startTime: normalizeTimeValue(row.start_time),
     customerName: row.customer_name,
+    customerId:
+      typeof row.customer_id === 'number' && Number.isFinite(row.customer_id) && row.customer_id > 0
+        ? row.customer_id
+        : null,
     gender: row.gender || '',
-    customerPhone: phoneByName || phoneFromCustomerName,
+    customerPhone: explicitPhone || phoneByName || phoneFromCustomerName,
     designerName: row.designer_name,
     status: row.status,
     note: row.note || '',
@@ -475,6 +535,7 @@ function toUniqueSortedNames(items: string[]) {
   ).sort((a, b) => a.localeCompare(b, 'ko'));
 }
 
+// 모달 신규 등록 기본 폼 생성
 function createEmptyForm(
   date: string,
   status: string,
@@ -497,6 +558,7 @@ function createEmptyForm(
 
 export default function ReservationCalendarPage() {
   const pt = usePageText('user_management_reservation_calendar');
+  // 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
@@ -507,6 +569,7 @@ export default function ReservationCalendarPage() {
   const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
   const [designerNames, setDesignerNames] = useState<string[]>([]);
   const [designerIdByName, setDesignerIdByName] = useState<Map<string, number>>(new Map());
+  // 예약 목록/화면 범위 상태
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
@@ -520,6 +583,7 @@ export default function ReservationCalendarPage() {
   const [listSearchKeyword, setListSearchKeyword] = useState('');
   const modalDragControls = useDragControls();
 
+  // 모달 상태(등록/수정/결제 계산/고객 조회)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -534,6 +598,7 @@ export default function ReservationCalendarPage() {
     useState<LinkedSettlementState>('NONE');
   const [isSettlementStateLoading, setIsSettlementStateLoading] = useState(false);
   const linkedSettlementRequestIdRef = useRef(0);
+  // 예약 폼 상태
   const [form, setForm] = useState<ReservationForm>(() =>
     createEmptyForm(
       todayIso(),
@@ -553,6 +618,7 @@ export default function ReservationCalendarPage() {
 
   const weekdayLabels = WEEKDAY_TEXT_KEYS.map((key) => pt(key));
 
+  // 코드 -> 라벨 변환 헬퍼
   const getStatusLabelByCode = (code: string, fallback?: string) => {
     const textKey = STATUS_TEXT_KEY_BY_CODE[code.toUpperCase()];
     if (textKey) return pt(textKey);
@@ -571,6 +637,7 @@ export default function ReservationCalendarPage() {
     return fallback || code;
   };
 
+  // 성별 코드를 화면 라벨로 변환
   const getGenderLabel = (gender?: string) => {
     const normalized = (gender || '').trim().toUpperCase();
     if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
@@ -582,6 +649,7 @@ export default function ReservationCalendarPage() {
     return gender?.trim() || '-';
   };
 
+  // 상태/카테고리 빠른 조회 맵
   const statusMap = useMemo(
     () => new Map(statusOptions.map((status) => [status.code, status])),
     [statusOptions],
@@ -592,8 +660,10 @@ export default function ReservationCalendarPage() {
     [categories],
   );
 
+  // 달력 셀 데이터(6주 고정)
   const calendarCells = useMemo(() => buildCalendarCells(monthCursor), [monthCursor]);
 
+  // 날짜별 예약 묶음
   const reservationsByDate = useMemo(() => {
     const map = new Map<string, ReservationRecord[]>();
     reservations.forEach((reservation) => {
@@ -610,11 +680,13 @@ export default function ReservationCalendarPage() {
     return map;
   }, [reservations]);
 
+  // 선택 날짜 예약 목록
   const selectedDateReservations = useMemo(
     () => reservationsByDate.get(selectedDate) || [],
     [reservationsByDate, selectedDate],
   );
 
+  // 리스트 모드: 범위(day/month/year) + 검색어(이름/전화) 필터 적용
   const listReservations = useMemo(() => {
     const keyword = listSearchKeyword.trim().toLowerCase();
     const searchPhoneDigits = normalizePhoneDigits(listSearchKeyword);
@@ -640,6 +712,7 @@ export default function ReservationCalendarPage() {
     );
   }, [listRangeMode, listSearchKeyword, reservations, selectedDate]);
 
+  // 연도 선택 옵션 구성
   const listYearOptions = useMemo(() => {
     const years = new Set<string>();
     reservations.forEach((reservation) => {
@@ -650,21 +723,25 @@ export default function ReservationCalendarPage() {
     return Array.from(years).sort((a, b) => a.localeCompare(b));
   }, [reservations, selectedDate]);
 
+  // 리스트 헤더 라벨(범위 모드별 포맷)
   const listHeaderLabel = useMemo(() => {
     if (listRangeMode === 'year') return pt('t096', { year: selectedDate.slice(0, 4) });
     if (listRangeMode === 'month') return pt('t097', { month: selectedDate.slice(0, 7) });
     return formatDateLabel(selectedDate, weekdayLabels);
   }, [listRangeMode, pt, selectedDate, weekdayLabels]);
 
+  // 카테고리 기준 시술 필터
   const categoryServices = useMemo(() => {
     return serviceItems.filter((service) => service.categoryCode === form.selectedCategory);
   }, [serviceItems, form.selectedCategory]);
 
+  // 선택된 시술 객체
   const selectedService = useMemo(
     () => categoryServices.find((service) => String(service.id) === form.selectedServiceId) || null,
     [categoryServices, form.selectedServiceId],
   );
 
+  // 폼 내 선택된 시술 총합 계산
   const formExpectedMinutes = useMemo(
     () => getExpectedMinutes(form.services),
     [form.services],
@@ -675,22 +752,26 @@ export default function ReservationCalendarPage() {
     [form.services],
   );
 
+  // 고객 전화 검색 입력값(숫자 비교용)
   const customerPhoneQueryDigits = useMemo(
     () => normalizePhoneDigits(customerPhoneQuery),
     [customerPhoneQuery],
   );
 
+  // 고객 자동완성 후보 목록
   const filteredCustomerMembers = useMemo(() => {
     if (!customerPhoneQueryDigits) return members;
     return members.filter((member) => member.phoneDigits.includes(customerPhoneQueryDigits));
   }, [customerPhoneQueryDigits, members]);
 
+  // 현재 선택된 회원 객체
   const selectedCustomerMember = useMemo(() => {
     const memberId = Number.parseInt(selectedCustomerMemberId, 10);
     if (!Number.isFinite(memberId) || memberId <= 0) return null;
     return members.find((member) => member.id === memberId) || null;
   }, [members, selectedCustomerMemberId]);
 
+  // 자동완성 목록 노출용 회원 후보(최대 8개)
   const customerLookupMembers = useMemo(() => {
     if (!customerPhoneQueryDigits) return [];
     if (!selectedCustomerMember) return filteredCustomerMembers.slice(0, 8);
@@ -700,6 +781,7 @@ export default function ReservationCalendarPage() {
     return [selectedCustomerMember, ...filteredCustomerMembers].slice(0, 8);
   }, [customerPhoneQueryDigits, filteredCustomerMembers, selectedCustomerMember]);
 
+  // 모달 상단 고객 요약 텍스트
   const selectedCustomerSummary = useMemo(() => {
     const memberName = (selectedCustomerMember?.name || '').trim();
     const memberPhone = (selectedCustomerMember?.phone || '').trim();
@@ -720,6 +802,13 @@ export default function ReservationCalendarPage() {
     return '';
   }, [customerPhoneQuery, form.customerName, selectedCustomerMember]);
 
+  const guestMemberDefaultName = useMemo(() => {
+    const customerName = (form.customerName || '').trim();
+    if (customerName) return customerName;
+    return (customerPhoneQuery || '').trim();
+  }, [customerPhoneQuery, form.customerName]);
+
+  // 저장/결제 시 사용할 회원 ID 결정
   const selectedMemberUserId = useMemo(() => {
     const selectedMemberId = Number.parseInt(selectedCustomerMemberId, 10);
     if (Number.isFinite(selectedMemberId) && selectedMemberId > 0) {
@@ -733,6 +822,9 @@ export default function ReservationCalendarPage() {
       : null;
   }, [form.customerName, memberIdByName, selectedCustomerMemberId]);
 
+  const customerMembershipLabel = selectedMemberUserId ? '회원' : '비회원';
+
+  // member_user_id(숫자/전화/이름 혼합 가능)에서 실제 회원 ID를 해석
   const resolveMemberUserIdFromIdentifier = useCallback((identifier?: string | null) => {
     const raw = (identifier || '').trim();
     if (!raw) return null;
@@ -761,6 +853,7 @@ export default function ReservationCalendarPage() {
     return matchedByName?.id || null;
   }, [members]);
 
+  // 회원 ID를 정산용 식별자(전화 우선, 없으면 이름)로 변환
   const resolveMemberIdentifierByUserId = useCallback((memberId?: number | null) => {
     if (!memberId || !Number.isFinite(memberId) || memberId <= 0) return null;
     const matchedMember = members.find((member) => member.id === memberId);
@@ -771,6 +864,7 @@ export default function ReservationCalendarPage() {
     return name || null;
   }, [members]);
 
+  // "시술 시작" 액션에서 우선 사용할 상태코드 결정
   const serviceStartStatusCode = useMemo(() => {
     const processingStatus = statusOptions.find((status) =>
       status.code.trim().toUpperCase().includes('PROCESS'),
@@ -796,6 +890,7 @@ export default function ReservationCalendarPage() {
     : isDbBusy || isSettlementStateLoading || isPaymentCompleted;
   const paymentActionLabel = isPaymentCancelAction ? pt('t130') : pt('t122');
 
+  // 빠른 결제 입력용 결제수단(쿠폰 제외, 회원전용 수단은 회원 선택 시만)
   const manualPaymentMethodOptions = useMemo(
     () => {
       const filtered = paymentMethodOptions.filter((method) => {
@@ -810,6 +905,7 @@ export default function ReservationCalendarPage() {
     [paymentMethodOptions, selectedMemberUserId],
   );
 
+  // 결제 계산기 합계값
   const calculatorPayableAmount = useMemo(
     () => Math.max(formExpectedAmount - calculatorDiscountAmount, 0),
     [formExpectedAmount, calculatorDiscountAmount],
@@ -1015,7 +1111,10 @@ export default function ReservationCalendarPage() {
     setDesignerNames(nextDesignerNames);
     setDesignerIdByName(nextDesignerIdByName);
 
-    return nextMemberPhoneByName;
+    return {
+      phoneByName: nextMemberPhoneByName,
+      members: nextMembers,
+    };
   };
 
   // 예약 목록 조회: 헤더 + 시술라인을 화면에서 쓰는 구조로 변환한다.
@@ -1034,6 +1133,7 @@ export default function ReservationCalendarPage() {
     setNextLineId(getNextLineIdSeed(mappedReservations));
   };
 
+  // 예약 ID와 연결된 정산 레코드 조회
   const findLinkedSettlementByReservationId = async (reservationId: number) => {
     const result = await invokeDbCommand<{
       success: boolean;
@@ -1047,6 +1147,7 @@ export default function ReservationCalendarPage() {
     }) || null;
   };
 
+  // 수정 모달 진입 시 연결 정산 상태/결제 스냅샷 로드
   const loadLinkedSettlementState = async (
     reservation: ReservationRecord,
     requestId: number,
@@ -1084,8 +1185,8 @@ export default function ReservationCalendarPage() {
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
-      const phoneMap = await loadLookupData();
-      await loadReservations(phoneMap);
+      const lookupData = await loadLookupData();
+      await loadReservations(lookupData.phoneByName);
     } catch (error) {
       console.error('Failed to load reservation page data:', error);
       setStatusOptions(FALLBACK_STATUSES);
@@ -1107,11 +1208,13 @@ export default function ReservationCalendarPage() {
     }
   };
 
+  // 최초 진입 시 데이터 로드
   useEffect(() => {
     loadInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 공통코드/시술 변경 시 폼 선택값 유효성 보정
   useEffect(() => {
     setForm((prev) => {
       const nextStatus = statusOptions.some((status) => status.code === prev.status)
@@ -1148,10 +1251,12 @@ export default function ReservationCalendarPage() {
     });
   }, [statusOptions, categories, serviceItems]);
 
+  // 할인금액 상한은 총 예상금액까지
   useEffect(() => {
     setCalculatorDiscountAmount((prev) => Math.min(prev, formExpectedAmount));
   }, [formExpectedAmount]);
 
+  // 회원 해제 시 회원전용 결제수단 라인 제거
   useEffect(() => {
     if (selectedMemberUserId) return;
     setQuickPaymentLines((prev) =>
@@ -1159,18 +1264,21 @@ export default function ReservationCalendarPage() {
     );
   }, [selectedMemberUserId]);
 
+  // 상태코드 실제 표시 라벨
   const getStatusLabel = (statusCode: string) => {
     const commonCodeLabel = statusMap.get(statusCode)?.label?.trim();
     if (commonCodeLabel) return commonCodeLabel;
     return getStatusLabelByCode(statusCode, statusCode);
   };
 
+  // 빠른 결제 계산기 초기화
   const resetQuickCalculator = () => {
     setCalculatorDiscountAmount(0);
     setQuickPaymentLines([]);
     setNextQuickPaymentLineId(1);
   };
 
+  // 남은 금액을 기준으로 결제 라인 추가
   const addQuickPaymentLine = () => {
     if (isQuickPaymentReadOnly) return;
     if (calculatorRemainingAmount <= 0) return;
@@ -1188,11 +1296,13 @@ export default function ReservationCalendarPage() {
     setNextQuickPaymentLineId((prev) => prev + 1);
   };
 
+  // 결제 라인 삭제
   const removeQuickPaymentLine = (lineId: number) => {
     if (isQuickPaymentReadOnly) return;
     setQuickPaymentLines((prev) => prev.filter((line) => line.lineId !== lineId));
   };
 
+  // 결제 라인 값 수정(결제수단/금액)
   const updateQuickPaymentLine = (
     lineId: number,
     field: 'methodCode' | 'amount',
@@ -1209,6 +1319,7 @@ export default function ReservationCalendarPage() {
     );
   };
 
+  // 신규 예약 모달 열기
   const openCreateModal = (date = selectedDate) => {
     const defaultStatus = statusOptions[0]?.code || FALLBACK_STATUSES[0].code;
     const defaultCategory =
@@ -1241,6 +1352,7 @@ export default function ReservationCalendarPage() {
     setIsModalOpen(true);
   };
 
+  // 기존 예약 수정 모달 열기
   const openEditModal = (reservation: ReservationRecord) => {
     const preferredCategory =
       reservation.services[0]?.categoryCode
@@ -1249,6 +1361,10 @@ export default function ReservationCalendarPage() {
       || FALLBACK_CATEGORIES[0].code;
     const defaultServiceId =
       serviceItems.find((service) => service.categoryCode === preferredCategory)?.id;
+    const matchedMemberByCustomerId =
+      typeof reservation.customerId === 'number' && reservation.customerId > 0
+        ? members.find((member) => member.id === reservation.customerId) || null
+        : null;
     const customerNameKey = normalizeNameKey(reservation.customerName);
     const mappedMemberId = memberIdByName.get(customerNameKey);
     const customerPhoneDigits = normalizePhoneDigits(reservation.customerPhone);
@@ -1263,7 +1379,7 @@ export default function ReservationCalendarPage() {
       typeof mappedMemberId === 'number'
         ? members.find((member) => member.id === mappedMemberId) || null
         : null;
-    const matchedMember = matchedMemberByPhone || matchedMemberByName;
+    const matchedMember = matchedMemberByCustomerId || matchedMemberByPhone || matchedMemberByName;
     const nextRequestId = linkedSettlementRequestIdRef.current + 1;
     linkedSettlementRequestIdRef.current = nextRequestId;
 
@@ -1293,6 +1409,7 @@ export default function ReservationCalendarPage() {
     void loadLinkedSettlementState(reservation, nextRequestId);
   };
 
+  // 모달 내부 임시 상태를 정리하고 닫기
   const closeModal = () => {
     linkedSettlementRequestIdRef.current += 1;
     resetQuickCalculator();
@@ -1304,6 +1421,7 @@ export default function ReservationCalendarPage() {
     setIsModalOpen(false);
   };
 
+  // 고객 자동완성 목록에서 회원 선택
   const handleCustomerMemberSelect = (memberIdRaw: string) => {
     if (isCompletedSettlementLocked) return;
     setIsCustomerLookupOpen(false);
@@ -1319,6 +1437,7 @@ export default function ReservationCalendarPage() {
     setCustomerPhoneQuery(matchedMember.phone);
   };
 
+  // 고객 전화 입력 시 실시간 회원 후보/자동연결 처리
   const handleCustomerPhoneQueryChange = (value: string) => {
     if (isCompletedSettlementLocked) return;
     setCustomerPhoneQuery(value);
@@ -1357,6 +1476,7 @@ export default function ReservationCalendarPage() {
     setIsCustomerLookupOpen(false);
   };
 
+  // 현재 선택된 시술을 예약 시술 목록에 추가
   const addSelectedService = () => {
     if (isCompletedSettlementLocked) return;
     if (!selectedService) {
@@ -1391,6 +1511,7 @@ export default function ReservationCalendarPage() {
     setNextLineId((prev) => prev + 1);
   };
 
+  // 예약 시술 목록에서 라인 삭제
   const removeService = (lineId: number) => {
     if (isCompletedSettlementLocked) return;
     setForm((prev) => ({
@@ -1399,19 +1520,62 @@ export default function ReservationCalendarPage() {
     }));
   };
 
-  const resolveReservationCustomerName = useCallback((targetForm: ReservationForm) => {
+  // 저장용 customer_name 계산:
+  // - 회원 선택 상태면 회원 전화번호 우선 저장
+  // - 그 외에는 기존 규칙(이름 우선, 없으면 전화 입력값) 유지
+  const resolveReservationCustomerSnapshot = useCallback((
+    targetForm: ReservationForm,
+    options?: ReservationCustomerSnapshotOptions,
+  ): ReservationCustomerSnapshot => {
     const directName = targetForm.customerName.trim();
-    if (directName) return directName;
-    return (customerPhoneQuery || '').trim();
-  }, [customerPhoneQuery]);
+    const inputValue = directName || (customerPhoneQuery || '').trim();
+    const forcedMember = options?.forcedMember;
+    if (forcedMember && Number.isFinite(forcedMember.id) && forcedMember.id > 0) {
+      const memberName = forcedMember.name.trim();
+      const memberPhone = forcedMember.phone.trim();
+      return {
+        customerName: memberName || inputValue,
+        customerId: forcedMember.id,
+        customerPhone: memberPhone || inputValue,
+      };
+    }
 
-  const validateReservationForm = (targetForm: ReservationForm) => {
-    const customerDisplayName = resolveReservationCustomerName(targetForm);
+    const memberId =
+      typeof selectedMemberUserId === 'number' && Number.isFinite(selectedMemberUserId) && selectedMemberUserId > 0
+        ? selectedMemberUserId
+        : null;
+    if (memberId) {
+      const matchedMember =
+        members.find((member) => member.id === memberId)
+        || (selectedCustomerMember?.id === memberId ? selectedCustomerMember : null);
+      if (matchedMember) {
+        const memberName = matchedMember.name.trim();
+        const memberPhone = matchedMember.phone.trim();
+        return {
+          customerName: memberName || inputValue,
+          customerId: matchedMember.id,
+          customerPhone: memberPhone,
+        };
+      }
+    }
+    return {
+      customerName: inputValue,
+      customerId: null as number | null,
+      customerPhone: inputValue,
+    };
+  }, [customerPhoneQuery, members, selectedCustomerMember, selectedMemberUserId]);
+
+  // 예약 저장 전 필수 입력 검증
+  const validateReservationForm = (
+    targetForm: ReservationForm,
+    options?: ReservationCustomerSnapshotOptions,
+  ) => {
+    const customerSnapshot = resolveReservationCustomerSnapshot(targetForm, options);
     if (!targetForm.reservationDate || !targetForm.startTime) {
       alert(pt('t017'));
       return false;
     }
-    if (!customerDisplayName || !targetForm.designerName.trim()) {
+    if (!customerSnapshot.customerName || !targetForm.designerName.trim()) {
       alert(pt('t002'));
       return false;
     }
@@ -1426,8 +1590,12 @@ export default function ReservationCalendarPage() {
     return true;
   };
 
-  const upsertReservationItem = async (targetForm: ReservationForm) => {
-    const customerDisplayName = resolveReservationCustomerName(targetForm);
+  // 예약 upsert API 호출
+  const upsertReservationItem = async (
+    targetForm: ReservationForm,
+    options?: ReservationCustomerSnapshotOptions,
+  ) => {
+    const customerSnapshot = resolveReservationCustomerSnapshot(targetForm, options);
     return invokeDbCommand<{
       success: boolean;
       message: string;
@@ -1439,7 +1607,9 @@ export default function ReservationCalendarPage() {
           reservation_id: modalMode === 'edit' ? editingId : undefined,
           reservation_date: targetForm.reservationDate,
           start_time: normalizeTimeValue(targetForm.startTime),
-          customer_name: customerDisplayName,
+          customer_name: customerSnapshot.customerName,
+          customer_id: customerSnapshot.customerId,
+          customer_phone: customerSnapshot.customerPhone || null,
           gender: targetForm.gender || null,
           designer_name: targetForm.designerName.trim(),
           status: targetForm.status,
@@ -1450,9 +1620,11 @@ export default function ReservationCalendarPage() {
     );
   };
 
+  // 예약이 진행중 상태일 때 정산(PROCESSING) 스냅샷도 함께 동기화
   const syncProcessingSettlementForReservation = async (
     reservationId: number,
     targetForm: ReservationForm,
+    options?: ReservationCustomerSnapshotOptions,
   ) => {
     const linkedSettlement = await findLinkedSettlementByReservationId(reservationId);
     const linkedSettlementState = normalizeSettlementState(linkedSettlement?.status);
@@ -1478,14 +1650,25 @@ export default function ReservationCalendarPage() {
       throw new Error(pt('t010'));
     }
 
+    const forcedMember = options?.forcedMember;
+    const forcedMemberId =
+      forcedMember && Number.isFinite(forcedMember.id) && forcedMember.id > 0
+        ? forcedMember.id
+        : null;
+    const forcedMemberIdentifier = forcedMember
+      ? (forcedMember.phone.trim() || forcedMember.name.trim() || null)
+      : null;
+
     const linkedMemberUserId = resolveMemberUserIdFromIdentifier(linkedSettlement?.member_user_id);
     const memberUserId =
-      selectedMemberUserId
+      forcedMemberId
+      || selectedMemberUserId
       || linkedMemberUserId
       || null;
     const linkedMemberIdentifier = (linkedSettlement?.member_user_id || '').trim();
     const memberIdentifier =
-      resolveMemberIdentifierByUserId(memberUserId)
+      forcedMemberIdentifier
+      || resolveMemberIdentifierByUserId(memberUserId)
       || linkedMemberIdentifier
       || (customerPhoneQuery || '').trim()
       || targetForm.customerName.trim()
@@ -1526,18 +1709,69 @@ export default function ReservationCalendarPage() {
     });
   };
 
+  const registerGuestAsMember = async (
+    memberNameRaw: string,
+    memberGenderRaw?: string,
+  ): Promise<MemberLookup> => {
+    const memberName = memberNameRaw.trim();
+    if (!memberName) {
+      throw new Error('회원명을 입력해 주세요.');
+    }
+
+    const guestPhone = (customerPhoneQuery || '').trim();
+    const guestPhoneDigits = normalizePhoneDigits(guestPhone);
+    if (guestPhoneDigits.length < 7) {
+      throw new Error('비회원 전화번호를 먼저 입력해 주세요.');
+    }
+    const normalizedGender = (memberGenderRaw || '').trim().toUpperCase();
+    const memberGender =
+      normalizedGender === 'M' || normalizedGender === 'F'
+        ? normalizedGender
+        : undefined;
+
+    await invokeDbCommand<{ success: boolean; message: string }>('upsert_user_management', {
+      user: {
+        name: memberName,
+        phone: guestPhone,
+        gender: memberGender,
+      },
+    });
+
+    const lookupData = await loadLookupData();
+    const normalizedName = normalizeNameKey(memberName);
+    const matchedMember =
+      lookupData.members.find((member) =>
+        normalizeNameKey(member.name) === normalizedName
+        && member.phoneDigits === guestPhoneDigits,
+      )
+      || lookupData.members.find((member) => normalizeNameKey(member.name) === normalizedName);
+
+    if (!matchedMember) {
+      throw new Error('회원 등록 후 회원 정보를 찾지 못했습니다. 다시 시도해 주세요.');
+    }
+
+    setSelectedCustomerMemberId(String(matchedMember.id));
+    setForm((prev) => ({ ...prev, customerName: matchedMember.name }));
+    setCustomerPhoneQuery(matchedMember.phone);
+    return matchedMember;
+  };
+
+  // 예약 저장 공통 루틴(등록/수정/시술시작 공용)
   const saveReservationRecord = async (
     targetForm: ReservationForm,
     successFallbackText: string,
     options?: {
       forceSyncProcessingSettlement?: boolean;
+      forcedMember?: MemberLookup | null;
     },
   ) => {
-    if (!validateReservationForm(targetForm)) return false;
+    if (!validateReservationForm(targetForm, { forcedMember: options?.forcedMember })) return false;
     let reservationSaved = false;
     try {
       setIsMutating(true);
-      const result = await upsertReservationItem(targetForm);
+      const result = await upsertReservationItem(targetForm, {
+        forcedMember: options?.forcedMember,
+      });
       reservationSaved = true;
 
       const shouldSyncProcessingSettlement =
@@ -1548,7 +1782,9 @@ export default function ReservationCalendarPage() {
         if (!Number.isFinite(savedReservationId) || savedReservationId <= 0) {
           throw new Error('예약 저장 결과의 reservation_id가 올바르지 않습니다.');
         }
-        await syncProcessingSettlementForReservation(savedReservationId, targetForm);
+        await syncProcessingSettlementForReservation(savedReservationId, targetForm, {
+          forcedMember: options?.forcedMember,
+        });
       }
 
       await loadReservations();
@@ -1573,12 +1809,48 @@ export default function ReservationCalendarPage() {
   const saveReservation = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isCompletedSettlementLocked) return;
-    await saveReservationRecord(
-      form,
-      modalMode === 'edit' ? pt('t036') : pt('t037'),
-    );
+    const successFallbackText = modalMode === 'edit' ? pt('t036') : pt('t037');
+
+    if (modalMode === 'create' && !selectedMemberUserId) {
+      const shouldRegisterMember = window.confirm('비회원입니다. 회원으로 등록 후 예약하시겠습니까?');
+      if (shouldRegisterMember) {
+        const memberNameInput = window.prompt('회원명을 입력해 주세요.', guestMemberDefaultName);
+        if (memberNameInput === null) return;
+
+        const nextMemberName = memberNameInput.trim();
+        if (!nextMemberName) {
+          alert('회원명을 입력해 주세요.');
+          return;
+        }
+
+        try {
+          setIsMutating(true);
+          const registeredMember = await registerGuestAsMember(nextMemberName, form.gender);
+          await saveReservationRecord(
+            {
+              ...form,
+              customerName: registeredMember.name,
+            },
+            successFallbackText,
+            { forcedMember: registeredMember },
+          );
+        } catch (error) {
+          alert(
+            typeof error === 'string'
+              ? error
+              : (error as { message?: string })?.message || pt('t038'),
+          );
+        } finally {
+          setIsMutating(false);
+        }
+        return;
+      }
+    }
+
+    await saveReservationRecord(form, successFallbackText);
   };
 
+  // 시술 시작: 상태를 진행중 계열로 강제하여 저장
   const startReservationService = async () => {
     if (isCompletedSettlementLocked) return;
     const nextForm: ReservationForm = {
@@ -1590,6 +1862,7 @@ export default function ReservationCalendarPage() {
     });
   };
 
+  // 완료 결제 취소(정산 취소 API 호출)
   const cancelCompletedReservationPayment = async () => {
     if (modalMode !== 'edit' || !editingId) return;
     if (!window.confirm(pt('t131'))) return;
@@ -1785,18 +2058,21 @@ export default function ReservationCalendarPage() {
     }
   };
 
+  // 달력 월 이동
   const moveMonth = (diff: number) => {
     setMonthCursor(
       (prev) => new Date(prev.getFullYear(), prev.getMonth() + diff, 1),
     );
   };
 
+  // 선택 날짜와 month cursor를 함께 동기화
   const syncSelectedDate = (isoDate: string) => {
     setSelectedDate(isoDate);
     const parsed = parseIsoDate(isoDate);
     setMonthCursor(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
   };
 
+  // 리스트 범위(day/month/year)에 따라 날짜 이동
   const moveListRange = (diff: number) => {
     if (listRangeMode === 'year') {
       syncSelectedDate(shiftYear(selectedDate, diff));
@@ -1813,6 +2089,7 @@ export default function ReservationCalendarPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
       <LoadingOverlay visible={isOverlayVisible} message={overlayMessage} zIndex={90} />
 
+      {/* 상단 헤더: 페이지 타이틀/뷰 전환/신규등록 */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t019')}</h1>
@@ -1842,6 +2119,7 @@ export default function ReservationCalendarPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* 캘린더 뷰 */}
         <section
           className={`${viewMode === 'calendar' ? 'xl:col-span-12' : 'hidden'} bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow`}
         >
@@ -2017,6 +2295,7 @@ export default function ReservationCalendarPage() {
         </section>
       </div>
 
+      {/* 리스트 뷰 */}
       {viewMode === 'list' && (
       <section className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
@@ -2198,6 +2477,7 @@ export default function ReservationCalendarPage() {
         </div>
       </section>
       )}
+      {/* 예약 등록/수정 모달 */}
       {isModalOpen && (
         <div
           className="fixed inset-0 z-[80] bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4"
@@ -2237,6 +2517,7 @@ export default function ReservationCalendarPage() {
             </div>
 
             <form noValidate onSubmit={saveReservation} className="max-h-[calc(90vh-80px)] overflow-y-auto p-5 space-y-5">
+              {/* 기본 예약 정보 입력 */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t021')}</label>
@@ -2278,7 +2559,14 @@ export default function ReservationCalendarPage() {
 
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-slate-700">
-                    {pt('t001')}: <span className="font-black text-slate-900">{selectedCustomerSummary || pt('t136')}</span>
+                    {pt('t001')}:
+                    <span className="font-black text-slate-900 ml-1">{selectedCustomerSummary || pt('t136')}</span>
+                    <span className={`ml-2 inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                      selectedMemberUserId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                    >
+                      {customerMembershipLabel}
+                    </span>
                   </p>
                     <div className="relative">
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2373,6 +2661,7 @@ export default function ReservationCalendarPage() {
                 </div>
               </div>
 
+              {/* 시술 선택/추가 + 선택된 시술 목록 */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 <section className="lg:col-span-5 border border-slate-200 rounded-xl p-4 bg-slate-50/60">
                   <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-3">
@@ -2491,6 +2780,7 @@ export default function ReservationCalendarPage() {
                 </section>
               </div>
 
+              {/* 빠른 결제 계산기 */}
               <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <h4 className="text-sm font-bold text-slate-700">{pt('t104')}</h4>
@@ -2603,6 +2893,7 @@ export default function ReservationCalendarPage() {
                 </div>
               </section>
 
+              {/* 하단 요약/액션 버튼 */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
                 <div className="flex flex-wrap gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">

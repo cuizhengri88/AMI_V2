@@ -55,6 +55,7 @@ type Reservation = {
   date: string;
   time: string;
   customerName: string;
+  customerPhone?: string;
   designerName: string;
   memberId?: number;
   managerId?: number;
@@ -449,6 +450,8 @@ export default function SalesEntryPage() {
               reservation_date: string;
               start_time: string;
               customer_name: string;
+              customer_id?: number | null;
+              customer_phone?: string | null;
               designer_name: string;
               status: string;
               services: Array<{
@@ -585,8 +588,15 @@ export default function SalesEntryPage() {
         // [매핑] 예약 조회 결과 -> 신규 정산의 "예약 불러오기" 모델
         const mappedReservations: Reservation[] = (reservationResult.reservations || []).map((reservation) => {
           const customerName = reservation.customer_name?.trim() || '';
+          const customerPhone = reservation.customer_phone?.trim() || '';
           const designerName = reservation.designer_name?.trim() || '';
-          const matchedMember = findMatchedMemberByNameOrPhone(mappedMembers, customerName);
+          const matchedMemberById =
+            typeof reservation.customer_id === 'number' && reservation.customer_id > 0
+              ? mappedMembers.find((member) => member.id === reservation.customer_id) || null
+              : null;
+          const matchedMember =
+            matchedMemberById
+            || findMatchedMemberByNameOrPhone(mappedMembers, customerName, customerPhone || customerName);
           const matchedManager = mappedManagers.find((manager) => manager.name.trim() === designerName);
 
           return {
@@ -594,6 +604,7 @@ export default function SalesEntryPage() {
             date: reservation.reservation_date,
             time: reservation.start_time,
             customerName,
+            customerPhone,
             designerName,
             memberId: matchedMember?.id,
             managerId: matchedManager?.id,
@@ -1255,6 +1266,17 @@ export default function SalesEntryPage() {
     const customerName = getReservationCustomerName(reservation).trim()
       || selectedReservationGuestLabel
       || pt('t025');
+    const matchedMember =
+      reservation.memberId && reservation.memberId > 0
+        ? members.find((entry) => entry.id === reservation.memberId) || null
+        : null;
+    const matchedMemberPhone = matchedMember && matchedMember.phone !== '-'
+      ? matchedMember.phone.trim()
+      : '';
+    const customerId = matchedMember?.id || null;
+    const customerPhone = customerId
+      ? (matchedMemberPhone || reservation.customerPhone?.trim() || null)
+      : (reservation.customerPhone?.trim() || customerName);
 
     const linkedSettlement = settlements.find((settlement) => settlement.reservationId === reservation.id);
 
@@ -1268,6 +1290,8 @@ export default function SalesEntryPage() {
             reservation_date: reservation.date,
             start_time: reservation.time,
             customer_name: customerName,
+            customer_id: customerId,
+            customer_phone: customerPhone,
             gender: null,
             designer_name: designerName,
             status: 'CANCELLED',

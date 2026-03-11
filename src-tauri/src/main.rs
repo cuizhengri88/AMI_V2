@@ -20,7 +20,7 @@ const DEFAULT_STORE_CODE: &str = "HAIR_001";
 const STORE_CODE_GROUP_ID: &str = "STR_CD";
 const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다.";
 const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
-const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v1";
+const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v2";
 const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2";
 const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
 const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__";
@@ -667,6 +667,8 @@ struct ReservationCalendarItemPayload {
     reservation_date: String,
     start_time: String,
     customer_name: String,
+    customer_id: Option<i64>,
+    customer_phone: Option<String>,
     gender: Option<String>,
     designer_name: String,
     status: String,
@@ -711,6 +713,8 @@ struct ReservationCalendarDto {
     reservation_date: String,
     start_time: String,
     customer_name: String,
+    customer_id: Option<i64>,
+    customer_phone: Option<String>,
     gender: Option<String>,
     designer_name: String,
     status: String,
@@ -2058,6 +2062,8 @@ async fn ensure_reservation_calendar_management_tables(
             reservation_date DATE NOT NULL,
             start_time TIME NOT NULL,
             customer_name VARCHAR(100) NOT NULL,
+            customer_id BIGINT NULL,
+            customer_phone VARCHAR(30) NULL,
             gender VARCHAR(20) NULL,
             designer_name VARCHAR(100) NOT NULL,
             status_code VARCHAR(100) NOT NULL,
@@ -2106,6 +2112,12 @@ async fn ensure_reservation_calendar_management_tables(
 
         ALTER TABLE reservation_calendar_management
         ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+
+        ALTER TABLE reservation_calendar_management
+        ADD COLUMN IF NOT EXISTS customer_id BIGINT;
+
+        ALTER TABLE reservation_calendar_management
+        ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(30);
 
         UPDATE reservation_calendar_management
            SET store_code = 'HAIR_001'
@@ -4354,6 +4366,8 @@ async fn get_reservation_calendar_data(
                 r.reservation_date::TEXT,
                 TO_CHAR(r.start_time, 'HH24:MI') AS start_time,
                 r.customer_name,
+                r.customer_id::BIGINT,
+                r.customer_phone,
                 r.gender,
                 r.designer_name,
                 r.status_code,
@@ -4415,10 +4429,12 @@ async fn get_reservation_calendar_data(
                 reservation_date: row.get::<_, String>(1),
                 start_time: row.get::<_, String>(2),
                 customer_name: row.get::<_, String>(3),
-                gender: row.get::<_, Option<String>>(4),
-                designer_name: row.get::<_, String>(5),
-                status: row.get::<_, String>(6),
-                note: row.get::<_, Option<String>>(7),
+                customer_id: row.get::<_, Option<i64>>(4),
+                customer_phone: row.get::<_, Option<String>>(5),
+                gender: row.get::<_, Option<String>>(6),
+                designer_name: row.get::<_, String>(7),
+                status: row.get::<_, String>(8),
+                note: row.get::<_, Option<String>>(9),
                 services: service_map.remove(&reservation_id).unwrap_or_default(),
             }
         })
@@ -4443,6 +4459,12 @@ async fn upsert_reservation_calendar_item(
     let reservation_date_text = item.reservation_date.trim().to_string();
     let start_time_text = item.start_time.trim().to_string();
     let customer_name = item.customer_name.trim().to_string();
+    let customer_id = item.customer_id.filter(|value| *value > 0);
+    let customer_id_value = customer_id.unwrap_or(0);
+    let customer_phone = item
+        .customer_phone
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     let gender = item
         .gender
         .map(|value| value.trim().to_string())
@@ -4475,8 +4497,18 @@ async fn upsert_reservation_calendar_item(
     let start_time = NaiveTime::parse_from_str(&start_time_text, "%H:%M")
         .map_err(|_| "예약 시간 형식은 HH:MM 이어야 합니다.".to_string())?;
 
+    if let Some(raw_customer_id) = item.customer_id {
+        if raw_customer_id <= 0 {
+            return Err("customer_id는 1 이상이어야 합니다.".to_string());
+        }
+    }
     if customer_name.is_empty() {
         return Err("고객명은 필수입니다.".to_string());
+    }
+    if let Some(phone) = customer_phone.as_ref() {
+        if phone.chars().count() > 30 {
+            return Err("고객 전화번호는 30자 이하여야 합니다.".to_string());
+        }
     }
     if designer_name.is_empty() {
         return Err("디자이너명은 필수입니다.".to_string());
@@ -4602,10 +4634,12 @@ async fn upsert_reservation_calendar_item(
                    SET reservation_date = $3,
                        start_time = $4,
                        customer_name = $5,
-                       gender = $6,
-                       designer_name = $7,
-                       status_code = $8,
-                       note = $9,
+                       customer_id = NULLIF($6::BIGINT, 0),
+                       customer_phone = $7,
+                       gender = $8,
+                       designer_name = $9,
+                       status_code = $10,
+                       note = $11,
                        updated_at = NOW()
                  WHERE reservation_id = $1
                    AND store_code = $2
@@ -4616,6 +4650,8 @@ async fn upsert_reservation_calendar_item(
                     &reservation_date,
                     &start_time,
                     &customer_name,
+                    &customer_id_value,
+                    &customer_phone,
                     &gender,
                     &designer_name,
                     &status_code,
@@ -4645,11 +4681,13 @@ async fn upsert_reservation_calendar_item(
                 reservation_date,
                 start_time,
                 customer_name,
+                customer_id,
+                customer_phone,
                 gender,
                 designer_name,
                 status_code,
                 note
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            ) VALUES ($1,$2,$3,$4,NULLIF($5::BIGINT, 0),$6,$7,$8,$9,$10)
             RETURNING reservation_id::BIGINT
             "#,
             &[
@@ -4657,6 +4695,8 @@ async fn upsert_reservation_calendar_item(
                 &reservation_date,
                 &start_time,
                 &customer_name,
+                &customer_id_value,
+                &customer_phone,
                 &gender,
                 &designer_name,
                 &status_code,

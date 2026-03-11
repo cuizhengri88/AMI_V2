@@ -729,7 +729,12 @@
       "t135": "Failed to cancel payment.",
       "t136": "Customer Name (Phone)",
       "t137": "Loading reservation info...",
-      "t138": "Reservation saved, but failed to sync to in-progress sales entry."
+      "t138": "Reservation saved, but failed to sync to in-progress sales entry.",
+      "t139": "The entered phone number is not a registered member. Register as a member now?",
+      "t140": "Enter member name.",
+      "t141": "Member name is required to register.",
+      "t142": "Member registration succeeded, but member list refresh failed. Please try again.",
+      "t143": "Member registration completed."
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
