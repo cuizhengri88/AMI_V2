@@ -727,6 +727,14 @@ export default function SalesEntryPage() {
     [todayReservations],
   );
 
+  const reservationCustomerPhoneById = useMemo(
+    () =>
+      new Map(
+        todayReservations.map((reservation) => [reservation.id, reservation.customerPhone?.trim() || '']),
+      ),
+    [todayReservations],
+  );
+
   const selectedReservationGuestLabel = useMemo(() => {
     if (!selectedReservationId) return '';
     const reservationName = reservationCustomerNameById.get(selectedReservationId)?.trim();
@@ -784,6 +792,24 @@ export default function SalesEntryPage() {
     [reservationCustomerNameById, pt],
   );
 
+  const getSettlementCustomerPhone = useCallback(
+    (settlement: Settlement, fallbackMemberPhone?: string) => {
+      const memberPhone = fallbackMemberPhone?.trim();
+      if (memberPhone && memberPhone !== '-') return memberPhone;
+
+      const guestPhone = settlement.guestCustomerPhone?.trim();
+      if (guestPhone) return guestPhone;
+
+      if (settlement.reservationId) {
+        const reservationPhone = reservationCustomerPhoneById.get(settlement.reservationId)?.trim();
+        if (reservationPhone) return reservationPhone;
+      }
+
+      return '-';
+    },
+    [reservationCustomerPhoneById],
+  );
+
   const getReservationCustomerName = useCallback(
     (reservation: Reservation) => {
       const reservationName = reservation.customerName?.trim();
@@ -797,6 +823,21 @@ export default function SalesEntryPage() {
       return pt('t025');
     },
     [members, pt],
+  );
+
+  const getReservationCustomerPhone = useCallback(
+    (reservation: Reservation) => {
+      const reservationPhone = reservation.customerPhone?.trim();
+      if (reservationPhone) return reservationPhone;
+
+      const matchedMember = reservation.memberId
+        ? members.find((member) => member.id === reservation.memberId)
+        : findMatchedMemberByNameOrPhone(members, reservation.customerName, reservation.customerPhone);
+      const memberPhone = matchedMember?.phone?.trim();
+      if (memberPhone && memberPhone !== '-') return memberPhone;
+      return '-';
+    },
+    [members],
   );
 
   const getReservationManagerName = useCallback(
@@ -1654,11 +1695,12 @@ export default function SalesEntryPage() {
           </div>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[980px]">
+          <table className="w-full text-left border-collapse min-w-[1120px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
                 <th className="py-4 px-6">{pt('t026')}</th>
                 <th className="py-4 px-6">{pt('t042')}</th>
+                <th className="py-4 px-6">{pt('t106')}</th>
                 <th className="py-4 px-6">{pt('t011')}</th>
                 <th className="py-4 px-6">{pt('t019')}</th>
                 <th className="py-4 px-6">{pt('t007')}</th>
@@ -1671,6 +1713,7 @@ export default function SalesEntryPage() {
               {activeSettlementTab === 'RESERVATION' ? (
                 searchedReservationOnly.map((reservation) => {
                   const customerName = getReservationCustomerName(reservation);
+                  const customerPhone = getReservationCustomerPhone(reservation);
                   const managerName = getReservationManagerName(reservation) || '-';
                   const reservationServices = reservation.procedureIds
                     .map((id) => procedures.find((entry) => entry.id === id))
@@ -1706,6 +1749,7 @@ export default function SalesEntryPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="py-4 px-6 text-sm text-slate-600 font-mono">{customerPhone}</td>
                       <td className="py-4 px-6 text-sm font-bold text-slate-700">{managerName}</td>
                       <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
                       <td className="py-4 px-6">
@@ -1742,6 +1786,7 @@ export default function SalesEntryPage() {
                       ? null
                       : members.find((entry) => entry.id === settlement.memberId);
                   const customerName = getSettlementCustomerName(settlement, member?.name);
+                  const customerPhone = getSettlementCustomerPhone(settlement, member?.phone);
                   const manager = managers.find((entry) => entry.id === settlement.managerId);
                   const procedureNames = settlement.procedureIds
                     .map((id) => procedures.find((entry) => entry.id === id)?.name)
@@ -1804,6 +1849,7 @@ export default function SalesEntryPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="py-4 px-6 text-sm text-slate-600 font-mono">{customerPhone}</td>
                       <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
                       <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
                       <td className="py-4 px-6">
@@ -1855,7 +1901,7 @@ export default function SalesEntryPage() {
               {((activeSettlementTab === 'RESERVATION' && searchedReservationOnly.length === 0)
                 || (activeSettlementTab !== 'RESERVATION' && filteredSettlements.length === 0)) && (
                 <tr>
-                  <td colSpan={8} className="py-20 text-center text-slate-400 font-bold">
+                  <td colSpan={9} className="py-20 text-center text-slate-400 font-bold">
                     {pt('t051')}
                   </td>
                 </tr>

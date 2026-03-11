@@ -846,7 +846,8 @@
       "t102": "Walk-in customer name",
       "t103": "Walk-in customer phone",
       "t104": "If no member is selected, it is saved as walk-in customer info.",
-      "t105": "No matching member found."
+      "t105": "No matching member found.",
+      "t106": "Phone Number"
     },
     "user_management_sales_history": {
       "t001": "Transaction Date/Time",

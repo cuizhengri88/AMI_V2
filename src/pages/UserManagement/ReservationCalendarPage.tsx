@@ -1467,13 +1467,14 @@ export default function ReservationCalendarPage() {
       }
       return;
     }
-    const matchedMember = matchedMembers[0];
-    setSelectedCustomerMemberId(String(matchedMember.id));
-    setForm((prev) => ({
-      ...prev,
-      customerName: matchedMember.name,
-    }));
-    setIsCustomerLookupOpen(false);
+    /*
+      Auto-select disabled by request:
+      When only one member matched by phone, the previous behavior selected that member automatically.
+      Keep manual selection via dropdown click instead.
+    */
+    setSelectedCustomerMemberId('');
+    setForm((prev) => ({ ...prev, customerName: trimmedValue }));
+    return;
   };
 
   // 현재 선택된 시술을 예약 시술 목록에 추가
