@@ -822,7 +822,7 @@ export default function ReservationCalendarPage() {
       : null;
   }, [form.customerName, memberIdByName, selectedCustomerMemberId]);
 
-  const customerMembershipLabel = selectedMemberUserId ? '회원' : '비회원';
+  const customerMembershipLabel = selectedMemberUserId ? pt('t149') : pt('t150');
 
   // member_user_id(숫자/전화/이름 혼합 가능)에서 실제 회원 ID를 해석
   const resolveMemberUserIdFromIdentifier = useCallback((identifier?: string | null) => {
@@ -1715,13 +1715,13 @@ export default function ReservationCalendarPage() {
   ): Promise<MemberLookup> => {
     const memberName = memberNameRaw.trim();
     if (!memberName) {
-      throw new Error('회원명을 입력해 주세요.');
+      throw new Error(pt('t141'));
     }
 
     const guestPhone = (customerPhoneQuery || '').trim();
     const guestPhoneDigits = normalizePhoneDigits(guestPhone);
     if (guestPhoneDigits.length < 7) {
-      throw new Error('비회원 전화번호를 먼저 입력해 주세요.');
+      throw new Error(pt('t145'));
     }
     const normalizedGender = (memberGenderRaw || '').trim().toUpperCase();
     const memberGender =
@@ -1747,7 +1747,7 @@ export default function ReservationCalendarPage() {
       || lookupData.members.find((member) => normalizeNameKey(member.name) === normalizedName);
 
     if (!matchedMember) {
-      throw new Error('회원 등록 후 회원 정보를 찾지 못했습니다. 다시 시도해 주세요.');
+      throw new Error(pt('t142'));
     }
 
     setSelectedCustomerMemberId(String(matchedMember.id));
@@ -1780,7 +1780,7 @@ export default function ReservationCalendarPage() {
       if (shouldSyncProcessingSettlement) {
         const savedReservationId = Number(result.reservation_id);
         if (!Number.isFinite(savedReservationId) || savedReservationId <= 0) {
-          throw new Error('예약 저장 결과의 reservation_id가 올바르지 않습니다.');
+          throw new Error(pt('t144'));
         }
         await syncProcessingSettlementForReservation(savedReservationId, targetForm, {
           forcedMember: options?.forcedMember,
@@ -1812,14 +1812,14 @@ export default function ReservationCalendarPage() {
     const successFallbackText = modalMode === 'edit' ? pt('t036') : pt('t037');
 
     if (modalMode === 'create' && !selectedMemberUserId) {
-      const shouldRegisterMember = window.confirm('비회원입니다. 회원으로 등록 후 예약하시겠습니까?');
+      const shouldRegisterMember = window.confirm(pt('t139'));
       if (shouldRegisterMember) {
-        const memberNameInput = window.prompt('회원명을 입력해 주세요.', guestMemberDefaultName);
+        const memberNameInput = window.prompt(pt('t140'), guestMemberDefaultName);
         if (memberNameInput === null) return;
 
         const nextMemberName = memberNameInput.trim();
         if (!nextMemberName) {
-          alert('회원명을 입력해 주세요.');
+          alert(pt('t141'));
           return;
         }
 
@@ -1945,14 +1945,14 @@ export default function ReservationCalendarPage() {
       normalizedQuickPayments.some((line) => isBalancePaymentMethod(line.methodCode))
       && !selectedMemberUserId
     ) {
-      alert('회원 결제수단(충전금 차감)은 회원 고객 선택 시에만 사용할 수 있습니다.');
+      alert(pt('t146'));
       return;
     }
     const managerEmployeeIdForSettlement = normalizedQuickPayments.length > 0
       ? designerIdByName.get(normalizeNameKey(form.designerName))
       : undefined;
     if (normalizedQuickPayments.length > 0 && !managerEmployeeIdForSettlement) {
-      alert('결제 저장을 위해 담당자를 직원 목록에서 다시 선택해 주세요.');
+      alert(pt('t147'));
       return;
     }
 
@@ -1965,7 +1965,7 @@ export default function ReservationCalendarPage() {
 
       const savedReservationId = Number(result.reservation_id);
       if (!Number.isFinite(savedReservationId) || savedReservationId <= 0) {
-        throw new Error('예약 저장 결과의 reservation_id가 올바르지 않습니다.');
+        throw new Error(pt('t144'));
       }
 
       const linkedSettlement = await findLinkedSettlementByReservationId(savedReservationId);
@@ -2027,7 +2027,7 @@ export default function ReservationCalendarPage() {
           ? error
           : (error as { message?: string })?.message
             || (reservationSaved
-              ? '예약은 저장되었지만 결제 저장 중 오류가 발생했습니다.'
+              ? pt('t148')
               : pt('t038')),
       );
     } finally {

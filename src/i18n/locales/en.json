@@ -734,7 +734,14 @@
       "t140": "Enter member name.",
       "t141": "Member name is required to register.",
       "t142": "Member registration succeeded, but member list refresh failed. Please try again.",
-      "t143": "Member registration completed."
+      "t143": "Member registration completed.",
+      "t144": "The reservation save result contains an invalid reservation_id.",
+      "t145": "Please enter a non-member phone number first.",
+      "t146": "Member payment methods (prepaid deduction) are available only when a member customer is selected.",
+      "t147": "To save payment, please reselect the assigned staff from the employee list.",
+      "t148": "The reservation was saved, but an error occurred while saving payment.",
+      "t149": "Member",
+      "t150": "Non-member"
     },
     "user_management_sales_entry": {
       "t001": "* Reservation info has been auto-filled.",
