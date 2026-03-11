@@ -30,6 +30,16 @@ import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  formatCurrency as formatCurrencyCommon,
+  isCouponPaymentMethod,
+  monthStartIso,
+  pad2,
+  toDateOnly,
+  toIsoDate,
+  todayIso,
+  toSettlementStatus,
+} from '../utils/pageCommon';
 
 type ViewType = 'daily' | 'weekly' | 'monthly' | 'period';
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
@@ -113,45 +123,8 @@ type ProcedureTopRow = {
 const CATEGORY_COLORS = ['#0ea5e9', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#ef4444'];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function pad2(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-function toIsoDate(date: Date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
-
-function todayIso() {
-  return toIsoDate(new Date());
-}
-
-function monthStartIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
-}
-
-function toSettlementStatus(value: string): SettlementStatus {
-  const normalized = value?.trim().toUpperCase();
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  return 'PROCESSING';
-}
-
-function toDateOnly(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return '';
-  return toIsoDate(parsed);
-}
-
-function isCouponPaymentMethod(method: string) {
-  return method?.trim().toUpperCase() === 'COUPON';
-}
-
 function formatCurrency(value: number) {
-  return `¥${Math.round(value).toLocaleString('ko-KR')}`;
+  return formatCurrencyCommon(value, { locale: 'ko-KR', round: true });
 }
 
 function parseDateSafe(value: string): Date | null {
@@ -653,9 +626,11 @@ export default function HairSalesStatisticsPage() {
                   </span>
                 </div>
               </div>
-            ))} {categorySales.length === 0 && (
+            ))}
+            {categorySales.length === 0 && (
               <p className="text-xs text-slate-400 font-bold">{pt('t009')}</p>
-            )}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -740,9 +715,11 @@ export default function HairSalesStatisticsPage() {
                   </p>
                 </div>
               </div>
-            ))} {popularProcedures.length === 0 && (
+            ))}
+            {popularProcedures.length === 0 && (
               <p className="text-xs text-slate-400 font-bold">{pt('t009')}</p>
-            )}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -776,35 +753,39 @@ export default function HairSalesStatisticsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {dailyStats.map((row) => {
-                const growth = row.growthRate;
-                const isUp = growth != null && growth >= 0;
-                return (
-                  <tr key={row.date} className="hover:bg-slate-50 transition-colors group">
-                    <td className="py-4 px-6 text-sm font-bold text-slate-900">{row.date}</td>
-                    <td className="py-4 px-6 text-sm font-bold text-slate-600">{row.count}{pt('t030')}</td>
-                    <td className="py-4 px-6 text-sm font-bold text-slate-400 line-through">{formatCurrency(row.grossAmount)}</td>
-                    <td className="py-4 px-6 text-sm font-bold text-red-400">-{formatCurrency(row.discountAmount)}</td>
-                    <td className="py-4 px-6 text-sm font-black text-slate-900">{formatCurrency(row.netAmount)}</td>
-                    <td className="py-4 px-6 text-sm font-bold text-slate-600">{formatCurrency(row.avgTicket)}</td>
-                    <td className="py-4 px-6">
-                      {growth == null ? (
-                        <span className="text-xs font-black text-slate-300">-</span>
-                      ) : (
-                        <div className={`flex items-center gap-1 text-xs font-black ${isUp ? 'text-emerald-500' : 'text-red-500'}`}>
-                          {isUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                          {`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`}
-                        </div>
-                      )}</td>
-                  </tr>
-                );
-              })} {dailyStats.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-20 text-center text-slate-400 font-bold">
-                    {pt('t029')}
-                  </td>
-                </tr>
-              )}</tbody>
+              {dailyStats.length === 0
+                ? (
+                    <tr>
+                      <td colSpan={7} className="py-20 text-center text-slate-400 font-bold">
+                        {pt('t029')}
+                      </td>
+                    </tr>
+                  )
+                : dailyStats.map((row) => {
+                    const growth = row.growthRate;
+                    const isUp = growth != null && growth >= 0;
+                    return (
+                      <tr key={row.date} className="hover:bg-slate-50 transition-colors group">
+                        <td className="py-4 px-6 text-sm font-bold text-slate-900">{row.date}</td>
+                        <td className="py-4 px-6 text-sm font-bold text-slate-600">{row.count}{pt('t030')}</td>
+                        <td className="py-4 px-6 text-sm font-bold text-slate-400 line-through">{formatCurrency(row.grossAmount)}</td>
+                        <td className="py-4 px-6 text-sm font-bold text-red-400">-{formatCurrency(row.discountAmount)}</td>
+                        <td className="py-4 px-6 text-sm font-black text-slate-900">{formatCurrency(row.netAmount)}</td>
+                        <td className="py-4 px-6 text-sm font-bold text-slate-600">{formatCurrency(row.avgTicket)}</td>
+                        <td className="py-4 px-6">
+                          {growth == null ? (
+                            <span className="text-xs font-black text-slate-300">-</span>
+                          ) : (
+                            <div className={`flex items-center gap-1 text-xs font-black ${isUp ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {isUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                              {`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+            </tbody>
           </table>
         </div>
       </div>

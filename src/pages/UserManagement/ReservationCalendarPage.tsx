@@ -19,6 +19,15 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  formatCurrency,
+  isBalancePaymentMethod,
+  normalizeGenderForForm,
+  normalizeNameKey,
+  normalizePhoneDigits,
+  toIsoDate,
+  todayIso,
+} from '../utils/pageCommon';
 
 // 공통코드(상태/카테고리 등) 선택 옵션 타입
 type CodeOption = {
@@ -262,19 +271,6 @@ const A11Y_TEXT_KEYS = {
 // 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
 const INITIAL_RESERVATIONS: ReservationRecord[] = [];
 
-// Date -> yyyy-mm-dd ISO 문자열 변환
-function toIsoDate(date: Date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// 오늘 날짜 ISO 문자열 반환
-function todayIso() {
-  return toIsoDate(new Date());
-}
-
 // yyyy-mm-dd 문자열을 Date로 변환
 function parseIsoDate(iso: string) {
   const [y, m, d] = iso.split('-').map((value) => Number(value));
@@ -303,11 +299,6 @@ function shiftYear(iso: string, diffYears: number) {
   base.setMonth(0);
   base.setFullYear(base.getFullYear() + diffYears);
   return toIsoDate(base);
-}
-
-// 통화 포맷터
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
 }
 
 // 문자열 입력 포함 금액값을 안전한 숫자로 변환
@@ -341,16 +332,6 @@ function normalizeTimeValue(raw: string) {
   return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
 }
 
-// 이름 비교용 키(공백 제거 + 소문자)
-function normalizeNameKey(raw: string) {
-  return raw.trim().toLowerCase();
-}
-
-// 전화번호 숫자만 추출
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
 // 고객명 문자열에서 전화번호 형태 텍스트를 추출
 function extractPhoneText(raw?: string | null) {
   const source = (raw || '').trim();
@@ -361,12 +342,6 @@ function extractPhoneText(raw?: string | null) {
 
   const embeddedPhoneLike = source.match(/(\+?\d[\d\s-]{6,}\d)/);
   return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
-}
-
-// 회원 잔액 계열 결제수단 여부
-function isBalancePaymentMethod(code: string) {
-  const normalized = code.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
 // 예약 상태를 정산 상태로 변환
@@ -411,18 +386,6 @@ function buildQuickCalculatorSnapshotFromSettlement(
     discountAmount,
     paymentLines: nonCouponPayments,
   };
-}
-
-// 성별 문자열을 폼 저장용 값(M/F/빈값)으로 정규화
-function normalizeGenderForForm(raw?: string | null) {
-  const normalized = (raw || '').trim().toUpperCase();
-  if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
-    return 'M';
-  }
-  if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') {
-    return 'F';
-  }
-  return '';
 }
 
 // 달력 6주(42칸) 셀 생성

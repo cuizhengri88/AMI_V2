@@ -5,6 +5,14 @@ import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripH
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  formatCurrency,
+  formatDateTime,
+  isSamePhoneDigits,
+  normalizeNameKey,
+  normalizePhoneDigits,
+  toTimestamp,
+} from '../utils/pageCommon';
 
 // 회원 관리 테이블 1행 모델
 type User = {
@@ -177,27 +185,6 @@ type MemberReservationHistoryRow = {
   is_linked: boolean;
 };
 
-// 금액 표시 유틸
-function formatCurrency(value: number | null | undefined) {
-  return `¥${Number(value || 0).toLocaleString()}`;
-}
-
-// 정렬/비교용 timestamp 변환
-function toTimestamp(raw: string | null | undefined) {
-  if (!raw) return Number.MIN_SAFE_INTEGER;
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return Number.MIN_SAFE_INTEGER;
-  return parsed.getTime();
-}
-
-// 날짜시간 표시 포맷
-function formatDateTime(raw: string | null | undefined) {
-  if (!raw) return '-';
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString(undefined, { hour12: false });
-}
-
 // 예약일/시간 조합 문자열 표시
 function formatReservationDateTime(date: string | null | undefined, time: string | null | undefined) {
   const dateValue = (date || '').trim();
@@ -206,24 +193,6 @@ function formatReservationDateTime(date: string | null | undefined, time: string
   if (!dateValue) return timeValue || '-';
   if (!timeValue) return dateValue;
   return `${dateValue} ${timeValue}`;
-}
-
-// 전화번호 숫자만 추출
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-// 이름 비교용 정규화 키
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
-
-// 전화번호 동일성 판정
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
 }
 
 // 회원-예약/정산 매칭 규칙(이름/전화)

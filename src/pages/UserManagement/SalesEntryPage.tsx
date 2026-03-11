@@ -14,6 +14,14 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  findMatchedMemberByNameOrPhone,
+  isBalancePaymentMethod,
+  isCouponPaymentMethod,
+  normalizePhoneDigits,
+  todayIso,
+  toSettlementStatus,
+} from '../utils/pageCommon';
 
 // 회원이 보유한 쿠폰 정보
 type Coupon = {
@@ -179,62 +187,6 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'COUPON', name: 'COUPON', order: 6 },
 ];
 
-// 오늘 날짜(yyyy-mm-dd) 기본값 생성
-function todayIso() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// 전화번호 검색은 하이픈/공백/괄호 입력이 섞여도 동일하게 매칭되도록
-// 숫자만 남긴 비교용 문자열을 사용한다.
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
-
-// 비교 가능한 전화번호 문자열이 같은지(일치/포함) 판정
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
-}
-
-// 고객 이름/전화 정보로 회원 자동 매칭
-function findMatchedMemberByNameOrPhone(
-  members: Member[],
-  customerName?: string | null,
-  customerPhone?: string | null,
-) {
-  const normalizedName = normalizeNameKey(customerName);
-  const phoneCandidates = [
-    normalizePhoneDigits(customerPhone),
-    normalizePhoneDigits(customerName),
-  ].filter((digits) => digits.length >= 7);
-
-  for (const customerDigits of phoneCandidates) {
-    const matchedByPhone = members.find((member) => {
-      const memberPhoneDigits = normalizePhoneDigits(member.phone);
-      if (memberPhoneDigits.length < 7) return false;
-      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
-    });
-    if (matchedByPhone) return matchedByPhone;
-  }
-
-  if (normalizedName) {
-    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
-    if (matchedByName) return matchedByName;
-  }
-
-  return null;
-}
-
 // 정산 저장 시 사용할 회원 식별값(전화 우선, 없으면 이름) 생성
 function getMemberIdentifier(member?: Member | null) {
   if (!member) return null;
@@ -256,28 +208,9 @@ function toReservationStatus(value: string): Reservation['status'] {
   return 'RESERVED';
 }
 
-// 정산 상태 문자열 정규화
-function toSettlementStatus(value: string): SettlementStatus {
-  const normalized = value.trim().toUpperCase();
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  return 'PROCESSING';
-}
-
 // 읽기전용 상태(완료/취소) 여부
 function isClosedSettlementStatus(status: SettlementStatus) {
   return status === 'COMPLETED' || status === 'CANCELLED';
-}
-
-// 결제 라인이 쿠폰 결제인지 판정
-function isCouponPaymentMethod(method: string) {
-  return method?.trim().toUpperCase() === 'COUPON';
-}
-
-// 결제수단이 선불/회원충전 차감 계열인지 판정
-function isBalancePaymentMethod(method: string) {
-  const normalized = method?.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {

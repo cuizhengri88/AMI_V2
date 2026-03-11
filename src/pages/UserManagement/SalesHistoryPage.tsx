@@ -22,6 +22,16 @@ import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  findMatchedMemberByNameOrPhone,
+  formatCurrency,
+  formatDateTime,
+  isCouponPaymentMethod,
+  toDateOnly,
+  todayIso,
+  toSettlementStatus,
+  toTimestamp,
+} from '../utils/pageCommon';
 
 // 매칭에 필요한 최소 회원 정보
 type Member = { id: number; name: string; phone: string; balance: number };
@@ -135,67 +145,6 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
 // 과거 데이터 호환용 레거시 쿠폰 결제 라벨
 const LEGACY_COUPON_PAYMENT_LABEL = '쿠폰결재건';
 
-// 오늘 날짜 문자열(yyyy-mm-dd)
-function todayIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-// 이번 달 1일 문자열(yyyy-mm-01)
-function monthStartIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-// 문자열 상태값을 화면 정산 상태로 정규화
-function toSettlementStatus(value: string): SettlementStatus {
-  const normalized = value?.trim().toUpperCase();
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  return 'PROCESSING';
-}
-
-// 날짜 비교를 위한 yyyy-mm-dd 추출
-function toDateOnly(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return '';
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-}
-
-// 날짜시간 표시 포맷
-function formatDateTime(raw: string) {
-  if (!raw) return '-';
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString(undefined, { hour12: false });
-}
-
-// 금액 표시 포맷
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
-}
-
-// 안전한 Date 파싱
-function toDateTime(raw: string) {
-  if (!raw) return null;
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
-// 정렬/비교용 timestamp 변환
-function toTimestamp(raw: string) {
-  return toDateTime(raw)?.getTime() ?? Number.MIN_SAFE_INTEGER;
-}
-
-// 쿠폰 결제 라인 여부
-function isCouponPaymentMethod(method: string) {
-  return method?.trim().toUpperCase() === 'COUPON';
-}
-
 // 결제 라인 금액 합계
 function getTotalPaidAmount(entry: Settlement) {
   return entry.payments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -247,52 +196,6 @@ function normalizePaymentMethodCode(value: string) {
   return normalized;
 }
 
-// 이름 비교용 정규화 키
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
-
-// 전화번호 숫자만 추출
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-// 전화번호 동일성 판정(일치/포함)
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
-}
-
-// 회원 자동 매칭(전화 우선, 이름 보조)
-function findMatchedMemberByNameOrPhone(
-  members: Member[],
-  customerName?: string | null,
-  customerPhone?: string | null,
-) {
-  const normalizedName = normalizeNameKey(customerName);
-  const phoneCandidates = [
-    normalizePhoneDigits(customerPhone),
-    normalizePhoneDigits(customerName),
-  ].filter((digits) => digits.length >= 7);
-
-  for (const customerDigits of phoneCandidates) {
-    const matchedByPhone = members.find((member) => {
-      const memberPhoneDigits = normalizePhoneDigits(member.phone);
-      if (memberPhoneDigits.length < 7) return false;
-      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
-    });
-    if (matchedByPhone) return matchedByPhone;
-  }
-
-  if (normalizedName) {
-    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
-    if (matchedByName) return matchedByName;
-  }
-
-  return null;
-}
 
 // 실매출 통계에서 제외할 결제코드 여부
 function isActualSalesExcludedPaymentCode(code: string) {
@@ -313,7 +216,7 @@ export default function SalesHistoryPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   // 조회 필터(기간/회원/담당자/카테고리/시술/결제수단)
-  const [startDate, setStartDate] = useState(monthStartIso());
+  const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
   const [searchMember, setSearchMember] = useState('');
   const [selectedManager, setSelectedManager] = useState('');
@@ -667,7 +570,7 @@ export default function SalesHistoryPage() {
   }, [filteredHistory, paymentMethods, paymentMethodNameMap, pt]);
 
   const resetFilters = () => {
-    setStartDate(monthStartIso());
+    setStartDate(todayIso());
     setEndDate(todayIso());
     setSearchMember('');
     setSelectedManager('');

@@ -17,6 +17,7 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import { formatCurrency as formatCurrencyCommon } from '../utils/pageCommon';
 
 type CategoryCode = string;
 
@@ -64,7 +65,7 @@ const EMPTY_FORM: ServiceForm = {
 };
 
 function formatCurrency(value: number) {
-  return value.toLocaleString('ko-KR');
+  return formatCurrencyCommon(value, { symbol: '', locale: 'ko-KR' });
 }
 
 function formatProcedureCode(id: number) {

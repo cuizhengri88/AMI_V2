@@ -4,6 +4,7 @@ import { Search, Filter, History, User, RotateCcw, X, Calendar } from 'lucide-re
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import { formatCurrency, formatDateTimeYmdHms, toDateOnly } from '../utils/pageCommon';
 
 // 회원 선택 드롭다운에서 사용하는 최소 회원 정보
 type MemberOption = {
@@ -48,29 +49,6 @@ type PointHistoryItem = {
   // 취소 일시
   cancelledAt: string | null;
 };
-
-// 금액 표시 포맷(화폐기호 + 천단위 구분)
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
-}
-
-// 날짜/시간 문자열을 브라우저 로케일 표시로 변환
-function formatDateTime(raw: string) {
-  if (!raw) return '-';
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString();
-}
-
-// 날짜 필터 비교를 위해 입력값에서 yyyy-mm-dd만 추출
-function toDateOnly(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return '';
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-}
 
 export default function MemberPointHistoryPage() {
   // 페이지 번역 키 접근 함수
@@ -405,7 +383,7 @@ export default function MemberPointHistoryPage() {
 
                 return (
                   <tr key={`${item.actionType}-${item.id}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6 text-xs text-slate-500">{formatDateTime(item.createdAt)}</td>
+                    <td className="py-4 px-6 text-xs text-slate-500">{formatDateTimeYmdHms(item.createdAt)}</td>
                     <td className="py-4 px-6">
                       {item.actionType === 'RECHARGE' ? (
                         item.isCancelled ? (
@@ -441,7 +419,7 @@ export default function MemberPointHistoryPage() {
                         <div className="text-rose-600 mt-1">
                           {pt('t033', {
                             reason: item.cancelReason || '-',
-                            date: formatDateTime(item.cancelledAt || ''),
+                            date: formatDateTimeYmdHms(item.cancelledAt || ''),
                           })}
                         </div>
                       )}</td>

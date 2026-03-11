@@ -5,6 +5,7 @@ import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripH
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import { normalizeGenderForForm } from '../utils/pageCommon';
 
 // 직원 목록 테이블에서 사용하는 1건의 직원 데이터 모델
 type Employee = {
@@ -134,14 +135,6 @@ export default function EmployeeManagementPage() {
     });
     setFilteredEmployees(filtered);
   }, [searchText, employees]);
-
-  // 다양한 성별 표현값을 폼 저장용 M/F 값으로 정규화
-  const normalizeGenderForForm = (gender?: string) => {
-    const normalized = (gender || '').trim().toUpperCase();
-    if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') return 'M';
-    if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') return 'F';
-    return '';
-  };
 
   // 신규 등록 모달 오픈 + 폼 초기화
   const handleAddClick = () => {
