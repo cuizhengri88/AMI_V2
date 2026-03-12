@@ -48,15 +48,22 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          Write-Host "Target Release Tag: $tag"
+          Write-Host "Target Tag: $tag"
+
+          # 1. MSI 폴더와 NSIS 폴더를 모두 뒤져서 .zip과 .sig 파일을 다 찾습니다.
+          $files = Get-ChildItem -Path "src-tauri/target/release/bundle/" -Include *.zip, *.sig -Recurse
           
-          # MSI 빌드 결과물 경로에서 zip과 sig 파일을 찾습니다.
-          $assets = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.zip", "src-tauri/target/release/bundle/msi/*.sig"
-          
-          foreach ($asset in $assets) {
-            Write-Host "Uploading $($asset.FullName)..."
-            # gh release upload 명령으로 기존 파일이 있어도 덮어쓰기(--clobber) 하며 올립니다.
-            gh release upload $tag $asset.FullName --clobber
+          if ($files.Count -eq 0) {
+            Write-Error "파일을 찾지 못했습니다. 빌드 경로가 다른 것 같습니다."
+            exit 1
+          }
+
+          foreach ($file in $files) {
+            # 이미 올라간 msi, exe 등은 제외하고 업데이트용(zip, sig)만 올립니다.
+            if ($file.Extension -eq ".zip" -or $file.Extension -eq ".sig") {
+              Write-Host "강제 업로드 중: $($file.FullName)"
+              & gh release upload $tag $file.FullName --clobber
+            }
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

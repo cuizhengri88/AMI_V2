@@ -1,6 +1,6 @@
 {
   "productName": "AMI",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.gov-data.management",
   "build": {
     "beforeDevCommand": "npm run dev",
