@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # v0.1.7 같은 태그를 푸시하면 실행됩니다.
 
 jobs:
   publish:
@@ -22,6 +22,7 @@ jobs:
         run: npm install
 
       - name: build tauri app
+        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,3 +42,21 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           includeRelease: true
+
+      # [추가된 강제 업로드 단계] Tauri 액션이 놓친 .zip과 .sig 파일을 직접 찾아 올립니다.
+      - name: Force upload updater assets
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Write-Host "Target Release Tag: $tag"
+          
+          # MSI 빌드 결과물 경로에서 zip과 sig 파일을 찾습니다.
+          $assets = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.zip", "src-tauri/target/release/bundle/msi/*.sig"
+          
+          foreach ($asset in $assets) {
+            Write-Host "Uploading $($asset.FullName)..."
+            # gh release upload 명령으로 기존 파일이 있어도 덮어쓰기(--clobber) 하며 올립니다.
+            gh release upload $tag $asset.FullName --clobber
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
