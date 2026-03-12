@@ -1,27 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from './layouts/DashboardLayout';
-import UserManagementPage from './pages/UserManagement/UserManagementPage';
-import EmployeeManagementPage from './pages/UserManagement/EmployeeManagementPage';
-import ProductManagementPage from './pages/Product/ProductManagementPage';
-import StockManagementPage from './pages/Product/StockManagementPage';
-import StockHistoryPage from './pages/Product/StockHistoryPage';
-import PurchaseManagementPage from './pages/Sales/PurchaseManagementPage';
-import SalesStatisticsPage from './pages/Sales/SalesStatisticsPage';
-import HairSalesStatisticsPage from './pages/Sales/HairSalesStatisticsPage';
-import MenuManagementPage from './pages/System/MenuManagementPage';
-import CommonCodePage from './pages/System/CommonCodePage';
-import RoleManagementPage from './pages/System/RoleManagementPage';
-import SystemSettingsPage from './pages/System/SystemSettingsPage';
-import ServiceCatalogPage from './pages/System/ServiceCatalogPage';
-import PointRechargePage from './pages/UserManagement/PointRechargePage';
-import MemberPointHistoryPage from './pages/UserManagement/MemberPointHistoryPage';
-import ReservationCalendarPage from './pages/Sales/ReservationCalendarPage';
-import SalesEntryPage from './pages/Sales/SalesEntryPage';
-import SalesHistoryPage from './pages/Sales/SalesHistoryPage';
 import { invokeDbCommand } from './lib/dbClient';
 import { normalizeSystemTypeCode, SYSTEM_TYPE_STORAGE_KEY } from './constants/systemType';
 import { normalizeStoreCode, STORE_CODE_STORAGE_KEY } from './constants/store';
+
+// --- React.lazy: 페이지별 코드 스플리팅 (방문 시 동적 로드) ---
+// Product (상품관리)
+const ProductManagementPage = React.lazy(() => import('./pages/Product/ProductManagementPage'));
+const StockManagementPage = React.lazy(() => import('./pages/Product/StockManagementPage'));
+const StockHistoryPage = React.lazy(() => import('./pages/Product/StockHistoryPage'));
+// Sales (매출관리)
+const PurchaseManagementPage = React.lazy(() => import('./pages/Sales/PurchaseManagementPage'));
+const SalesStatisticsPage = React.lazy(() => import('./pages/Sales/SalesStatisticsPage'));
+const HairSalesStatisticsPage = React.lazy(() => import('./pages/Sales/HairSalesStatisticsPage'));
+const ReservationCalendarPage = React.lazy(() => import('./pages/Sales/ReservationCalendarPage'));
+const SalesEntryPage = React.lazy(() => import('./pages/Sales/SalesEntryPage'));
+const SalesHistoryPage = React.lazy(() => import('./pages/Sales/SalesHistoryPage'));
+// UserManagement (회원관리)
+const UserManagementPage = React.lazy(() => import('./pages/UserManagement/UserManagementPage'));
+const EmployeeManagementPage = React.lazy(() => import('./pages/UserManagement/EmployeeManagementPage'));
+const PointRechargePage = React.lazy(() => import('./pages/UserManagement/PointRechargePage'));
+const MemberPointHistoryPage = React.lazy(() => import('./pages/UserManagement/MemberPointHistoryPage'));
+// System (시스템)
+const MenuManagementPage = React.lazy(() => import('./pages/System/MenuManagementPage'));
+const CommonCodePage = React.lazy(() => import('./pages/System/CommonCodePage'));
+const RoleManagementPage = React.lazy(() => import('./pages/System/RoleManagementPage'));
+const SystemSettingsPage = React.lazy(() => import('./pages/System/SystemSettingsPage'));
+const ServiceCatalogPage = React.lazy(() => import('./pages/System/ServiceCatalogPage'));
 
 type MenuRow = {
   id: number;
@@ -343,35 +349,41 @@ export default function App() {
   return (
     <StoreBindingGate>
       <BrowserRouter>
-        <Routes>
-          <Route element={<DashboardLayout />}>
-            <Route path="/" element={<MenuAwareRedirect />} />
-            {/* --- Product (상품관리: pages/Product) --- */}
-            <Route path="/products" element={<ProductManagementPage />} />
-            <Route path="/products/stock" element={<StockManagementPage />} />
-            <Route path="/products/stock-history" element={<StockHistoryPage />} />
-            <Route path="/products/service-catalog" element={<ServiceCatalogPage />} />
-            {/* --- Sales (매출관리: pages/Sales) --- */}
-            <Route path="/sales/purchases" element={<PurchaseManagementPage />} />
-            <Route path="/sales/statistics" element={<SalesStatisticsPage />} />
-            <Route path="/sales/hair-statistics" element={<HairSalesStatisticsPage />} />
-            <Route path="/sales/reservations" element={<ReservationCalendarPage />} />
-            <Route path="/sales/entry" element={<SalesEntryPage />} />
-            <Route path="/sales/history" element={<SalesHistoryPage />} />
-            {/* --- UserManagement (회원관리: pages/UserManagement) --- */}
-            <Route path="/users" element={<UserManagementPage />} />
-            <Route path="/users/employees" element={<EmployeeManagementPage />} />
-            <Route path="/users/points" element={<PointRechargePage />} />
-            <Route path="/users/point-history" element={<MemberPointHistoryPage />} />
-            {/* --- System (시스템: pages/System) --- */}
-            <Route path="/system/menu" element={<MenuManagementPage />} />
-            <Route path="/system/code" element={<CommonCodePage />} />
-            <Route path="/system/role" element={<RoleManagementPage />} />
-            <Route path="/system/settings" element={<SystemSettingsPage />} />
-            {/* Fallback */}
-            <Route path="*" element={<MenuAwareRedirect />} />
-          </Route>
-        </Routes>
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="size-8 rounded-full border-3 border-slate-200 border-t-primary animate-spin" />
+          </div>
+        }>
+          <Routes>
+            <Route element={<DashboardLayout />}>
+              <Route path="/" element={<MenuAwareRedirect />} />
+              {/* --- Product (상품관리: pages/Product) --- */}
+              <Route path="/products" element={<ProductManagementPage />} />
+              <Route path="/products/stock" element={<StockManagementPage />} />
+              <Route path="/products/stock-history" element={<StockHistoryPage />} />
+              <Route path="/products/service-catalog" element={<ServiceCatalogPage />} />
+              {/* --- Sales (매출관리: pages/Sales) --- */}
+              <Route path="/sales/purchases" element={<PurchaseManagementPage />} />
+              <Route path="/sales/statistics" element={<SalesStatisticsPage />} />
+              <Route path="/sales/hair-statistics" element={<HairSalesStatisticsPage />} />
+              <Route path="/sales/reservations" element={<ReservationCalendarPage />} />
+              <Route path="/sales/entry" element={<SalesEntryPage />} />
+              <Route path="/sales/history" element={<SalesHistoryPage />} />
+              {/* --- UserManagement (회원관리: pages/UserManagement) --- */}
+              <Route path="/users" element={<UserManagementPage />} />
+              <Route path="/users/employees" element={<EmployeeManagementPage />} />
+              <Route path="/users/points" element={<PointRechargePage />} />
+              <Route path="/users/point-history" element={<MemberPointHistoryPage />} />
+              {/* --- System (시스템: pages/System) --- */}
+              <Route path="/system/menu" element={<MenuManagementPage />} />
+              <Route path="/system/code" element={<CommonCodePage />} />
+              <Route path="/system/role" element={<RoleManagementPage />} />
+              <Route path="/system/settings" element={<SystemSettingsPage />} />
+              {/* Fallback */}
+              <Route path="*" element={<MenuAwareRedirect />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </StoreBindingGate>
   );
