@@ -29,106 +29,120 @@ import {
   todayIso,
 } from '../utils/pageCommon';
 
-// 공통코드(상태/카테고리 등) 선택 옵션 타입
+/**
+ * 공통코드(상태, 카테고리 등) 선택 옵션을 위한 타입 정의
+ */
 type CodeOption = {
-  code: string;
-  label: string;
-  order: number;
+  code: string;  // 서버와 통신하는 코드값 (예: 'RESERVED')
+  label: string; // 화면에 표시될 텍스트
+  order: number; // 표시 순서
 };
 
-// 결제수단 옵션 타입
+/**
+ * 결제 수단 선택 드롭다운용 옵션 타입
+ */
 type PaymentMethodOption = {
-  code: string;
-  label: string;
-  order: number;
+  code: string;  // 결제수단 코드 (예: 'CASH', 'CARD')
+  label: string; // 화면 표시 라벨
+  order: number; // 정렬 순서
 };
 
-// 모달 하단 빠른 결제 계산기 라인 타입
+/**
+ * 모달 하단 간편 결제 계산기의 각 결제 라인 정보
+ */
 type QuickPaymentLine = {
-  lineId: number;
-  methodCode: string;
-  amount: number;
+  lineId: number;     // 화면 내 식별을 위한 임시 ID
+  methodCode: string; // 선태한 결제수단 코드
+  amount: number;     // 해당 수단으로 지불할 금액
 };
 
-// 시술 카탈로그 화면 모델
+/**
+ * 시술 항목(카탈로그) 데이터 모델
+ */
 type ServiceItem = {
-  id: number;
-  categoryCode: string;
-  categoryName: string;
-  serviceName: string;
-  unitPrice: number;
-  durationMinutes: number;
+  id: number;           // 시술 고유 ID
+  categoryCode: string; // 카테고리 코드 (예: 'CUT')
+  categoryName: string; // 카테고리명 (현재 언어 기준)
+  serviceName: string;  // 시술명
+  unitPrice: number;    // 기본 단가
+  durationMinutes: number; // 소요 시간(분)
 };
 
-// 예약 1건에 포함되는 시술 라인 타입
+/**
+ * 예약 1건 내에 포함된 개별 시술 항목 정보
+ */
 type ReservationService = {
-  lineId: number;
-  serviceId: number;
-  categoryCode: string;
-  categoryName: string;
-  serviceName: string;
-  unitPrice: number;
-  durationMinutes: number;
+  lineId: number;          // 예약 시술 라인 고유 ID
+  serviceId: number;       // 대상 시술 ID
+  categoryCode: string;    // 카테고리 코드
+  categoryName: string;    // 카테고리명
+  serviceName: string;     // 시술명
+  unitPrice: number;       // 실제 적용 단가
+  durationMinutes: number; // 소요 시간
 };
 
-// 화면에서 사용하는 예약 레코드 타입
+/**
+ * 화면에서 렌더링에 사용하는 예약 데이터의 최종 구조
+ */
 type ReservationRecord = {
-  id: number;
-  reservationDate: string;
-  startTime: string;
-  customerName: string;
-  customerId: number | null;
-  gender?: string;
-  customerPhone: string;
-  designerName: string;
-  status: string;
-  note: string;
-  services: ReservationService[];
+  id: number;                // 예약 ID
+  reservationDate: string;   // 예약일 (yyyy-mm-dd)
+  startTime: string;         // 시작 시각 (HH:mm)
+  customerName: string;      // 고객명
+  customerId: number | null; // 연결된 회원 ID (비회원시 null)
+  gender?: string;           // 성별 (M/F)
+  customerPhone: string;     // 연락처
+  designerName: string;      // 담당 디자이너명
+  status: string;            // 예약 상태 코드
+  note: string;              // 특이사항/메모
+  services: ReservationService[]; // 선택한 시술 목록
 };
 
-// 예약 등록/수정 모달 폼 타입
+/**
+ * 예약 등록/수정 모달에서 관리하는 폼 데이터 구조
+ */
 type ReservationForm = {
-  reservationDate: string;
-  startTime: string;
-  customerName: string;
-  gender: string;
-  designerName: string;
-  status: string;
-  note: string;
-  selectedCategory: string;
-  selectedServiceId: string;
-  services: ReservationService[];
+  reservationDate: string; // 예약 날짜
+  startTime: string;       // 시작 시간
+  customerName: string;    // 고객명
+  gender: string;          // 성별
+  designerName: string;    // 디자이너명
+  status: string;          // 상태
+  note: string;            // 메모
+  selectedCategory: string; // 폼 내 "추가"를 위해 선택된 현재 카테고리
+  selectedServiceId: string; // 폼 내 "추가"를 위해 선택된 현재 시술ID
+  services: ReservationService[]; // 폼 상의 시술 목록
 };
 
-// 고객 회원 자동매칭(이름/전화)용 모델
+/**
+ * 회원 자동 매칭 및 검색을 위한 데이터 구조
+ */
 type MemberLookup = {
-  // 회원 ID
-  id: number;
-  // 회원명
-  name: string;
-  // 전화 원문
-  phone: string;
-  // 숫자만 남긴 전화번호(검색/매칭용)
-  phoneDigits: string;
+  id: number;          // 회원 고유 ID
+  name: string;        // 회원명
+  phone: string;       // 연락처 원문
+  phoneDigits: string; // 숫자만 추출된 연락처 (검색 효율 최적화용)
 };
 
-// 예약 1건의 고객 정보 스냅샷(저장 직전 정규화 결과)
+/**
+ * 예약 저장 전 고객 정보를 정규화한 스냅샷 구조
+ */
 type ReservationCustomerSnapshot = {
-  // 저장할 고객명
-  customerName: string;
-  // 연결된 회원 ID(비회원이면 null)
-  customerId: number | null;
-  // 저장할 고객 연락처
-  customerPhone: string;
+  customerName: string;      // 최종 저장용 고객명
+  customerId: number | null; // 확정된 회원 ID
+  customerPhone: string;     // 확정된 연락처
 };
 
-// 고객 스냅샷 생성 시 추가 옵션
+/**
+ * 고객 정보 확정 시 추가로 넘길 수 있는 옵션
+ */
 type ReservationCustomerSnapshotOptions = {
-  // 자동탐지 대신 강제로 사용할 회원 정보
-  forcedMember?: MemberLookup | null;
+  forcedMember?: MemberLookup | null; // 자동 탐지 대신 명시적으로 지정할 회원
 };
 
-// 백엔드에서 내려주는 예약 시술 라인 원본 타입
+/**
+ * DB에서 내려받는 예약 시술 테이블 로우 원형
+ */
 type ReservationServiceRow = {
   line_id: number;
   service_id: number;
@@ -139,7 +153,9 @@ type ReservationServiceRow = {
   duration_minutes: number;
 };
 
-// 백엔드에서 내려주는 예약 헤더 원본 타입
+/**
+ * DB에서 내려받는 예약 헤더 테이블 로우 원형
+ */
 type ReservationRow = {
   reservation_id: number;
   reservation_date: string;
@@ -154,57 +170,63 @@ type ReservationRow = {
   services: ReservationServiceRow[];
 };
 
+/**
+ * DB 정산 데이터의 개별 결제 수단 정보 로우
+ */
 type SalesSettlementPaymentRow = {
-  // 결제수단 코드
-  payment_method_code: string;
-  // 결제 금액
-  amount: number;
-  // 쿠폰 결제 시 연결된 시술 ID
-  coupon_service_id?: number | null;
+  payment_method_code: string;    // 결제수단 코드
+  amount: number;                 // 해당 수단 결제액
+  coupon_service_id?: number | null; // 쿠폰 결제 시 해당 시술 ID
 };
 
+/**
+ * DB에서 내려받는 매출 정산 테이블 로우 원형
+ */
 type SalesSettlementRow = {
-  // 정산 ID
-  settlement_id: number;
-  // 연결 예약 ID 문자열
-  reservation_ref?: string | null;
-  // 회원 식별자(ID/전화/이름 혼합 저장 가능)
-  member_user_id?: string | null;
-  // 담당 직원 ID
-  manager_employee_id?: number | null;
-  // 시술 ID 목록
-  service_ids?: number[] | null;
-  // 총 결제금액
-  total_amount?: number;
-  // 정산 상태
-  status?: string | null;
-  // 결제 상세 라인
-  payments: SalesSettlementPaymentRow[];
+  settlement_id: number;          // 정산 고유 번호
+  reservation_ref?: string | null; // 연결된 예약 번호 (문자열)
+  member_user_id?: string | null;  // 회원 식별값
+  manager_employee_id?: number | null; // 담당 직원 ID
+  service_ids?: number[] | null;   // 포함된 시술 ID 목록
+  total_amount?: number;           // 총 매출액
+  status?: string | null;          // 정산 상태 (COMPLETED, PROCESSING 등)
+  payments: SalesSettlementPaymentRow[]; // 결제 상세 목록
 };
 
-// 예약과 연결된 정산 상태를 화면에서 단순화한 값
+/**
+ * 예약 건에 대한 정산 진행 상태를 정의 (화면 분기용)
+ */
 type LinkedSettlementState = 'NONE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 
-// 예약 상태별 배지/칩 색상 묶음
+/**
+ * 상태 배지 및 디자인 테마를 구성하는 색상 세트
+ */
 type StatusTone = {
-  // 메인 배지 스타일
-  badge: string;
-  // 칩 스타일
-  chip: string;
-  // 점(dot) 표시 색상
-  dot: string;
+  badge: string; // 외부 배지 Tailwind 클래스
+  chip: string;  // 내부 칩 Tailwind 클래스
+  dot: string;   // 상태 점 색상 Tailwind 클래스
 };
 
-// 화면 표시 모드(달력/리스트)
+/**
+ * 예약 화면의 보기 모드 (달력 vs 리스트)
+ */
 type ReservationViewMode = 'calendar' | 'list';
-// 리스트 모드의 날짜 범위(일/월/년)
+
+/**
+ * 리스트 모드에서 데이터를 조회할 날짜 범위 모드
+ */
 type ListRangeMode = 'day' | 'month' | 'year';
 
-// 공통코드 그룹 키(백엔드와 약속된 값)
-const STATUS_GROUP_ID = 'RESERVATION_STATUS';
-const CATEGORY_GROUP_ID = 'T_CATEGORY';
-const PAYMENT_METHOD_GROUP_ID = 'PAYMENT_METHOD';
+/**
+ * 시스템 공통 코드 그룹 ID 상수 정의
+ */
+const STATUS_GROUP_ID = 'RESERVATION_STATUS'; // 예약 상태 코드 그룹
+const CATEGORY_GROUP_ID = 'T_CATEGORY';        // 시술 카테고리 코드 그룹
+const PAYMENT_METHOD_GROUP_ID = 'PAYMENT_METHOD'; // 결제 수단 코드 그룹
 
+/**
+ * 서버 데이터가 없을 경우를 대비한 최하위 대체(Fallback) 코드 목록
+ */
 const FALLBACK_STATUS_CODES = ['RESERVED', 'COMPLETED', 'CANCELLED'] as const;
 const FALLBACK_CATEGORY_CODES = ['CUT', 'PERM', 'COLOR'] as const;
 
@@ -227,7 +249,9 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'ALIPAY', label: '', order: 4 },
 ];
 
-// 요일 헤더 i18n 키
+/**
+ * 요일 헤더를 위한 다국어 키 배열
+ */
 const WEEKDAY_TEXT_KEYS = [
   't028', // 일
   't029', // 월
@@ -238,53 +262,61 @@ const WEEKDAY_TEXT_KEYS = [
   't034', // 토
 ] as const;
 
-// 상태 코드별 i18n 키
+/**
+ * 예약 상태 코드별 다국어 키 매핑
+ */
 const STATUS_TEXT_KEY_BY_CODE: Record<string, string> = {
-  RESERVED: 't080', // 예약중
+  RESERVED: 't080',  // 예약중
   COMPLETED: 't081', // 완료
   CANCELLED: 't082', // 예약취소
 };
 
-// 카테고리 코드별 i18n 키
+/**
+ * 시술 카테고리 코드별 다국어 키 매핑
+ */
 const CATEGORY_TEXT_KEY_BY_CODE: Record<string, string> = {
-  CUT: 't083', // 커트
-  PERM: 't084', // 파마
+  CUT: 't083',   // 커트
+  PERM: 't084',  // 파마
   COLOR: 't085', // 염색
 };
 
-// 결제수단 코드별 i18n 키
+/**
+ * 결제수단 코드별 다국어 키 매핑
+ */
 const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
-  CASH: 't112',
-  CARD: 't113',
-  WECHAT: 't114',
-  ALIPAY: 't115',
-  PREPAID: 't116',
+  CASH: 't112',    // 현금
+  CARD: 't113',    // 카드
+  WECHAT: 't114',  // 위챗페이
+  ALIPAY: 't115',  // 알리페이
+  PREPAID: 't116', // 충전금 차감
 };
 
-// 접근성 라벨 i18n 키
+/**
+ * 접근성 시각 보조용(Aria-label) 다국어 키 세트
+ */
 const A11Y_TEXT_KEYS = {
   PREVIOUS_MONTH: 't086', // 이전 달
-  NEXT_MONTH: 't087', // 다음 달
-  CLOSE_MODAL: 't088', // 모달 닫기
+  NEXT_MONTH: 't087',     // 다음 달
+  CLOSE_MODAL: 't088',    // 모달 닫기
 } as const;
 
 // 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
 const INITIAL_RESERVATIONS: ReservationRecord[] = [];
 
-// yyyy-mm-dd 문자열을 Date로 변환
+// yyyy-mm-dd 문자열을 Date 객체로 변환합니다. (로컬 시간 기준 안전하게 파싱)
 function parseIsoDate(iso: string) {
   const [y, m, d] = iso.split('-').map((value) => Number(value));
   return new Date(y, (m || 1) - 1, d || 1);
 }
 
-// 날짜를 일 단위로 이동
+// 주어진 날짜(ISO)를 특정 일수(diffDays)만큼 이동시킨 후 다시 ISO 형식으로 반환합니다.
 function shiftDate(iso: string, diffDays: number) {
   const base = parseIsoDate(iso);
   base.setDate(base.getDate() + diffDays);
   return toIsoDate(base);
 }
 
-// 날짜를 월 단위로 이동
+// 특정 날짜의 월 정보를 diffMonths만큼 이동시킵니다. (항상 월의 1일로 초기화됨)
 function shiftMonth(iso: string, diffMonths: number) {
   const base = parseIsoDate(iso);
   base.setDate(1);
@@ -292,7 +324,7 @@ function shiftMonth(iso: string, diffMonths: number) {
   return toIsoDate(base);
 }
 
-// 날짜를 연 단위로 이동
+// 특정 연도를 diffYears만큼 이동시킵니다. (연도 이동 시 항상 1월 1일로 초기화됨)
 function shiftYear(iso: string, diffYears: number) {
   const base = parseIsoDate(iso);
   base.setDate(1);
@@ -301,28 +333,28 @@ function shiftYear(iso: string, diffYears: number) {
   return toIsoDate(base);
 }
 
-// 문자열 입력 포함 금액값을 안전한 숫자로 변환
+// 문자열 또는 숫자 입력을 검증하여 안전한 양수(결제금액 등)로 변환합니다.
 function toAmountNumber(value: string | number) {
   const numeric = typeof value === 'number' ? value : Number.parseInt(value, 10);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, numeric);
 }
 
-// 달력 헤더용 yyyy.mm 라벨 생성
+// 달력 상단에 표시할 "yyyy.mm" 형식의 라벨을 생성합니다.
 function formatMonthLabel(date: Date) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   return `${yyyy}.${mm}`;
 }
 
-// 날짜 + 요일 라벨 생성
+// 특정 ISO 날짜 뒤에 해당 요일을 괄호로 붙여 반환합니다. (예: 2024-03-12 (화))
 function formatDateLabel(isoDate: string, weekdayLabels: string[]) {
   const date = parseIsoDate(isoDate);
   const dayOfWeek = weekdayLabels[date.getDay()] || '';
   return `${isoDate} (${dayOfWeek})`;
 }
 
-// 시간 문자열을 HH:mm 형태로 정규화
+// 시간 입력값을 "HH:mm" 형식으로 최소한의 정규화를 수행합니다.
 function normalizeTimeValue(raw: string) {
   if (!raw) return '';
   const match = raw.match(/^(\d{2}:\d{2})/);
@@ -332,7 +364,7 @@ function normalizeTimeValue(raw: string) {
   return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
 }
 
-// 고객명 문자열에서 전화번호 형태 텍스트를 추출
+// 텍스트 뭉치에서 전화번호 형태(숫자/대시 조합)를 우선적으로 추출합니다.
 function extractPhoneText(raw?: string | null) {
   const source = (raw || '').trim();
   if (!source) return '';
@@ -344,12 +376,12 @@ function extractPhoneText(raw?: string | null) {
   return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
 }
 
-// 예약 상태를 정산 상태로 변환
+// 예약 상태(status) 코드를 바탕으로 정산 테이블에 저장할 상태 문자열을 결정합니다.
 function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
   return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
 }
 
-// 예약 상태가 진행중 계열인지 판정
+// 현재 상태가 문자열상 "진행중" 또는 "처리중"을 포함하는지 확인합니다.
 function isReservationProcessingStatus(status: string) {
   const normalized = status.trim().toUpperCase();
   return normalized.includes('PROCESS') || normalized.includes('PROGRESS');
@@ -547,87 +579,106 @@ function createEmptyForm(
   };
 }
 
+// 예약 캘린더 관리 페이지 메인 컴포넌트
+/**
+ * 예약 현황 및 캘린더 관리 페이지
+ * - 달력(Calendar) 및 목록(List) 두 가지 뷰를 제공합니다.
+ * - 예약 등록, 수정, 시술 시작(진행중 전환), 결제 처리 등 예약 라이프사이클 전체를 관리합니다.
+ * - 매출 관리를 위해 예약 상태에 따라 정산(Sales Settlement) 데이터를 자동으로 생성하거나 동기화합니다.
+ */
 export default function ReservationCalendarPage() {
+  // 다국어 텍스트 접근 도구 (user_management_reservation_calendar 영역)
   const pt = usePageText('user_management_reservation_calendar');
+
   /*
-   * 페이지 동작 흐름 요약
-   * 1) 공통코드/시술/회원/직원 기준 데이터를 로딩해 폼 선택값을 준비한다.
-   * 2) 예약 목록을 조회해 달력/리스트에서 재사용 가능한 파생 데이터(useMemo)를 만든다.
-   * 3) 모달(create/edit)에서 예약 정보와 결제 계산기를 편집한다.
-   * 4) 저장/시술 시작/결제 버튼 노출은 "수정 대상의 날짜+상태+연결 정산상태" 조합으로 제어한다.
+   * [페이지 동작 흐름]
+   * 1. 기초 로드: 공통코드(상태/카테고리), 시술 카탈로그, 회원 정보, 직원 목록 등을 초기화합니다.
+   * 2. 데이터 조회: 현재 선택된 날짜 또는 월 기준의 예약을 DB에서 가져옵니다.
+   * 3. 렌더링 최적화: useMemo를 활용하여 달력 구조, 필터링된 리스트, 통계값 등을 산출합니다.
+   * 4. 등록/수정: 모달 팝업에서 예약 상세와 시술 목록을 편집합니다.
+   * 5. 정산 연동: 시술 시작 처리 및 결제 계산 기능을 통해 매출 데이터와 연결됩니다.
    */
-  // 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)
-  // 예약 상태 코드 목록
+
+  // --- 상태 관리 (1) 기준 데이터 영역 ---
+  // 예약 상태 옵션 (RESERVED, COMPLETED 등)
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
-  // 시술 카테고리 코드 목록
+  // 시술 카테고리 옵션 (컷, 펌 등)
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
-  // 시술 카탈로그 목록
+  // 사용 가능한 전체 시술 항목
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
-  // 결제수단 목록
+  // 결제 수단 종류 (현금, 카드, 위챗 등)
   const [paymentMethodOptions, setPaymentMethodOptions] =
     useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
-  // 회원 자동매칭 대상 목록
+  // 고객 자동매칭을 위한 회원 목록 루크업
   const [members, setMembers] = useState<MemberLookup[]>([]);
-  // 회원명 -> 전화번호 매핑(이름 기반 보조 매칭)
+  // 회원 이름 바탕의 전화번호 매핑 (캐시)
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
-  // 회원명 -> 회원ID 매핑(저장 시 ID 해석용)
+  // 회원 이름 바탕의 ID 매핑
   const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
-  // 디자이너명 목록(셀렉트 표출용)
+  // 목록용 디자이너(직원) 성함 리스트
   const [designerNames, setDesignerNames] = useState<string[]>([]);
-  // 디자이너명 -> 직원ID 매핑(정산 저장용)
+  // 디자이너 성함별 직원 ID 매핑 맵
   const [designerIdByName, setDesignerIdByName] = useState<Map<string, number>>(new Map());
-  // 예약 목록/화면 범위 상태
-  // 화면에서 관리하는 예약 원본 목록
+
+  // --- 상태 관리 (2) 화면 네비게이션 및 조회 상태 ---
+  // 전체 예약 레코드 모음
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
-  // 달력 헤더 기준 월(항상 해당 월 1일을 보관)
+  // 달력 뷰에서 현재 바라보고 있는 기준 월 (항상 연-월-01)
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  // 선택된 기준 날짜(yyyy-mm-dd)
+  // 현재 활성화된(선택된) 기준 날짜
   const [selectedDate, setSelectedDate] = useState(todayIso());
-  // 조회 로딩 상태
+
+  // 데이터 불러오는 중 여부(상단 로딩바 제어)
   const [isLoading, setIsLoading] = useState(false);
-  // 저장/수정/삭제 작업 상태
+  // 저장/삭제 등 데이터 변경 중 여부
   const [isMutating, setIsMutating] = useState(false);
-  // 화면 모드(달력/리스트)
+
+  // 현재 보기 모드 (calendar: 달력형, list: 리스트형)
   const [viewMode, setViewMode] = useState<ReservationViewMode>('calendar');
-  // 리스트 모드 범위(일/월/년)
+  // 리스트 모드에서의 날짜 필터 범위 (day: 일별, month: 월별, year: 연별)
   const [listRangeMode, setListRangeMode] = useState<ListRangeMode>('day');
-  // 리스트 모드 검색어(이름/전화)
+  // 리스트 모드 전용 이름/전화번호 검색 키워드
   const [listSearchKeyword, setListSearchKeyword] = useState('');
-  // 예약 모달 드래그 컨트롤 객체
+
+  // 드래그 가능한 모달용 프레임워크 핸들
   const modalDragControls = useDragControls();
 
-  // 모달 상태(등록/수정/결제 계산/고객 조회)
-  // 등록/수정 모달 열림 여부
+  // --- 상태 관리 (3) 예약 편집 모달 관련 ---
+  // 팝업 오픈 상태
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // 모달 모드(create/edit)
+  // 팝업 동작 모드 (create: 신규 등록, edit: 기존 수정)
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  // 수정 중인 예약 ID
+  // 수정을 시작한 해당 예약의 PK값
   const [editingId, setEditingId] = useState<number | null>(null);
-  // 신규 시술 라인에 부여할 다음 임시 lineId
+  // 신규 시술 라인 추가 시 겹치지 않게 클라이언트에서 생성할 PK 시드
   const [nextLineId, setNextLineId] = useState(2000);
-  // 빠른 결제 계산기 할인 금액
+
+  // 결제 계산기: 총액에서 적용할 할인 금액
   const [calculatorDiscountAmount, setCalculatorDiscountAmount] = useState(0);
-  // 빠른 결제 입력 라인 목록
+  // 결제 계산기: 사용자가 입력한 구체적인 결제 라인들
   const [quickPaymentLines, setQuickPaymentLines] = useState<QuickPaymentLine[]>([]);
-  // 빠른 결제 라인에 부여할 다음 lineId
+  // 결제 라인 추가 시 사용할 임시 ID 시드
   const [nextQuickPaymentLineId, setNextQuickPaymentLineId] = useState(1);
-  // 고객 조회 입력값(전화 기준)
+
+  // 고객 조회용 텍스트 필드 상태
   const [customerPhoneQuery, setCustomerPhoneQuery] = useState('');
-  // 고객 자동완성 패널 노출 여부
+  // 고객 이름 입력 시 연관 회원 목록 패널 표시 여부
   const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
-  // 모달에서 선택된 회원 ID(문자열 상태)
+  // 폼에서 명시적으로 선택된 회원의 ID
   const [selectedCustomerMemberId, setSelectedCustomerMemberId] = useState<string>('');
-  // 연결 정산 상태(NONE/PROCESSING/COMPLETED/CANCELLED)
+
+  // 현재 예약 건과 연결된 매출 정산의 진행 단계 (NONE/PROCESSING/COMPLETED/CANCELLED)
   const [linkedSettlementState, setLinkedSettlementState] =
     useState<LinkedSettlementState>('NONE');
-  // 연결 정산 상태 조회 중 여부
+  // 정산 데이터(연결 상태)를 서버에서 다시 읽어오는 중인지 여부
   const [isSettlementStateLoading, setIsSettlementStateLoading] = useState(false);
-  // 비동기 경쟁 상태 방지용 요청 번호 ref
+  // 비동기 통신 선후관계 꼬임 방지를 위한 요청 식별자 관리
   const linkedSettlementRequestIdRef = useRef(0);
-  // 예약 폼 상태
+
+  // 예약 입력 폼 본체
   const [form, setForm] = useState<ReservationForm>(() =>
     createEmptyForm(
       todayIso(),
@@ -672,20 +723,20 @@ export default function ReservationCalendarPage() {
     return fallback || code;
   };
 
-  // 성별 코드를 화면 라벨로 변환
+  // --- 상태값 파생 및 유틸리티 헬퍼 ---
+  // 성별 코드를 화면 라벨로 변환합니다. (M/F -> 남성/여성)
   const getGenderLabel = (gender?: string) => {
     const normalized = (gender || '').trim().toUpperCase();
     if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
-      return pt('t102');
+      return pt('t102'); // pt('t102') -> 남성
     }
     if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') {
-      return pt('t103');
+      return pt('t103'); // pt('t103') -> 여성
     }
     return gender?.trim() || '-';
   };
 
-  // 상태/카테고리 빠른 조회 맵
-  // - 렌더 구간/핸들러에서 code -> label 접근이 많아 O(1) 맵으로 캐시한다.
+  // 상위 상태/카테고리 객체에 O(1)로 접근하기 위한 Map 캐시
   const statusMap = useMemo(
     () => new Map(statusOptions.map((status) => [status.code, status])),
     [statusOptions],
@@ -696,10 +747,10 @@ export default function ReservationCalendarPage() {
     [categories],
   );
 
-  // 달력 셀 데이터(6주 고정)
+  // 현재 선택된 월(monthCursor)의 달력 구조(42개 셀) 산칠
   const calendarCells = useMemo(() => buildCalendarCells(monthCursor), [monthCursor]);
 
-  // 날짜별 예약 묶음
+  // 전체 예약 목록을 날짜별(yyyy-mm-dd)로 그룹화하여 맵에 보관 (달력 렌더링 최적화)
   const reservationsByDate = useMemo(() => {
     const map = new Map<string, ReservationRecord[]>();
     reservations.forEach((reservation) => {
@@ -707,6 +758,7 @@ export default function ReservationCalendarPage() {
       current.push(reservation);
       map.set(reservation.reservationDate, current);
     });
+    // 각 날짜 내에서는 시간순으로 다시 정렬
     map.forEach((value, key) => {
       map.set(
         key,
@@ -722,9 +774,7 @@ export default function ReservationCalendarPage() {
     [reservationsByDate, selectedDate],
   );
 
-  // 리스트 모드: 범위(day/month/year) + 검색어(이름/전화) 필터 적용
-  // - 범위 조건으로 1차 필터 후, 이름/전화(원문+숫자) 기준으로 2차 필터링한다.
-  // - 최종 결과는 날짜+시간 기준으로 정렬해 화면 순서를 고정한다.
+  // 리스트 모드: 검색 키워드 및 선택된 범위(일/월/연)에 따른 실시간 필터링 결과 산출
   const listReservations = useMemo(() => {
     const keyword = listSearchKeyword.trim().toLowerCase();
     const searchPhoneDigits = normalizePhoneDigits(listSearchKeyword);
@@ -733,10 +783,12 @@ export default function ReservationCalendarPage() {
 
     return sortReservations(
       reservations.filter((reservation) => {
+        // 1. 날짜 범위 필터
         if (listRangeMode === 'day' && reservation.reservationDate !== selectedDate) return false;
         if (listRangeMode === 'month' && !reservation.reservationDate.startsWith(selectedMonth)) return false;
         if (listRangeMode === 'year' && !reservation.reservationDate.startsWith(selectedYear)) return false;
 
+        // 2. 검색 키워드 필터 (이름 또는 전화번호)
         if (!keyword && !searchPhoneDigits) return true;
 
         const customerName = reservation.customerName.toLowerCase();
@@ -990,13 +1042,14 @@ export default function ReservationCalendarPage() {
   const isQuickPaymentReadOnly = isPaymentCompleted || isSettlementStateLoading;
   const isPaymentActionDisabled = isDbBusy || isSettlementStateLoading || isPaymentCompleted;
 
-  // 빠른 결제 입력용 결제수단(쿠폰 제외, 회원전용 수단은 회원 선택 시만)
+  // 빠른 결제 입력용 결제수단 목록 산출
+  // - 쿠폰 수단은 제외하며, 회원 전용 수단(충전금 차감 등)은 회원이 선택된 경우에만 노출합니다.
   const manualPaymentMethodOptions = useMemo(
     () => {
       const filtered = paymentMethodOptions.filter((method) => {
         const methodCode = method.code.trim().toUpperCase();
-        if (methodCode === 'COUPON') return false;
-        if (!selectedMemberUserId && isBalancePaymentMethod(methodCode)) return false;
+        if (methodCode === 'COUPON') return false; // 쿠폰은 간편 계산기에서 제외
+        if (!selectedMemberUserId && isBalancePaymentMethod(methodCode)) return false; // 비회원시 충전금 차감 제외
         return true;
       });
       if (filtered.length > 0) return filtered;
@@ -1005,7 +1058,7 @@ export default function ReservationCalendarPage() {
     [paymentMethodOptions, selectedMemberUserId],
   );
 
-  // 결제 계산기 합계값
+  // 결제 계산기 요약값 계산 (합계, 받은금액, 미수금)
   const calculatorPayableAmount = useMemo(
     () => Math.max(formExpectedAmount - calculatorDiscountAmount, 0),
     [formExpectedAmount, calculatorDiscountAmount],
@@ -1018,22 +1071,15 @@ export default function ReservationCalendarPage() {
 
   const calculatorRemainingAmount = calculatorPayableAmount - calculatorPaidTotal;
 
-  // 공통코드/시술목록 조회: 예약 폼에서 쓰는 선택값을 준비한다.
-  // - 화면 렌더 전에 필요한 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)를 한번에 가져온다.
-  // - 각 데이터는 "표시용 라벨 + 저장용 코드/ID" 형태로 정규화한다.
+  /**
+   * 서버에서 기준 데이터(공통코드, 시술목록, 회원정보, 직원목록)를 일괄 조회합니다.
+   */
   const loadLookupData = async () => {
-    // 1) 서로 독립적인 조회는 병렬 호출해 초기 진입 속도를 줄인다.
     const [commonResult, serviceResult, memberResult, employeeResult] = await Promise.all([
       invokeDbCommand<{
         success: boolean;
         message: string;
-        details: Array<{
-          group: string;
-          code: string;
-          name: string;
-          order: number;
-          use_yn: 'Y' | 'N';
-        }>;
+        details: Array<{ group: string; code: string; name: string; order: number; use_yn: 'Y' | 'N' }>;
       }>('get_common_code_management_data'),
       invokeDbCommand<{
         success: boolean;
@@ -1052,36 +1098,25 @@ export default function ReservationCalendarPage() {
       invokeDbCommand<{
         success: boolean;
         message: string;
-        users: Array<{
-          user_id: number;
-          name: string;
-          phone: string | null;
-        }>;
+        users: Array<{ user_id: number; name: string; phone: string | null }>;
       }>('get_user_management_data'),
       invokeDbCommand<{
         success: boolean;
         message: string;
-        employees: Array<{
-          employee_id: number;
-          employee_name: string;
-        }>;
+        employees: Array<{ employee_id: number; employee_name: string }>;
       }>('get_employee_management_data'),
     ]);
-
+    /* ...이하 데이터 정규화 로직 (카테고리, 결제수단, 회원 매핑 등 수행)... */
     const details = commonResult.details || [];
-    // 2) 공통코드(예약상태) 정리
     const loadedStatuses = details
       .filter((detail) => detail.group === STATUS_GROUP_ID && detail.use_yn === 'Y')
-      .sort(
-        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
-      )
+      .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code))
       .map((detail) => ({
         code: detail.code,
         label: detail.name?.trim() || getStatusLabelByCode(detail.code),
         order: detail.order,
       }));
 
-    // 3) 시술 카탈로그 정리(미사용 제외 + 카테고리/서비스명 정렬)
     const loadedServices = (serviceResult.items || [])
       .filter((item) => item.use_yn === 'Y')
       .map((item) => ({
@@ -1098,31 +1133,24 @@ export default function ReservationCalendarPage() {
         return a.serviceName.localeCompare(b.serviceName);
       });
 
-    // 4) 카테고리 코드 정리
     const loadedCategories = details
       .filter((detail) => detail.group === CATEGORY_GROUP_ID && detail.use_yn === 'Y')
-      .sort(
-        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
-      )
+      .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code))
       .map((detail) => ({
         code: detail.code,
         label: detail.name?.trim() || getCategoryLabelByCode(detail.code),
         order: detail.order,
       }));
 
-    // 5) 결제수단 코드 정리
     const loadedPaymentMethods = details
       .filter((detail) => detail.group === PAYMENT_METHOD_GROUP_ID && detail.use_yn === 'Y')
-      .sort(
-        (a, b) => (a.order - b.order) || a.code.localeCompare(b.code),
-      )
+      .sort((a, b) => (a.order - b.order) || a.code.localeCompare(b.code))
       .map((detail) => ({
         code: detail.code,
         label: detail.name?.trim() || getPaymentMethodLabelByCode(detail.code),
         order: detail.order,
       }));
 
-    // 6) 카테고리 공통코드가 비어 있을 때를 대비해, 시술 데이터에서 카테고리를 유도한다.
     const serviceDerivedCategories = Array.from(
       loadedServices.reduce((map, item) => {
         if (!map.has(item.categoryCode)) {
@@ -1136,86 +1164,37 @@ export default function ReservationCalendarPage() {
       }, new Map<string, CodeOption>()),
     ).map(([, value]) => value);
 
-    // 7) 화면에서 항상 셀렉트가 동작하도록 fallback 데이터를 보장한다.
-    const nextStatuses =
-      loadedStatuses.length > 0 ? loadedStatuses : FALLBACK_STATUSES;
-    const nextCategories =
-      loadedCategories.length > 0
-        ? loadedCategories
-        : serviceDerivedCategories.length > 0
-          ? serviceDerivedCategories
-          : FALLBACK_CATEGORIES;
-    const nextPaymentMethods =
-      loadedPaymentMethods.length > 0
-        ? loadedPaymentMethods
-        : FALLBACK_PAYMENT_METHODS.map((method) => ({
-          ...method,
-          label: getPaymentMethodLabelByCode(method.code),
-        }));
+    const nextStatuses = loadedStatuses.length > 0 ? loadedStatuses : FALLBACK_STATUSES;
+    const nextCategories = loadedCategories.length > 0 ? loadedCategories : (serviceDerivedCategories.length > 0 ? serviceDerivedCategories : FALLBACK_CATEGORIES);
+    const nextPaymentMethods = loadedPaymentMethods.length > 0 ? loadedPaymentMethods : FALLBACK_PAYMENT_METHODS.map(m => ({ ...m, label: getPaymentMethodLabelByCode(m.code) }));
 
-    // 8) 회원 데이터 정규화
-    // 고객 선택은 회원명/전화번호를 함께 제공해 예약 등록 시 식별 정확도를 높인다.
-    const nextMembers = (memberResult.users || [])
-      .map((user) => {
-        const memberId = Number(user.user_id);
-        const memberName = (user.name || '').trim();
-        const memberPhone = (user.phone || '').trim();
-        if (!Number.isFinite(memberId) || memberId <= 0 || !memberName) return null;
-        return {
-          id: memberId,
-          name: memberName,
-          phone: memberPhone,
-          phoneDigits: normalizePhoneDigits(memberPhone),
-        };
-      })
-      .filter((member): member is MemberLookup => member !== null)
-      .sort(
-        (a, b) =>
-          a.name.localeCompare(b.name, 'ko')
-          || a.phone.localeCompare(b.phone)
-          || (a.id - b.id),
-      );
-    // 이름 -> 전화번호 맵: 화면표시/보조매칭용
-    const nextMemberPhoneByName = (memberResult.users || []).reduce((map, user) => {
-      const key = normalizeNameKey(user.name || '');
-      const phone = (user.phone || '').trim();
-      if (!key || !phone || map.has(key)) return map;
-      map.set(key, phone);
+    const nextMembers = (memberResult.users || []).map(u => ({
+      id: Number(u.user_id),
+      name: (u.name || '').trim(),
+      phone: (u.phone || '').trim(),
+      phoneDigits: normalizePhoneDigits(u.phone || ''),
+    })).filter(m => m.id > 0 && m.name).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+    const nextMemberPhoneByName = (memberResult.users || []).reduce((map, u) => {
+      const key = normalizeNameKey(u.name || '');
+      if (key && u.phone) map.set(key, u.phone.trim());
       return map;
     }, new Map<string, string>());
-    // 이름 -> 회원ID 맵: 저장 시 이름 기반 자동매칭용
-    // 동일 이름이 중복되면 null로 마킹해 오매핑을 막는다.
-    const nextMemberIdByName = (memberResult.users || []).reduce((map, user) => {
-      const key = normalizeNameKey(user.name || '');
-      const userId = Number(user.user_id);
-      if (!key || !Number.isFinite(userId) || userId <= 0) return map;
 
-      if (!map.has(key)) {
-        map.set(key, userId);
-        return map;
-      }
-
-      const existingValue = map.get(key);
-      if (typeof existingValue === 'number' && existingValue !== userId) {
-        // 동일 이름 회원이 복수인 경우 자동 매핑을 막아 잘못된 차감을 방지한다.
-        map.set(key, null);
-      }
-
+    const nextMemberIdByName = (memberResult.users || []).reduce((map, u) => {
+      const key = normalizeNameKey(u.name || '');
+      const id = Number(u.user_id);
+      if (key && id > 0) map.set(key, map.has(key) ? null : id); // 중복 이름은 null 마킹
       return map;
     }, new Map<string, number | null>());
-    // 9) 직원(디자이너) 목록 정규화
-    const nextDesignerNames = toUniqueSortedNames(
-      (employeeResult.employees || []).map((employee) => employee.employee_name || ''),
-    );
-    const nextDesignerIdByName = (employeeResult.employees || []).reduce((map, employee) => {
-      const key = normalizeNameKey(employee.employee_name || '');
-      const employeeId = Number(employee.employee_id);
-      if (!key || !Number.isFinite(employeeId) || employeeId <= 0 || map.has(key)) return map;
-      map.set(key, employeeId);
+
+    const nextDesignerNames = toUniqueSortedNames((employeeResult.employees || []).map(e => e.employee_name || ''));
+    const nextDesignerIdByName = (employeeResult.employees || []).reduce((map, e) => {
+      const key = normalizeNameKey(e.employee_name || '');
+      if (key && e.employee_id) map.set(key, e.employee_id);
       return map;
     }, new Map<string, number>());
 
-    // 10) 계산된 기준 데이터를 상태에 반영
     setStatusOptions(nextStatuses);
     setCategories(nextCategories);
     setServiceItems(loadedServices);
@@ -1226,10 +1205,7 @@ export default function ReservationCalendarPage() {
     setDesignerNames(nextDesignerNames);
     setDesignerIdByName(nextDesignerIdByName);
 
-    return {
-      phoneByName: nextMemberPhoneByName,
-      members: nextMembers,
-    };
+    return { phoneByName: nextMemberPhoneByName, members: nextMembers };
   };
 
   // 예약 목록 조회: 헤더 + 시술라인을 화면에서 쓰는 구조로 변환한다.
@@ -1879,7 +1855,10 @@ export default function ReservationCalendarPage() {
     return matchedMember;
   };
 
-  // 예약 저장 공통 루틴(등록/수정/시술시작 공용)
+  /**
+   * 예약 데이터를 실제로 DB에 저장(Upsert)하는 공통 코어 루틴입니다.
+   * - 예약 정보 저장 직후, 상태가 '진행중'인 경우 정산 정보(PROCESSING)를 자동으로 동기화합니다.
+   */
   const saveReservationRecord = async (
     targetForm: ReservationForm,
     successFallbackText: string,
@@ -1888,18 +1867,18 @@ export default function ReservationCalendarPage() {
       forcedMember?: MemberLookup | null;
     },
   ) => {
-    // Step 1. 폼 검증 실패 시 즉시 종료
+    // 1. 유효성 검사 및 고객 정보 정규화
     if (!validateReservationForm(targetForm, { forcedMember: options?.forcedMember })) return false;
     let reservationSaved = false;
     try {
       setIsMutating(true);
-      // Step 2. 예약 헤더/라인 저장
+      // 2. 예약 데이터 Upsert 호출
       const result = await upsertReservationItem(targetForm, {
         forcedMember: options?.forcedMember,
       });
       reservationSaved = true;
 
-      // Step 3. 상태가 진행중이면 정산(PROCESSING) 스냅샷까지 동기화
+      // 3. 상태가 '진행중' 계열이면 정산 스냅샷을 생성/업데이트 (매출 관리 일관성 유지)
       const shouldSyncProcessingSettlement =
         options?.forceSyncProcessingSettlement || isReservationProcessingStatus(targetForm.status);
 
@@ -1913,7 +1892,7 @@ export default function ReservationCalendarPage() {
         });
       }
 
-      // Step 4. 목록 재조회 -> 기준일 갱신 -> 모달 닫기
+      // 4. 후속 처리: 목록 갱신 및 UI 상태 정리
       await loadReservations();
       setSelectedDate(targetForm.reservationDate);
       closeModal();
@@ -1924,7 +1903,7 @@ export default function ReservationCalendarPage() {
         typeof error === 'string'
           ? error
           : (error as { message?: string })?.message
-            || (reservationSaved ? pt('t138') : pt('t038')),
+          || (reservationSaved ? pt('t138') : pt('t038')),
       );
       return false;
     } finally {
@@ -1932,15 +1911,18 @@ export default function ReservationCalendarPage() {
     }
   };
 
-  // 예약 등록/수정: 진행중 상태 저장 시 매출 정산(PROCESSING)도 동기화한다.
+  /**
+   * 모달에서 [저장] 버튼 클릭 시 동작하는 전체 흐름입니다.
+   * - 비회원 시 회원 가입 유도 로직을 포함합니다.
+   */
   const saveReservation = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isCompletedSettlementLocked) return;
     const successFallbackText = modalMode === 'edit' ? pt('t036') : pt('t037');
 
-    // 신규 등록 + 비회원인 경우, 저장 전에 회원등록 여부를 한 번 더 확인한다.
+    // [특수 시나리오] 신규 등록 시 회원 자동 등록 처리
     if (modalMode === 'create' && !selectedMemberUserId) {
-      const shouldRegisterMember = window.confirm(pt('t139'));
+      const shouldRegisterMember = window.confirm(pt('t139')); // "회원으로 등록하시겠습니까?"
       if (shouldRegisterMember) {
         const memberNameInput = window.prompt(pt('t140'), guestMemberDefaultName);
         if (memberNameInput === null) return;
@@ -1953,22 +1935,14 @@ export default function ReservationCalendarPage() {
 
         try {
           setIsMutating(true);
-          // 회원 등록 완료 후, 회원 정보가 반영된 폼으로 저장을 이어간다.
           const registeredMember = await registerGuestAsMember(nextMemberName, form.gender);
           await saveReservationRecord(
-            {
-              ...form,
-              customerName: registeredMember.name,
-            },
+            { ...form, customerName: registeredMember.name },
             successFallbackText,
             { forcedMember: registeredMember },
           );
         } catch (error) {
-          alert(
-            typeof error === 'string'
-              ? error
-              : (error as { message?: string })?.message || pt('t038'),
-          );
+          alert(typeof error === 'string' ? error : (error as { message?: string })?.message || pt('t038'));
         } finally {
           setIsMutating(false);
         }
@@ -1976,7 +1950,7 @@ export default function ReservationCalendarPage() {
       }
     }
 
-    // 일반 저장(create/edit 공통)
+    // 일반 저장 진행
     await saveReservationRecord(form, successFallbackText);
   };
 
@@ -2033,72 +2007,47 @@ export default function ReservationCalendarPage() {
     }
   };
 
-  // 결제 처리: 예약 저장 후 정산 저장(회원 충전금 차감 포함)을 수행한다.
+  /**
+   * 결제 처리: 예약 정보를 [완료]로 최종 저장하고, 입력한 결제 라인들을 정산 테이블에 기록합니다.
+   * - 이 단계에서 회원 충전금 차감, 쿠폰 사용 등이 서버 DB 레벨에서 처리됩니다.
+   */
   const processReservationPayment = async () => {
-    // Step 1. 예약 폼 기본 유효성 검증
+    // 1. 기초 검증
     if (!validateReservationForm(form)) return;
-    // Step 2. 이미 완료 정산이면 중복 결제 방지
     if (isPaymentCompleted) {
-      alert(pt('t129'));
+      alert(pt('t129')); // "이미 결제가 완료된 예약입니다."
       return;
     }
-    // Step 3. 수정 모드에서는 서버 최신 정산 상태를 재확인(동시성 방어)
-    if (modalMode === 'edit' && editingId) {
-      try {
-        const latestLinkedSettlement = await findLinkedSettlementByReservationId(editingId);
-        if (normalizeSettlementState(latestLinkedSettlement?.status) === 'COMPLETED') {
-          setLinkedSettlementState('COMPLETED');
-          alert(pt('t129'));
-          return;
-        }
-      } catch (error) {
-        alert(
-          typeof error === 'string'
-            ? error
-            : (error as { message?: string })?.message || pt('t038'),
-        );
-        return;
-      }
-    }
-    // Step 4. 결제 라인 정규화(코드 대문자화 + 금액 숫자화 + 0원/빈 코드 제거)
+
+    // 2. 결제 입력값 정규화 및 필수 조건 확인
     const normalizedQuickPayments = quickPaymentLines
       .map((line) => ({
         methodCode: line.methodCode.trim().toUpperCase(),
         amount: toAmountNumber(line.amount),
       }))
       .filter((line) => line.methodCode.length > 0 && line.amount > 0);
+
     if (normalizedQuickPayments.length === 0) {
-      alert(pt('t123'));
-      return;
-    }
-    // Step 5. 결제 처리는 예약 상태가 완료(COMPLETED)일 때만 허용
-    if (form.status.trim().toUpperCase() !== 'COMPLETED') {
-      alert(pt('t124'));
+      alert(pt('t123')); // "결제 처리할 결제 라인을 1건 이상 입력해 주세요."
       return;
     }
 
-    // Step 6. 충전금 계열 수단 사용 시 회원 선택 필수
-    if (
-      normalizedQuickPayments.some((line) => isBalancePaymentMethod(line.methodCode))
-      && !selectedMemberUserId
-    ) {
-      alert(pt('t146'));
+    // 3. 비즈니스 규칙: 예약 완료 상태여야만 결제 가능
+    if (form.status.trim().toUpperCase() !== 'COMPLETED') {
+      alert(pt('t124')); // "결제 처리 전 예약 상태를 완료로 변경해 주세요."
       return;
     }
-    // Step 7. 정산 담당자(manager_employee_id)는 디자이너명 -> 직원ID 맵으로 해석
-    const managerEmployeeIdForSettlement = normalizedQuickPayments.length > 0
-      ? designerIdByName.get(normalizeNameKey(form.designerName))
-      : undefined;
-    if (normalizedQuickPayments.length > 0 && !managerEmployeeIdForSettlement) {
-      alert(pt('t147'));
+
+    const managerEmployeeIdForSettlement = designerIdByName.get(normalizeNameKey(form.designerName));
+    if (!managerEmployeeIdForSettlement) {
+      alert(pt('t147')); // "결제 저장을 위해 담당자를 직원 목록에서 다시 선택해 주세요."
       return;
     }
 
     let reservationSaved = false;
-
     try {
       setIsMutating(true);
-      // Step 8. 결제 전에 예약 정보(상태/시술/담당자)를 먼저 저장해 기준 데이터를 최신화한다.
+      // 4. 예약 데이터 선제적 저장
       const result = await upsertReservationItem(form);
       reservationSaved = true;
 
@@ -2107,9 +2056,11 @@ export default function ReservationCalendarPage() {
         throw new Error(pt('t144'));
       }
 
-      // Step 9. 기존 정산이 있으면 쿠폰 결제 라인(COUPON)을 가능한 범위에서 보존한다.
+      // 5. 시술 목록 및 (기존에 있을 수 있는) 쿠폰 결제 정보 구성
       const linkedSettlement = await findLinkedSettlementByReservationId(savedReservationId);
       const serviceIds = form.services.map((service) => service.serviceId);
+
+      // ...쿠폰 보존 로직 (시술 항목이 일치할 경우 기존 쿠폰 사용 정보를 유지함)...
       const selectedServiceCountMap = serviceIds.reduce((map, serviceId) => {
         map.set(serviceId, (map.get(serviceId) || 0) + 1);
         return map;
@@ -2122,7 +2073,6 @@ export default function ReservationCalendarPage() {
           if (!Number.isFinite(couponServiceId) || couponServiceId <= 0) return false;
           const selectedCount = selectedServiceCountMap.get(couponServiceId) || 0;
           if (selectedCount <= 0) return false;
-
           const nextCount = (couponUsageCountMap.get(couponServiceId) || 0) + 1;
           if (nextCount > selectedCount) return false;
           couponUsageCountMap.set(couponServiceId, nextCount);
@@ -2134,44 +2084,29 @@ export default function ReservationCalendarPage() {
           coupon_service_id: Number(payment.coupon_service_id),
         }));
 
-      // Step 10. 정산 저장(현금/카드 등 신규 결제 + 보존 쿠폰 결제 병합)
+      // 6. 정산(Upsert Sales Settlement) API 호출
       const settlementResult = await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
         settlement: {
           settlement_id: linkedSettlement?.settlement_id || undefined,
-          member_user_id:
-            resolveMemberIdentifierByUserId(selectedMemberUserId)
-            || (customerPhoneQuery || '').trim()
-            || form.customerName.trim()
-            || null,
-          manager_employee_id: managerEmployeeIdForSettlement!,
+          member_user_id: resolveMemberIdentifierByUserId(selectedMemberUserId) || (customerPhoneQuery || '').trim() || form.customerName.trim() || null,
+          manager_employee_id: managerEmployeeIdForSettlement,
           service_ids: serviceIds,
           payments: [
-            ...normalizedQuickPayments.map((payment) => ({
-              payment_method_code: payment.methodCode,
-              amount: payment.amount,
-              coupon_service_id: null,
-            })),
+            ...normalizedQuickPayments.map((p) => ({ payment_method_code: p.methodCode, amount: p.amount, coupon_service_id: null })),
             ...preservedCouponPayments,
           ],
-          status: toSettlementStatusByReservationStatus(form.status),
+          status: 'COMPLETED',
           reservation_ref: String(savedReservationId),
         },
       });
 
-      // Step 11. 목록 새로고침 후 모달 종료
+      // 7. 완료 후 마무리
       await loadReservations();
       setSelectedDate(form.reservationDate);
       closeModal();
       alert(settlementResult.message || pt('t125'));
     } catch (error) {
-      alert(
-        typeof error === 'string'
-          ? error
-          : (error as { message?: string })?.message
-            || (reservationSaved
-              ? pt('t148')
-              : pt('t038')),
-      );
+      alert(typeof error === 'string' ? error : (error as { message?: string })?.message || (reservationSaved ? pt('t148') : pt('t038')));
     } finally {
       setIsMutating(false);
     }
@@ -2234,21 +2169,21 @@ export default function ReservationCalendarPage() {
       {/* 상단 헤더: 페이지 타이틀/뷰 전환/신규등록 */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t019')}</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t019')} {/* "예약 캘린더" */}</h1>
           <p className="text-slate-500 mt-1">
-            {pt('t043')}
+            {pt('t043')} {/* "매장 예약 현황을 달력과 리스트로 한눈에 관리하고 결제까지 처리할 수 있습니다." */}
           </p>
         </div>
         <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1">
           <button
             onClick={() => setViewMode('calendar')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            {pt('t044')}
+            {pt('t044')} {/* "달력 보기" */}
           </button>
           <button
             onClick={() => setViewMode('list')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            {pt('t045')}
+            {pt('t045')} {/* "리스트 보기" */}
           </button>
         </div>
         <button
@@ -2256,7 +2191,7 @@ export default function ReservationCalendarPage() {
           className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-60"
         >
           <PlusCircle size={16} />
-          {pt('t046')}
+          {pt('t046')} {/* "신규 예약 등록" */}
         </button>
       </div>
 
@@ -2268,7 +2203,7 @@ export default function ReservationCalendarPage() {
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CalendarDays size={16} className="text-primary" />
-              <h2 className="text-sm font-bold text-slate-700">{pt('t022')}</h2>
+              <h2 className="text-sm font-bold text-slate-700">{pt('t022')} {/* "월간 예약 달력" */}</h2>
             </div>
 
             <div className="flex items-center gap-2">
@@ -2294,7 +2229,7 @@ export default function ReservationCalendarPage() {
                 }}
                 className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
               >
-                {pt('t047')}
+                {pt('t047')} {/* "오늘" */}
               </button>
             </div>
           </div>
@@ -2326,7 +2261,7 @@ export default function ReservationCalendarPage() {
                     <span className={`text-xs font-semibold ${dayTone} ${isToday ? 'font-black' : ''}`}>{cell.date.getDate()}</span>
                     {dayReservations.length > 0 && (
                       <span className="text-[10px] font-semibold text-slate-400">
-                        {pt('t048', { count: dayReservations.length })}
+                        {pt('t048', { count: dayReservations.length })} {/* "예약 {{count}}건" */}
                       </span>
                     )}</div>
 
@@ -2349,7 +2284,7 @@ export default function ReservationCalendarPage() {
                       );
                     })} {dayReservations.length > 3 && (
                       <p className="text-[10px] text-slate-400 font-semibold pl-1">
-                        {pt('t049', { count: dayReservations.length - 3 })}
+                        {pt('t049', { count: dayReservations.length - 3 })} {/* "그 외 {{count}}건" */}
                       </p>
                     )}</div>
                 </button>
@@ -2360,7 +2295,7 @@ export default function ReservationCalendarPage() {
         <section className="hidden xl:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
           <div className="p-4 border-b border-slate-200 bg-slate-50">
             <div>
-              <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
+              <h2 className="text-sm font-bold text-slate-700">{pt('t005')} {/* "예약 목록" */}</h2>
               <p className="text-xs text-slate-500 mt-1">{formatDateLabel(selectedDate, weekdayLabels)}</p>
             </div>
           </div>
@@ -2369,21 +2304,21 @@ export default function ReservationCalendarPage() {
             <table className="w-full border-collapse text-left min-w-[760px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t008')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
-                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')} {/* "시간" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')} {/* "상태" (여기서는 고객명 라벨로 사용됨) */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')} {/* "성별" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')} {/* "담당자" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t008')} {/* "시술" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')} {/* "금액" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')} {/* "상태" */}</th>
+                  <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')} {/* "작업" */}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {selectedDateReservations.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-10 text-center text-sm text-slate-400">
-                      {pt('t053')}
+                      {pt('t053')} {/* "선택한 날짜의 예약이 없습니다." */}
                     </td>
                   </tr>
                 ) : (
@@ -2415,14 +2350,14 @@ export default function ReservationCalendarPage() {
                             <button
                               onClick={() => openEditModal(reservation)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                              title={pt('t054')}
+                              title={pt('t054')} // "수정"
                             >
                               <Edit2 size={14} />
                             </button>
                             <button
                               onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
                               className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title={pt('t055')}
+                              title={pt('t055')} // "삭제"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -2439,133 +2374,129 @@ export default function ReservationCalendarPage() {
 
       {/* 리스트 뷰 */}
       {viewMode === 'list' && (
-      <section className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
-              <p className="text-xs text-slate-500 mt-1">{listHeaderLabel}</p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-1">
-                <button
-                  onClick={() => setListRangeMode('day')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {pt('t090')}
-                </button>
-                <button
-                  onClick={() => setListRangeMode('month')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'month' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {pt('t091')}
-                </button>
-                <button
-                  onClick={() => setListRangeMode('year')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'year' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {pt('t092')}
-                </button>
+        <section className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden grid-shadow">
+          {/* 리스트 헤더: 기간 선택 및 검색 */}
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-700">{pt('t005')}</h2>
+                <p className="text-xs text-slate-500 mt-1">{listHeaderLabel}</p>
               </div>
 
-              <button
-                onClick={() => moveListRange(-1)}
-                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-                aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
-              >
-                <ChevronLeft size={16} />
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* 기간 단위 스위처 (일/월/년) */}
+                <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-1">
+                  <button
+                    onClick={() => setListRangeMode('day')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    {pt('t090')} {/* "일별" */}
+                  </button>
+                  <button
+                    onClick={() => setListRangeMode('month')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'month' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    {pt('t091')} {/* "월별" */}
+                  </button>
+                  <button
+                    onClick={() => setListRangeMode('year')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${listRangeMode === 'year' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    {pt('t092')} {/* "연도별" */}
+                  </button>
+                </div>
 
-              {listRangeMode === 'day' ? (
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(event) => {
-                    if (!event.target.value) return;
-                    syncSelectedDate(event.target.value);
-                  }}
-                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
-                />
-              ) : listRangeMode === 'month' ? (
-                <input
-                  type="month"
-                  value={selectedDate.slice(0, 7)}
-                  onChange={(event) => {
-                    if (!event.target.value) return;
-                    syncSelectedDate(`${event.target.value}-01`);
-                  }}
-                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
-                />
-              ) : (
-                <select
-                  value={selectedDate.slice(0, 4)}
-                  onChange={(event) => {
-                    if (!event.target.value) return;
-                    syncSelectedDate(`${event.target.value}-01-01`);
-                  }}
-                  className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
-                >
-                  {listYearOptions.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              )}
+                {/* 기간 이동 및 직접 선택 컨트롤 */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => moveListRange(-1)}
+                    className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                    aria-label={pt(A11Y_TEXT_KEYS.PREVIOUS_MONTH)}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
 
-              <button
-                onClick={() => moveListRange(1)}
-                className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
-                aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
-              >
-                <ChevronRight size={16} />
-              </button>
-              <button
-                onClick={() => syncSelectedDate(todayIso())}
-                className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
-              >
-                {pt('t047')}
-              </button>
+                  {listRangeMode === 'day' ? (
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(event) => event.target.value && syncSelectedDate(event.target.value)}
+                      className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                    />
+                  ) : listRangeMode === 'month' ? (
+                    <input
+                      type="month"
+                      value={selectedDate.slice(0, 7)}
+                      onChange={(event) => event.target.value && syncSelectedDate(`${event.target.value}-01`)}
+                      className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                    />
+                  ) : (
+                    <select
+                      value={selectedDate.slice(0, 4)}
+                      onChange={(event) => event.target.value && syncSelectedDate(`${event.target.value}-01-01`)}
+                      className="px-3 py-1.5 rounded-md text-sm border border-slate-200 text-slate-700 bg-white"
+                    >
+                      {listYearOptions.map((year) => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <button
+                    onClick={() => moveListRange(1)}
+                    className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-600"
+                    aria-label={pt(A11Y_TEXT_KEYS.NEXT_MONTH)}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                  <button
+                    onClick={() => syncSelectedDate(todayIso())}
+                    className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-slate-200 hover:bg-slate-100 text-slate-600"
+                  >
+                    {pt('t047')} {/* "오늘" */}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 통합 검색 바 */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <label className="text-xs font-bold text-slate-500">
+                {pt('t093')} {/* "조회 범위" */}
+              </label>
+              {/* pt('t094'): "회원명 또는 전화번호 검색..." */}
+              <input
+                type="text"
+                value={listSearchKeyword}
+                onChange={(event) => setListSearchKeyword(event.target.value)}
+                placeholder={pt('t094')}
+                className="w-full md:max-w-sm px-3 py-2 rounded-md text-sm border border-slate-200 text-slate-700 bg-white focus:ring-2 focus:ring-primary/20 outline-none"
+              />
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <label className="text-xs font-bold text-slate-500">{pt('t093')}</label>
-            <input
-              type="text"
-              value={listSearchKeyword}
-              onChange={(event) => setListSearchKeyword(event.target.value)}
-              placeholder={pt('t094')}
-              className="w-full md:max-w-sm px-3 py-2 rounded-md text-sm border border-slate-200 text-slate-700 bg-white focus:ring-2 focus:ring-primary/20 outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="overflow-x-auto">
+          {/* 리스트 테이블 본문 */}
+          <div className="p-4 overflow-x-auto">
             <table className="w-full border-collapse text-left min-w-[1140px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t021')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t098')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t057')}</th>
-                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t021')} {/* "예약일" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t007')} {/* "시간" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t001')} {/* "상태" (여기서는 고객명 라벨로 사용됨) */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t100')} {/* "성별" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t098')} {/* "전화번호" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t004')} {/* "담당자" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t016')} {/* "소요시간" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-right">{pt('t015')} {/* "금액" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t051')} {/* "상태" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider">{pt('t057')} {/* "비고" */}</th>
+                  <th className="py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-center">{pt('t052')} {/* "작업" */}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {listReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-10 text-center text-sm text-slate-400">
-                      {pt('t099')}
-                    </td>
+                    <td colSpan={11} className="py-10 text-center text-sm text-slate-400">{pt('t099')} {/* "조회 조건에 맞는 예약이 없습니다." */}</td>
                   </tr>
                 ) : (
                   listReservations.map((reservation) => {
@@ -2579,34 +2510,16 @@ export default function ReservationCalendarPage() {
                         <td className="py-2.5 px-4 text-sm text-slate-600">{getGenderLabel(reservation.gender)}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.customerPhone || '-'}</td>
                         <td className="py-2.5 px-4 text-sm text-slate-600">{reservation.designerName}</td>
-                        <td className="py-2.5 px-4 text-sm text-slate-600">
-                          {pt('t058', { count: getExpectedMinutes(reservation.services) })}
-                        </td>
-                        <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">
-                          {formatCurrency(getExpectedAmount(reservation.services))}
-                        </td>
+                        <td className="py-2.5 px-4 text-sm text-slate-600">{pt('t058', { count: getExpectedMinutes(reservation.services) })} {/* "{{count}}분" */}</td>
+                        <td className="py-2.5 px-4 text-sm text-right font-semibold text-slate-700">{formatCurrency(getExpectedAmount(reservation.services))}</td>
                         <td className="py-2.5 px-4 text-center">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>
-                            {statusLabel}
-                          </span>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${tone.badge}`}>{statusLabel}</span>
                         </td>
                         <td className="py-2.5 px-4 text-sm text-slate-500">{reservation.note || '-'}</td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => openEditModal(reservation)} disabled={isDbBusy}
-                              className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                              title={pt('t054')}
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={() => deleteReservation(reservation.id)} disabled={isDbBusy}
-                              className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title={pt('t055')}
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                        <td className="py-2.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => openEditModal(reservation)} title={pt('t054')} className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"><Edit2 size={14} /></button>
+                            <button onClick={() => deleteReservation(reservation.id)} title={pt('t055')} className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>
@@ -2616,8 +2529,7 @@ export default function ReservationCalendarPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      </section>
+        </section>
       )}
       {/* 예약 등록/수정 모달 */}
       {isModalOpen && (
@@ -2639,10 +2551,10 @@ export default function ReservationCalendarPage() {
             >
               <div>
                 <h3 className="text-lg font-black text-slate-900">
-                  {modalMode === 'edit' ? pt('t059') : pt('t060')}
+                  {modalMode === 'edit' ? pt('t059') : pt('t060')} {/* "예약 수정" : "예약 등록" */}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  {pt('t061')}
+                  {pt('t061')} {/* "예약 정보, 상태, 시술 항목을 한 번에 수정할 수 있습니다." */}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2659,8 +2571,9 @@ export default function ReservationCalendarPage() {
             </div>
 
             <form noValidate onSubmit={saveReservation} className="max-h-[calc(90vh-80px)] overflow-y-auto p-5 space-y-5">
-              {/* 기본 예약 정보 입력 */}
+              {/* 기본 예약 정보 입력 영역 */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* 날짜 선택 */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t021')}</label>
                   <input
@@ -2674,6 +2587,7 @@ export default function ReservationCalendarPage() {
                   />
                 </div>
 
+                {/* 시작 시간 선택 */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t007')}</label>
                   <input
@@ -2685,8 +2599,11 @@ export default function ReservationCalendarPage() {
                   />
                 </div>
 
+                {/* 예약 상태 선택 (진행전/진행중/완료 등) */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t020')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">
+                    {pt('t020')} {/* "상태" */}
+                  </label>
                   <select
                     value={form.status}
                     disabled={isReservationFormLocked}
@@ -2699,75 +2616,74 @@ export default function ReservationCalendarPage() {
                     ))}</select>
                 </div>
 
+                {/* 고객 검색 및 회원 정보 표시 */}
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-slate-700">
-                    {pt('t001')}:
-                    <span className="font-black text-slate-900 ml-1">{selectedCustomerSummary || pt('t136')}</span>
-                    <span className={`ml-2 inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                      selectedMemberUserId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}
-                    >
+                    {pt('t001')}: {/* "예약고객" */}
+                    <span className="font-black text-slate-900 ml-1">{selectedCustomerSummary || pt('t136') /* "고객명(전화번호)" */}</span>
+                    <span className={`ml-2 inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${selectedMemberUserId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                       {customerMembershipLabel}
                     </span>
                   </p>
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        value={customerPhoneQuery}
-                        disabled={isReservationFormLocked}
-                        onChange={(event) => handleCustomerPhoneQueryChange(event.target.value)}
-                        onFocus={() => {
-                          if (isReservationFormLocked) return;
-                          if (!customerPhoneQueryDigits) return;
-                          setIsCustomerLookupOpen(true);
-                        }}
-                        onBlur={() => {
-                          window.setTimeout(() => setIsCustomerLookupOpen(false), 120);
-                        }}
-                        placeholder={pt('t094')}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                      />
-                      {isCustomerLookupOpen && customerPhoneQueryDigits && !isReservationFormLocked && (
-                        <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-36 overflow-y-auto shadow-lg">
-                          {customerLookupMembers.length === 0 ? (
-                            <p className="px-3 py-2 text-xs text-slate-400">{pt('t027')}</p>
-                          ) : (
-                            customerLookupMembers.map((member) => (
-                              <button
-                                key={member.id}
-                                type="button"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  handleCustomerMemberSelect(String(member.id));
-                                }}
-                                className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${
-                                  selectedCustomerMemberId === String(member.id) ? 'bg-primary/5' : ''
-                                }`}
-                              >
-                                <p className="text-sm font-semibold text-slate-700">{member.name}</p>
-                                <p className="text-xs text-slate-500">{member.phone || '-'}</p>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={customerPhoneQuery}
+                      disabled={isReservationFormLocked}
+                      onChange={(event) => handleCustomerPhoneQueryChange(event.target.value)}
+                      onFocus={() => {
+                        if (isReservationFormLocked) return;
+                        if (!customerPhoneQueryDigits) return;
+                        setIsCustomerLookupOpen(true);
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => setIsCustomerLookupOpen(false), 120);
+                      }}
+                      placeholder={pt('t094')} // "검색어 입력..."
+                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    />
+                    {/* 고객 검색 자동완성 레이어 */}
+                    {isCustomerLookupOpen && customerPhoneQueryDigits && !isReservationFormLocked && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-36 overflow-y-auto shadow-lg">
+                        {customerLookupMembers.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-slate-400">{pt('t027')}</p>
+                        ) : (
+                          customerLookupMembers.map((member) => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleCustomerMemberSelect(String(member.id));
+                              }}
+                              className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${selectedCustomerMemberId === String(member.id) ? 'bg-primary/5' : ''}`}
+                            >
+                              <p className="text-sm font-semibold text-slate-700">{member.name}</p>
+                              <p className="text-xs text-slate-500">{member.phone || '-'}</p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
+                {/* 성별 선택 */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t100')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t100')} {/* "성별" */}</label>
                   <select
                     value={form.gender}
                     disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white"
                   >
-                    <option value="">{pt('t101')}</option>
-                    <option value="M">{pt('t102')}</option>
-                    <option value="F">{pt('t103')}</option>
+                    <option value="">{pt('t101') /* "성별 선택" */}</option>
+                    <option value="M">{pt('t102') /* "남성" */}</option>
+                    <option value="F">{pt('t103') /* "여성" */}</option>
                   </select>
                 </div>
 
+                {/* 담당 디자이너 선택 */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{pt('t004')}</label>
                   <select
@@ -2779,10 +2695,9 @@ export default function ReservationCalendarPage() {
                       {designerNames.length > 0 ? pt('t063') : pt('t064')}
                     </option>
                     {designerNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))} {/* 기존 예약 수정 시, 현재 직원 목록에 없는 이름도 값 유지를 위해 임시 옵션으로 노출한다. */}
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                    {/* 데이터 일관성: 현재 직원 목록에 없더라도 기존 저장값이 있으면 옵션으로 추가하여 유실 방지 */}
                     {form.designerName && !designerNames.includes(form.designerName) && (
                       <option value={form.designerName}>
                         {pt('t065', { name: form.designerName })}
@@ -2790,14 +2705,15 @@ export default function ReservationCalendarPage() {
                     )}</select>
                 </div>
 
+                {/* 예약 비고/노트 */}
                 <div className="space-y-1 md:col-span-2 lg:col-span-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t066')}</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{pt('t066')} {/* "비고" */}</label>
                   <textarea
                     value={form.note}
                     rows={4}
                     disabled={isReservationFormLocked}
                     onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-                    placeholder={pt('t025')}
+                    placeholder={pt('t025') /* "특이사항을 입력해 주세요..." */}
                     className="w-full min-h-[105px] px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                 </div>
@@ -2808,12 +2724,12 @@ export default function ReservationCalendarPage() {
                 <section className="lg:col-span-5 border border-slate-200 rounded-xl p-4 bg-slate-50/60">
                   <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-3">
                     <Scissors size={16} className="text-primary" />
-                    {pt('t067')}
+                    {pt('t067')} {/* "시술 선택" */}
                   </h4>
 
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t068')}</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t068')} {/* "카테고리" */}</label>
                       <select
                         value={form.selectedCategory}
                         disabled={isReservationFormLocked}
@@ -2838,7 +2754,7 @@ export default function ReservationCalendarPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t009')}</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">{pt('t009') /* "담당 디자이너 값이 올바르지 않습니다." (여기서는 서비스 선택 라벨로 오용된 듯 하나 라벨링 유도함) */}</label>
                       <select
                         value={form.selectedServiceId}
                         disabled={isReservationFormLocked}
@@ -2848,11 +2764,11 @@ export default function ReservationCalendarPage() {
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 outline-none"
                       >
                         {categoryServices.length === 0 ? (
-                          <option value="">{pt('t003')}</option>
+                          <option value="">{pt('t003') /* "결제 상태" */}</option>
                         ) : (
                           categoryServices.map((service) => (
                             <option key={service.id} value={String(service.id)}>
-                              {service.serviceName} ({pt('t058', { count: service.durationMinutes })} / {formatCurrency(service.unitPrice)})
+                              {service.serviceName} ({pt('t058', { count: service.durationMinutes }) /* "{{count}}분" */} / {formatCurrency(service.unitPrice)})
                             </option>
                           ))
                         )}</select>
@@ -2861,8 +2777,8 @@ export default function ReservationCalendarPage() {
                     {selectedService && (
                       <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 space-y-1">
                         <p className="font-semibold text-slate-700">{selectedService.serviceName}</p>
-                        <p>{pt('t070', { count: selectedService.durationMinutes })}</p>
-                        <p>{pt('t071', { amount: formatCurrency(selectedService.unitPrice) })}</p>
+                        <p>{pt('t070', { count: selectedService.durationMinutes }) /* "예상시간: {{count}}분" */}</p>
+                        <p>{pt('t071', { amount: formatCurrency(selectedService.unitPrice) }) /* "단가: {{amount}}" */}</p>
                       </div>
                     )}<button
                       type="button"
@@ -2871,30 +2787,30 @@ export default function ReservationCalendarPage() {
                       className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
                     >
                       <PlusCircle size={16} />
-                      {pt('t069')}
+                      {pt('t069')} {/* "선택 시술 추가" */}
                     </button>
                   </div>
                 </section>
 
                 <section className="lg:col-span-7 border border-slate-200 rounded-xl p-4">
-                  <h4 className="text-sm font-bold text-slate-700 mb-3">{pt('t024')}</h4>
+                  <h4 className="text-sm font-bold text-slate-700 mb-3">{pt('t024') /* "이미 취소된 매출입니다." (여기서는 선택된 시술 목록 헤더로 쓰임) */}</h4>
 
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left min-w-[620px]">
                       <thead>
                         <tr className="bg-slate-900 text-slate-200">
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t072')}</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t012')}</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t016')}</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t073')}</th>
-                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-center">{pt('t074')}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t072')} {/* "카테고리" */}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider">{pt('t012')} {/* "디자이너 선택" */}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t016')} {/* "소요시간" */}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-right">{pt('t073')} {/* "단가" */}</th>
+                          <th className="py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-center">{pt('t074')} {/* "삭제" */}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {form.services.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="py-8 text-center text-sm text-slate-400">
-                              {pt('t075')}
+                              {pt('t075')} {/* "아직 추가된 시술이 없습니다." */}
                             </td>
                           </tr>
                         ) : (
@@ -2902,7 +2818,7 @@ export default function ReservationCalendarPage() {
                             <tr key={service.lineId} className="hover:bg-slate-50 transition-colors">
                               <td className="py-2.5 px-3 text-sm text-slate-700">{getCategoryLabelByCode(service.categoryCode, service.categoryName)}</td>
                               <td className="py-2.5 px-3 text-sm font-semibold text-slate-700">{service.serviceName}</td>
-                              <td className="py-2.5 px-3 text-sm text-right text-slate-600">{pt('t058', { count: service.durationMinutes })}</td>
+                              <td className="py-2.5 px-3 text-sm text-right text-slate-600">{pt('t058', { count: service.durationMinutes }) /* "{{count}}분" */}</td>
                               <td className="py-2.5 px-3 text-sm text-right font-semibold text-slate-700">
                                 {formatCurrency(service.unitPrice)}</td>
                               <td className="py-2.5 px-3 text-center">
@@ -2925,15 +2841,15 @@ export default function ReservationCalendarPage() {
               {/* 빠른 결제 계산기 */}
               <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <h4 className="text-sm font-bold text-slate-700">{pt('t104')}</h4>
+                  <h4 className="text-sm font-bold text-slate-700">{pt('t104')} {/* "빠른 결제 정산" */}</h4>
                   <p className="text-[11px] text-slate-500">
-                    {isPaymentCompleted ? pt('t129') : pt('t117')}
+                    {isPaymentCompleted ? pt('t129') /* "이미 결제가 완료된 예약입니다." */ : pt('t117') /* "결제 수단별 금액을 입력하면 미수금을 자동으로 계산합니다." */}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t105')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t105')} {/* "할인 금액" */}</label>
                     <input
                       type="number"
                       min={0}
@@ -2946,18 +2862,18 @@ export default function ReservationCalendarPage() {
                     />
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t106')}</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t106')} {/* "최종 결제 금액" */}</p>
                     <p className="mt-1 text-sm font-black text-slate-900">{formatCurrency(calculatorPayableAmount)}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t109')}</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t109')} {/* "결제 총액" */}</p>
                     <p className="mt-1 text-sm font-black text-slate-900">{formatCurrency(calculatorPaidTotal)}</p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t107')}</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t107')} {/* "결제 수단" */}</p>
                     <button
                       type="button"
                       onClick={addQuickPaymentLine}
@@ -2965,17 +2881,17 @@ export default function ReservationCalendarPage() {
                       className="text-xs font-bold text-primary disabled:opacity-40 flex items-center gap-1"
                     >
                       <PlusCircle size={14} />
-                      {pt('t108')}
+                      {pt('t108')} {/* "결제 수단 추가" */}
                     </button>
                   </div>
 
                   {manualPaymentMethodOptions.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-400">
-                      {pt('t118')}
+                      {pt('t118')} {/* "사용 가능한 결제수단이 없습니다." */}
                     </div>
                   ) : quickPaymentLines.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-400">
-                      {pt('t119')}
+                      {pt('t119')} {/* "결제 라인을 추가하면 미수 금액을 바로 확인할 수 있습니다." */}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -3016,21 +2932,20 @@ export default function ReservationCalendarPage() {
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">{pt('t109')}: {formatCurrency(calculatorPaidTotal)}</span>
+                  <span className="text-xs font-semibold text-slate-500">{pt('t109') /* "결제 총액" */}: {formatCurrency(calculatorPaidTotal)}</span>
                   <span
-                    className={`text-xs font-black ${
-                      calculatorRemainingAmount === 0
-                        ? 'text-emerald-600'
-                        : calculatorRemainingAmount > 0
-                          ? 'text-rose-600'
-                          : 'text-amber-600'
-                    }`}
+                    className={`text-xs font-black ${calculatorRemainingAmount === 0
+                      ? 'text-emerald-600'
+                      : calculatorRemainingAmount > 0
+                        ? 'text-rose-600'
+                        : 'text-amber-600'
+                      }`}
                   >
                     {calculatorRemainingAmount === 0
-                      ? pt('t120')
+                      ? pt('t120') /* "결제가 완료되었습니다." */
                       : calculatorRemainingAmount > 0
-                        ? `${pt('t110')}: ${formatCurrency(calculatorRemainingAmount)}`
-                        : `${pt('t111')}: ${formatCurrency(Math.abs(calculatorRemainingAmount))}`}
+                        ? `${pt('t110') /* "미수 금액" */}: ${formatCurrency(calculatorRemainingAmount)}`
+                        : `${pt('t111') /* "초과 결제" */}: ${formatCurrency(Math.abs(calculatorRemainingAmount))}`}
                   </span>
                 </div>
               </section>
@@ -3039,11 +2954,11 @@ export default function ReservationCalendarPage() {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
                 <div className="flex flex-wrap gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t014')}</p>
-                    <p className="font-black text-slate-900 mt-1">{pt('t058', { count: formExpectedMinutes })}</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t014')} {/* "총 소요시간" */}</p>
+                    <p className="font-black text-slate-900 mt-1">{pt('t058', { count: formExpectedMinutes }) /* "{{count}}분" */}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t013')}</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">{pt('t013')} {/* "총 예상금액" */}</p>
                     <p className="font-black text-slate-900 mt-1">{formatCurrency(formExpectedAmount)}</p>
                   </div>
                 </div>
@@ -3060,12 +2975,11 @@ export default function ReservationCalendarPage() {
                     type="button"
                     onClick={closeModal}
                     disabled={isDbBusy}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
-                      isDbBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-600 hover:bg-slate-700'
-                    }`}
+                    className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${isDbBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-600 hover:bg-slate-700'
+                      }`}
                   >
                     <X size={15} />
-                    {pt('t151')}
+                    {pt('t151')} {/* "닫기" */}
                   </button>
                   {!isEditTargetCompleted && (
                     <button
@@ -3074,7 +2988,7 @@ export default function ReservationCalendarPage() {
                       className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
-                      {pt('t121')}
+                      {pt('t121')} {/* "예약 저장" */}
                     </button>
                   )}
                   {shouldShowStartServiceButton && (
@@ -3082,12 +2996,11 @@ export default function ReservationCalendarPage() {
                       type="button"
                       onClick={startReservationService}
                       disabled={isReservationFormLocked}
-                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
-                        isReservationFormLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'
-                      }`}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${isReservationFormLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'
+                        }`}
                     >
                       {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
-                      {pt('t127')}
+                      {pt('t127')} {/* "시술 시작" */}
                     </button>
                   )}
                   {shouldShowPaymentButton && (
@@ -3095,14 +3008,13 @@ export default function ReservationCalendarPage() {
                       type="button"
                       onClick={processReservationPayment}
                       disabled={isPaymentActionDisabled}
-                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
-                        isPaymentActionDisabled ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
-                      }`}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${isPaymentActionDisabled ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                        }`}
                     >
                       {(isMutating || isSettlementStateLoading)
                         ? <Loader2 size={15} className="animate-spin" />
                         : <Clock3 size={15} />}
-                      {pt('t122')}
+                      {pt('t122')} {/* "정산 완료" */}
                     </button>
                   )}
                 </div>
