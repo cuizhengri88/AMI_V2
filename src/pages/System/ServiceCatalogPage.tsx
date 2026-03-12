@@ -1,3 +1,14 @@
+/**
+ * @file ServiceCatalogPage.tsx
+ * @description 시술 서비스 항목(커트, 파마 등)의 목록과 단가, 소요 시간을 관리하는 페이지입니다.
+ * 
+ * 주요 기능:
+ * - 시술 카테고리별 서비스 목록 조회 및 검색
+ * - 신규 시술 항목 등록 (단가, 시간, 카테고리 설정)
+ * - 기존 시술 정보 수정 및 삭제
+ * - 시술별 통계(항목 수) 요약 표시
+ */
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
@@ -19,24 +30,41 @@ import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 import { formatCurrency as formatCurrencyCommon } from '../utils/pageCommon';
 
+/**
+ * @type CategoryCode
+ * @description 시술 카테고리 식별 코드 (예: CUT, PERM)
+ */
 type CategoryCode = string;
 
+/**
+ * @type ServiceCategory
+ * @description 시술 카테고리의 코드와 표시명 정보입니다.
+ */
 type ServiceCategory = {
-  code: CategoryCode;
-  label: string;
+  code: CategoryCode; // 카테고리 코드
+  label: string;      // 화면 표시 명칭
 };
 
+/**
+ * @type ServiceItem
+ * @description DB에서 조회된 개별 시술 항목의 데이터 구조입니다.
+ */
 type ServiceItem = {
-  id: number;
-  category: CategoryCode;
-  categoryName: string;
-  serviceName: string;
-  unitPrice: number;
-  durationMinutes: number;
-  useYn: 'Y' | 'N';
-  note: string;
+  id: number;              // 시술 고유 ID
+  category: CategoryCode;  // 카테고리 고유 코드
+  categoryName: string;    // 카테고리명
+  serviceName: string;     // 시술명
+  unitPrice: number;       // 기본 단가
+  durationMinutes: number; // 소요 시간 (분)
+  useYn: 'Y' | 'N';         // 사용 여부
+  note: string;            // 비고 사항
 };
 
+/**
+ * @type ServiceForm
+ * @description 등록/수정 모달 폼에서 사용하는 데이터 타입입니다. 
+ * 입력 편의를 위해 숫자는 문자열로 관리합니다.
+ */
 type ServiceForm = {
   category: CategoryCode;
   serviceName: string;
@@ -46,6 +74,10 @@ type ServiceForm = {
   note: string;
 };
 
+/**
+ * @type ModalProps
+ * @description 드래그 가능한 커스텀 모달 컴포넌트의 Props 입니다.
+ */
 type ModalProps = {
   title: string;
   children: React.ReactNode;
@@ -107,26 +139,41 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
 
 export default function ServiceCatalogPage() {
   const pt = usePageText('system_service_catalog');
+
+  // [기본값] DB 조회 전 또는 실패 시 사용할 기본 카테고리 정보
   const fallbackServiceCategories = useMemo<ServiceCategory[]>(
     () => [
-      { code: 'CUT', label: pt('t041') },
-      { code: 'PERM', label: pt('t042') },
-      { code: 'COLOR', label: pt('t043') },
-      { code: 'ETC', label: pt('t044') },
+      { code: 'CUT', label: pt('t041') /* "커트" */ },
+      { code: 'PERM', label: pt('t042') /* "파마" */ },
+      { code: 'COLOR', label: pt('t043') /* "염색" */ },
+      { code: 'ETC', label: pt('t044') /* "기타" */ },
     ],
     [pt],
   );
+
+  // [상태] 서버에서 조회한 카테고리 목록
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  // [상태] 서버에서 조회한 전체 시술 항목 목록
   const [items, setItems] = useState<ServiceItem[]>([]);
+
+  // [상태] 현재 입력된 시술명/코드 검색어
   const [searchTerm, setSearchTerm] = useState('');
+  // [상태] 현재 선택된 필터 카테고리
   const [selectedCategory, setSelectedCategory] = useState<'all' | CategoryCode>('all');
+
+  // [상태] 데이터 조회 중 여부
   const [isLoading, setIsLoading] = useState(false);
+  // [상태] 데이터 저장/수정/삭제 진행 중 여부
   const [isMutating, setIsMutating] = useState(false);
 
+  // [상태] 등록/수정 모달 오픈 상태
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // [상태] 모달 내 입력 데이터 관리
   const [newForm, setNewForm] = useState<ServiceForm>(EMPTY_FORM);
   const [editForm, setEditForm] = useState<ServiceForm>(EMPTY_FORM);
+  // [상태] 수정 중인 시술 항목의 ID
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
 
   const isDbBusy = isLoading || isMutating;
@@ -158,6 +205,7 @@ export default function ServiceCatalogPage() {
     });
   }, [items, categoryMap, searchTerm, selectedCategory]);
 
+  // [로직] 공통코드에서 시술 카테고리 목록(T_CATEGORY)을 조회
   const loadCategories = async () => {
     try {
       const result = await invokeDbCommand<{
@@ -174,6 +222,7 @@ export default function ServiceCatalogPage() {
       const nextCategories = loadedCategories.length > 0 ? loadedCategories : fallbackServiceCategories;
       setCategories(nextCategories);
 
+      // 폼 초기값 설정 시 카테고리 목록의 첫 번째 항목을 기본값으로 지정
       setNewForm((prev) => {
         if (nextCategories.some((category) => category.code === prev.category)) return prev;
         return { ...prev, category: nextCategories[0]?.code || '' };
@@ -183,6 +232,7 @@ export default function ServiceCatalogPage() {
         return { ...prev, category: nextCategories[0]?.code || '' };
       });
     } catch (error) {
+      // 조회 실패 시 기본 정의된 카테고리 사용
       setCategories(fallbackServiceCategories);
       setNewForm((prev) => ({
         ...prev,
@@ -192,6 +242,7 @@ export default function ServiceCatalogPage() {
     }
   };
 
+  // [로직] 서버에서 시술 항목 목록을 조회
   const loadServiceItems = async () => {
     const result = await invokeDbCommand<{
       success: boolean;
@@ -222,12 +273,13 @@ export default function ServiceCatalogPage() {
     );
   };
 
+  // [로직] 화면 초기 진입 시 카테고리와 시술 목록을 병렬로 로드
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
       await Promise.all([loadCategories(), loadServiceItems()]);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || pt('t014'));
+      alert(typeof error === 'string' ? error : error?.message || pt('t014') /* "데이터를 불러오지 못했습니다." */);
     } finally {
       setIsLoading(false);
     }
@@ -260,18 +312,22 @@ export default function ServiceCatalogPage() {
     });
   };
 
+  // [보조 로직] 저장 전 폼 데이터 유효성 검증
   const validateForm = (form: ServiceForm) => {
     const unitPrice = Number(form.unitPrice);
     const durationMinutes = Number(form.durationMinutes);
 
-    if (!form.category) return pt('t034', { group: CATEGORY_GROUP_ID });
-    if (!form.serviceName.trim()) return pt('t035');
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return pt('t036');
-    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return pt('t037');
+    if (!form.category) return pt('t034', { group: CATEGORY_GROUP_ID }) /* "카테고리 선택이 필요합니다." 관련 메시지 */;
+    if (!form.serviceName.trim()) return pt('t035') /* "시술명을 입력해주세요." */;
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return pt('t036') /* "올바른 단가를 입력해주세요." */;
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return pt('t037') /* "올바른 시간을 입력해주세요." */;
 
     return null;
   };
 
+  /**
+   * [보조 로직] 시술 항목 추가 또는 수정을 위한 DB 명령 호출
+   */
   const upsertItem = async (form: ServiceForm, serviceId?: number) => {
     return invokeDbCommand<{ success: boolean; message: string }>('upsert_service_catalog_item', {
       item: {
@@ -286,6 +342,7 @@ export default function ServiceCatalogPage() {
     });
   };
 
+  // [동작] 신규 시술 항목 저장 실행
   const handleSaveNew = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -298,12 +355,12 @@ export default function ServiceCatalogPage() {
     try {
       setIsMutating(true);
       const result = await upsertItem(newForm);
-      await loadServiceItems();
+      await loadServiceItems(); // 저장 후 목록 새로고침
       resetNewForm();
       setIsNewModalOpen(false);
-      alert(result.message || pt('t015'));
+      alert(result.message || pt('t015') /* "등록되었습니다." */);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || pt('t016'));
+      alert(typeof error === 'string' ? error : error?.message || pt('t016') /* "작업에 실패했습니다." */);
     } finally {
       setIsMutating(false);
     }
@@ -322,6 +379,7 @@ export default function ServiceCatalogPage() {
     setIsEditModalOpen(true);
   };
 
+  // [동작] 기존 시술 정보 수정 저장 실행
   const handleSaveEdit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -336,33 +394,34 @@ export default function ServiceCatalogPage() {
     try {
       setIsMutating(true);
       const result = await upsertItem(editForm, editingItemId);
-      await loadServiceItems();
+      await loadServiceItems(); // 수정 후 목록 새로고침
       resetEditState();
       setIsEditModalOpen(false);
-      alert(result.message || pt('t017'));
+      alert(result.message || pt('t017') /* "수정되었습니다." */);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || pt('t016'));
+      alert(typeof error === 'string' ? error : error?.message || pt('t016') /* "작업에 실패했습니다." */);
     } finally {
       setIsMutating(false);
     }
   };
 
+  // [동작] 시술 항목 삭제
   const handleDelete = async (id: number) => {
-    if (!window.confirm(pt('t009'))) return;
+    if (!window.confirm(pt('t009') /* "정말 삭제하시겠습니까?" */)) return;
 
     try {
       setIsMutating(true);
       const result = await invokeDbCommand<{ success: boolean; message: string }>('delete_service_catalog_item', {
         service_id: id,
       });
-      await loadServiceItems();
+      await loadServiceItems(); // 삭제 후 목록 새로고침
       if (editingItemId === id) {
         setIsEditModalOpen(false);
         resetEditState();
       }
-      alert(result.message || pt('t018'));
+      alert(result.message || pt('t018') /* "삭제되었습니다." */);
     } catch (error: any) {
-      alert(typeof error === 'string' ? error : error?.message || pt('t019'));
+      alert(typeof error === 'string' ? error : error?.message || pt('t019') /* "삭제에 실패했습니다." */);
     } finally {
       setIsMutating(false);
     }
@@ -374,8 +433,8 @@ export default function ServiceCatalogPage() {
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t003')}</h1>
-          <p className="text-slate-500 mt-1">{pt('t002')}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{pt('t003') /* "시술 서비스 관리" */}</h1>
+          <p className="text-slate-500 mt-1">{pt('t002') /* "매장의 시술 항목과 단가를 설정합니다." */}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -385,7 +444,7 @@ export default function ServiceCatalogPage() {
             className="bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold px-4 py-2 rounded-lg border border-slate-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-            {pt('t020')}
+            {pt('t020') /* "DB 새로고침" */}
           </button>
           <button
             onClick={() => {
@@ -396,7 +455,7 @@ export default function ServiceCatalogPage() {
             className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-60"
           >
             <Plus size={18} />
-            {pt('t021')}
+            {pt('t021') /* "시술 추가" */}
           </button>
         </div>
       </div>
@@ -407,7 +466,7 @@ export default function ServiceCatalogPage() {
             <Scissors size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t012')}</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{pt('t012') /* "총 시술 항목" */}</p>
             <p className="text-2xl font-black text-slate-900">{items.length}</p>
           </div>
         </div>
@@ -428,7 +487,7 @@ export default function ServiceCatalogPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder={pt('t006')} value={searchTerm}
+              placeholder={pt('t006') /* "시술명 또는 코드 검색..." */} value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
@@ -438,7 +497,7 @@ export default function ServiceCatalogPage() {
               value={selectedCategory}
               onChange={(event) => setSelectedCategory(event.target.value as 'all' | CategoryCode)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="all">{pt('t022')}</option>
+              <option value="all">{pt('t022') /* "전체 카테고리" */}</option>
               {categories.map((category) => (
                 <option key={category.code} value={category.code}>
                   {category.label}
@@ -452,7 +511,7 @@ export default function ServiceCatalogPage() {
               className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50"
             >
               <Filter size={16} />
-              {pt('t023')}
+              {pt('t023') /* "필터 초기화" */}
             </button>
           </div>
         </div>
@@ -461,20 +520,20 @@ export default function ServiceCatalogPage() {
           <table className="w-full text-left border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t013')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t024')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t001')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t025')}</th>
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t026')}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t013') /* "코드" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005') /* "시술명" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t024') /* "카테고리" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t001') /* "단가" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011') /* "소요시간" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t025') /* "사용여부" */}</th>
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t026') /* "관리" */}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
-                    {pt('t027')}
+                    {pt('t027') /* "조회된 시술 항목이 없습니다." */}
                   </td>
                 </tr>
               ) : (
@@ -499,18 +558,17 @@ export default function ServiceCatalogPage() {
                       <td className="py-4 px-6 text-sm text-center font-medium text-slate-600">
                         <div className="flex items-center justify-center gap-1">
                           <Clock size={14} className="text-slate-400" />
-                          {item.durationMinutes}{pt('t028')}
+                          {item.durationMinutes}{pt('t028') /* "분" */}
                         </div>
                       </td>
                       <td className="py-4 px-6 text-center">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                            item.useYn === 'Y'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border-slate-200'
-                          }`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${item.useYn === 'Y'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}
                         >
-                          {item.useYn === 'Y' ? pt('t029') : pt('t030')}
+                          {item.useYn === 'Y' ? pt('t029') /* "사용중" */ : pt('t030') /* "미사용" */}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-center">
@@ -541,22 +599,22 @@ export default function ServiceCatalogPage() {
         {isNewModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={pt('t007')} onClose={() => setIsNewModalOpen(false)} icon={<Plus size={20} className="text-primary" />}
+              title={pt('t007') /* "신규 시술 등록" */} onClose={() => setIsNewModalOpen(false)} icon={<Plus size={20} className="text-primary" />}
             >
               <form onSubmit={handleSaveNew} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005') /* "시술명" */}</label>
                     <input
                       type="text"
                       required
                       value={newForm.serviceName}
                       onChange={(event) => setNewForm((prev) => ({ ...prev, serviceName: event.target.value }))} disabled={isMutating}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder={pt('t008')} />
+                      placeholder={pt('t008') /* "예: 남성 컷" */} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024') /* "카테고리" */}</label>
                     <select
                       value={newForm.category}
                       onChange={(event) => setNewForm((prev) => ({ ...prev, category: event.target.value }))} disabled={isMutating}
@@ -569,7 +627,7 @@ export default function ServiceCatalogPage() {
                       ))}</select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010') /* "소요 시간" */}</label>
                     <div className="relative">
                       <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
@@ -583,7 +641,7 @@ export default function ServiceCatalogPage() {
                     </div>
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001') /* "단가" */}</label>
                     <div className="relative">
                       <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
@@ -604,14 +662,14 @@ export default function ServiceCatalogPage() {
                     onClick={() => setIsNewModalOpen(false)} disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-60"
                   >
-                    {pt('t031')}
+                    {pt('t031') /* "취소" */}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    {pt('t032')}
+                    {pt('t032') /* "저장하기" */}
                   </button>
                 </div>
               </form>
@@ -623,7 +681,7 @@ export default function ServiceCatalogPage() {
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <DraggableModal
-              title={pt('t004')} onClose={() => {
+              title={pt('t004') /* "시술 정보 수정" */} onClose={() => {
                 setIsEditModalOpen(false);
                 resetEditState();
               }}
@@ -632,7 +690,7 @@ export default function ServiceCatalogPage() {
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t005') /* "시술명" */}</label>
                     <input
                       type="text"
                       required
@@ -642,7 +700,7 @@ export default function ServiceCatalogPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t024') /* "카테고리" */}</label>
                     <select
                       value={editForm.category}
                       onChange={(event) => setEditForm((prev) => ({ ...prev, category: event.target.value }))} disabled={isMutating}
@@ -655,7 +713,7 @@ export default function ServiceCatalogPage() {
                       ))}</select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t010') /* "소요 시간" */}</label>
                     <div className="relative">
                       <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
@@ -668,7 +726,7 @@ export default function ServiceCatalogPage() {
                     </div>
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001')}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">{pt('t001') /* "단가" */}</label>
                     <div className="relative">
                       <JapaneseYen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
@@ -692,14 +750,14 @@ export default function ServiceCatalogPage() {
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-60"
                   >
-                    {pt('t031')}
+                    {pt('t031') /* "취소" */}
                   </button>
                   <button
                     type="submit"
                     disabled={isMutating}
                     className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
                   >
-                    {pt('t033')}
+                    {pt('t033') /* "수정하기" */}
                   </button>
                 </div>
               </form>
