@@ -3,14 +3,12 @@
  * @description 애플리케이션의 공용 기반 코드, 전역 상태 관리, 데이터베이스 연결 유틸리티 및 스키마 무결성 점검 로직을 포함하는 핵심 파일입니다.
  */
 
-use chrono::{NaiveDate, NaiveTime, Utc};
-use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
