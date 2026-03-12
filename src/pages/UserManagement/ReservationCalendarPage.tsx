@@ -19,6 +19,15 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  formatCurrency,
+  isBalancePaymentMethod,
+  normalizeGenderForForm,
+  normalizeNameKey,
+  normalizePhoneDigits,
+  toIsoDate,
+  todayIso,
+} from '../utils/pageCommon';
 
 // 공통코드(상태/카테고리 등) 선택 옵션 타입
 type CodeOption = {
@@ -93,19 +102,29 @@ type ReservationForm = {
 
 // 고객 회원 자동매칭(이름/전화)용 모델
 type MemberLookup = {
+  // 회원 ID
   id: number;
+  // 회원명
   name: string;
+  // 전화 원문
   phone: string;
+  // 숫자만 남긴 전화번호(검색/매칭용)
   phoneDigits: string;
 };
 
+// 예약 1건의 고객 정보 스냅샷(저장 직전 정규화 결과)
 type ReservationCustomerSnapshot = {
+  // 저장할 고객명
   customerName: string;
+  // 연결된 회원 ID(비회원이면 null)
   customerId: number | null;
+  // 저장할 고객 연락처
   customerPhone: string;
 };
 
+// 고객 스냅샷 생성 시 추가 옵션
 type ReservationCustomerSnapshotOptions = {
+  // 자동탐지 대신 강제로 사용할 회원 정보
   forcedMember?: MemberLookup | null;
 };
 
@@ -136,31 +155,49 @@ type ReservationRow = {
 };
 
 type SalesSettlementPaymentRow = {
+  // 결제수단 코드
   payment_method_code: string;
+  // 결제 금액
   amount: number;
+  // 쿠폰 결제 시 연결된 시술 ID
   coupon_service_id?: number | null;
 };
 
 type SalesSettlementRow = {
+  // 정산 ID
   settlement_id: number;
+  // 연결 예약 ID 문자열
   reservation_ref?: string | null;
+  // 회원 식별자(ID/전화/이름 혼합 저장 가능)
   member_user_id?: string | null;
+  // 담당 직원 ID
   manager_employee_id?: number | null;
+  // 시술 ID 목록
   service_ids?: number[] | null;
+  // 총 결제금액
   total_amount?: number;
+  // 정산 상태
   status?: string | null;
+  // 결제 상세 라인
   payments: SalesSettlementPaymentRow[];
 };
 
+// 예약과 연결된 정산 상태를 화면에서 단순화한 값
 type LinkedSettlementState = 'NONE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
 
+// 예약 상태별 배지/칩 색상 묶음
 type StatusTone = {
+  // 메인 배지 스타일
   badge: string;
+  // 칩 스타일
   chip: string;
+  // 점(dot) 표시 색상
   dot: string;
 };
 
+// 화면 표시 모드(달력/리스트)
 type ReservationViewMode = 'calendar' | 'list';
+// 리스트 모드의 날짜 범위(일/월/년)
 type ListRangeMode = 'day' | 'month' | 'year';
 
 // 공통코드 그룹 키(백엔드와 약속된 값)
@@ -234,19 +271,6 @@ const A11Y_TEXT_KEYS = {
 // 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
 const INITIAL_RESERVATIONS: ReservationRecord[] = [];
 
-// Date -> yyyy-mm-dd ISO 문자열 변환
-function toIsoDate(date: Date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// 오늘 날짜 ISO 문자열 반환
-function todayIso() {
-  return toIsoDate(new Date());
-}
-
 // yyyy-mm-dd 문자열을 Date로 변환
 function parseIsoDate(iso: string) {
   const [y, m, d] = iso.split('-').map((value) => Number(value));
@@ -275,11 +299,6 @@ function shiftYear(iso: string, diffYears: number) {
   base.setMonth(0);
   base.setFullYear(base.getFullYear() + diffYears);
   return toIsoDate(base);
-}
-
-// 통화 포맷터
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
 }
 
 // 문자열 입력 포함 금액값을 안전한 숫자로 변환
@@ -313,16 +332,6 @@ function normalizeTimeValue(raw: string) {
   return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
 }
 
-// 이름 비교용 키(공백 제거 + 소문자)
-function normalizeNameKey(raw: string) {
-  return raw.trim().toLowerCase();
-}
-
-// 전화번호 숫자만 추출
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
 // 고객명 문자열에서 전화번호 형태 텍스트를 추출
 function extractPhoneText(raw?: string | null) {
   const source = (raw || '').trim();
@@ -333,12 +342,6 @@ function extractPhoneText(raw?: string | null) {
 
   const embeddedPhoneLike = source.match(/(\+?\d[\d\s-]{6,}\d)/);
   return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
-}
-
-// 회원 잔액 계열 결제수단 여부
-function isBalancePaymentMethod(code: string) {
-  const normalized = code.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
 // 예약 상태를 정산 상태로 변환
@@ -383,18 +386,6 @@ function buildQuickCalculatorSnapshotFromSettlement(
     discountAmount,
     paymentLines: nonCouponPayments,
   };
-}
-
-// 성별 문자열을 폼 저장용 값(M/F/빈값)으로 정규화
-function normalizeGenderForForm(raw?: string | null) {
-  const normalized = (raw || '').trim().toUpperCase();
-  if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') {
-    return 'M';
-  }
-  if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') {
-    return 'F';
-  }
-  return '';
 }
 
 // 달력 6주(42칸) 셀 생성
@@ -558,45 +549,83 @@ function createEmptyForm(
 
 export default function ReservationCalendarPage() {
   const pt = usePageText('user_management_reservation_calendar');
+  /*
+   * 페이지 동작 흐름 요약
+   * 1) 공통코드/시술/회원/직원 기준 데이터를 로딩해 폼 선택값을 준비한다.
+   * 2) 예약 목록을 조회해 달력/리스트에서 재사용 가능한 파생 데이터(useMemo)를 만든다.
+   * 3) 모달(create/edit)에서 예약 정보와 결제 계산기를 편집한다.
+   * 4) 저장/시술 시작/결제 버튼 노출은 "수정 대상의 날짜+상태+연결 정산상태" 조합으로 제어한다.
+   */
   // 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)
+  // 예약 상태 코드 목록
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>(FALLBACK_STATUSES);
+  // 시술 카테고리 코드 목록
   const [categories, setCategories] = useState<CodeOption[]>(FALLBACK_CATEGORIES);
+  // 시술 카탈로그 목록
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  // 결제수단 목록
   const [paymentMethodOptions, setPaymentMethodOptions] =
     useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
+  // 회원 자동매칭 대상 목록
   const [members, setMembers] = useState<MemberLookup[]>([]);
+  // 회원명 -> 전화번호 매핑(이름 기반 보조 매칭)
   const [memberPhoneByName, setMemberPhoneByName] = useState<Map<string, string>>(new Map());
+  // 회원명 -> 회원ID 매핑(저장 시 ID 해석용)
   const [memberIdByName, setMemberIdByName] = useState<Map<string, number | null>>(new Map());
+  // 디자이너명 목록(셀렉트 표출용)
   const [designerNames, setDesignerNames] = useState<string[]>([]);
+  // 디자이너명 -> 직원ID 매핑(정산 저장용)
   const [designerIdByName, setDesignerIdByName] = useState<Map<string, number>>(new Map());
   // 예약 목록/화면 범위 상태
+  // 화면에서 관리하는 예약 원본 목록
   const [reservations, setReservations] = useState<ReservationRecord[]>(INITIAL_RESERVATIONS);
+  // 달력 헤더 기준 월(항상 해당 월 1일을 보관)
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  // 선택된 기준 날짜(yyyy-mm-dd)
   const [selectedDate, setSelectedDate] = useState(todayIso());
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 저장/수정/삭제 작업 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 화면 모드(달력/리스트)
   const [viewMode, setViewMode] = useState<ReservationViewMode>('calendar');
+  // 리스트 모드 범위(일/월/년)
   const [listRangeMode, setListRangeMode] = useState<ListRangeMode>('day');
+  // 리스트 모드 검색어(이름/전화)
   const [listSearchKeyword, setListSearchKeyword] = useState('');
+  // 예약 모달 드래그 컨트롤 객체
   const modalDragControls = useDragControls();
 
   // 모달 상태(등록/수정/결제 계산/고객 조회)
+  // 등록/수정 모달 열림 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // 모달 모드(create/edit)
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  // 수정 중인 예약 ID
   const [editingId, setEditingId] = useState<number | null>(null);
+  // 신규 시술 라인에 부여할 다음 임시 lineId
   const [nextLineId, setNextLineId] = useState(2000);
+  // 빠른 결제 계산기 할인 금액
   const [calculatorDiscountAmount, setCalculatorDiscountAmount] = useState(0);
+  // 빠른 결제 입력 라인 목록
   const [quickPaymentLines, setQuickPaymentLines] = useState<QuickPaymentLine[]>([]);
+  // 빠른 결제 라인에 부여할 다음 lineId
   const [nextQuickPaymentLineId, setNextQuickPaymentLineId] = useState(1);
+  // 고객 조회 입력값(전화 기준)
   const [customerPhoneQuery, setCustomerPhoneQuery] = useState('');
+  // 고객 자동완성 패널 노출 여부
   const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
+  // 모달에서 선택된 회원 ID(문자열 상태)
   const [selectedCustomerMemberId, setSelectedCustomerMemberId] = useState<string>('');
+  // 연결 정산 상태(NONE/PROCESSING/COMPLETED/CANCELLED)
   const [linkedSettlementState, setLinkedSettlementState] =
     useState<LinkedSettlementState>('NONE');
+  // 연결 정산 상태 조회 중 여부
   const [isSettlementStateLoading, setIsSettlementStateLoading] = useState(false);
+  // 비동기 경쟁 상태 방지용 요청 번호 ref
   const linkedSettlementRequestIdRef = useRef(0);
   // 예약 폼 상태
   const [form, setForm] = useState<ReservationForm>(() =>
@@ -608,14 +637,20 @@ export default function ReservationCalendarPage() {
     ),
   );
 
+  // DB 요청(조회/저장) 진행 여부
+  // - 조회(isLoading) 또는 변경작업(isMutating) 중이면 주요 입력/버튼을 잠근다.
   const isDbBusy = isLoading || isMutating;
+  // 오버레이 표시 여부(DB 작업 또는 정산 상태 조회 중)
+  // - 정산상태 조회는 별도 비동기이므로 isSettlementStateLoading도 함께 고려한다.
   const isOverlayVisible = isDbBusy || isSettlementStateLoading;
+  // 오버레이 메시지(저장/정산조회/일반조회 상황별)
   const overlayMessage = isMutating
     ? pt('t042')
     : isSettlementStateLoading
       ? pt('t137')
       : pt('t041');
 
+  // 요일 라벨 배열(달력 헤더/날짜 라벨 공용)
   const weekdayLabels = WEEKDAY_TEXT_KEYS.map((key) => pt(key));
 
   // 코드 -> 라벨 변환 헬퍼
@@ -650,6 +685,7 @@ export default function ReservationCalendarPage() {
   };
 
   // 상태/카테고리 빠른 조회 맵
+  // - 렌더 구간/핸들러에서 code -> label 접근이 많아 O(1) 맵으로 캐시한다.
   const statusMap = useMemo(
     () => new Map(statusOptions.map((status) => [status.code, status])),
     [statusOptions],
@@ -687,6 +723,8 @@ export default function ReservationCalendarPage() {
   );
 
   // 리스트 모드: 범위(day/month/year) + 검색어(이름/전화) 필터 적용
+  // - 범위 조건으로 1차 필터 후, 이름/전화(원문+숫자) 기준으로 2차 필터링한다.
+  // - 최종 결과는 날짜+시간 기준으로 정렬해 화면 순서를 고정한다.
   const listReservations = useMemo(() => {
     const keyword = listSearchKeyword.trim().toLowerCase();
     const searchPhoneDigits = normalizePhoneDigits(listSearchKeyword);
@@ -731,6 +769,7 @@ export default function ReservationCalendarPage() {
   }, [listRangeMode, pt, selectedDate, weekdayLabels]);
 
   // 카테고리 기준 시술 필터
+  // - 모달의 "시술 항목" 셀렉트 옵션을 현재 선택 카테고리에 맞게 제한한다.
   const categoryServices = useMemo(() => {
     return serviceItems.filter((service) => service.categoryCode === form.selectedCategory);
   }, [serviceItems, form.selectedCategory]);
@@ -782,6 +821,8 @@ export default function ReservationCalendarPage() {
   }, [customerPhoneQueryDigits, filteredCustomerMembers, selectedCustomerMember]);
 
   // 모달 상단 고객 요약 텍스트
+  // - 회원 선택 시 "이름(전화)" 우선
+  // - 비회원 입력 시 이름/전화 조합을 자연스럽게 보여준다.
   const selectedCustomerSummary = useMemo(() => {
     const memberName = (selectedCustomerMember?.name || '').trim();
     const memberPhone = (selectedCustomerMember?.phone || '').trim();
@@ -802,6 +843,7 @@ export default function ReservationCalendarPage() {
     return '';
   }, [customerPhoneQuery, form.customerName, selectedCustomerMember]);
 
+  // 비회원을 회원 등록으로 전환할 때 prompt 기본값으로 사용하는 문자열
   const guestMemberDefaultName = useMemo(() => {
     const customerName = (form.customerName || '').trim();
     if (customerName) return customerName;
@@ -822,6 +864,7 @@ export default function ReservationCalendarPage() {
       : null;
   }, [form.customerName, memberIdByName, selectedCustomerMemberId]);
 
+  // 모달 우측 상단의 현재 고객 타입 라벨(회원/비회원)
   const customerMembershipLabel = selectedMemberUserId ? pt('t149') : pt('t150');
 
   // member_user_id(숫자/전화/이름 혼합 가능)에서 실제 회원 ID를 해석
@@ -879,16 +922,73 @@ export default function ReservationCalendarPage() {
     return statusOptions[0]?.code || FALLBACK_STATUSES[0].code;
   }, [statusOptions]);
 
+  // 수정 모달 기준 "원본 예약 레코드"
+  // - 폼 값(form)은 사용자가 즉시 변경 가능하므로, 버튼 노출 판단은 원본값을 우선한다.
+  const editingReservation = useMemo(
+    () =>
+      modalMode === 'edit' && editingId
+        ? reservations.find((reservation) => reservation.id === editingId) || null
+        : null,
+    [editingId, modalMode, reservations],
+  );
+
+  // 버튼/입력 잠금 판단용 핵심 파생값
+  // - 수정모드일 때는 원본 예약일/상태 + 정산 상태를 함께 보고 편집 허용 여부를 결정한다.
+  const editTargetDate =
+    modalMode === 'edit' ? (editingReservation?.reservationDate || form.reservationDate) : '';
+  const todayDate = todayIso();
+  // DB 값에 시간 문자열이 섞여 있어도 yyyy-mm-dd 기준으로만 비교한다.
+  const normalizedEditTargetDate = editTargetDate.slice(0, 10);
+  const isEditTargetToday = normalizedEditTargetDate === todayDate;
+  const editTargetStatus = modalMode === 'edit' ? (editingReservation?.status || form.status) : '';
+  const normalizedEditTargetStatus = editTargetStatus.trim().toUpperCase();
+  const isEditTargetCompleted =
+    normalizedEditTargetStatus.includes('COMPLETE')
+    || normalizedEditTargetStatus.includes('완료');
+  const isEditTargetCancelled =
+    normalizedEditTargetStatus.includes('CANCEL')
+    || normalizedEditTargetStatus.includes('취소');
+  // 완료/취소를 구분해서 제어한다.
+  // - 완료: 읽기전용 + 저장숨김
+  // - 취소: 저장 가능(요청사항)
+  const isEditTargetClosed = isEditTargetCompleted || isEditTargetCancelled;
+  const normalizedFormStatus = (form.status || '').trim().toUpperCase();
+  const isFormStatusClosed =
+    normalizedFormStatus.includes('COMPLETE')
+    || normalizedFormStatus.includes('완료');
+  const isEditTargetProcessing =
+    isReservationProcessingStatus(editTargetStatus) || linkedSettlementState === 'PROCESSING';
+  // 수정 모드 저장 허용 조건(현재 운영 규칙)
+  // 1) 완료 상태만 저장 불가
+  // 2) 날짜 조건은 적용하지 않음(과거/오늘/미래 모두 동일)
+  const canSaveEditReservation =
+    modalMode === 'edit'
+    && !isEditTargetCompleted;
+  // 완료 상태 수정건은 읽기전용으로 잠근다.
+  const isEditReadOnly = modalMode === 'edit' && isEditTargetCompleted;
+  // 시술 시작 버튼: 수정 모드 + 저장 가능 + 오늘 + 아직 진행중 아님
+  const shouldShowStartServiceButton =
+    modalMode === 'edit'
+    && canSaveEditReservation
+    && !isEditTargetCancelled
+    && isEditTargetToday
+    && !isEditTargetProcessing;
+  // 결제 처리 버튼: 수정 모드 + 저장 가능 + 오늘 + 진행중
+  const shouldShowPaymentButton =
+    modalMode === 'edit'
+    && canSaveEditReservation
+    && !isEditTargetCancelled
+    && isEditTargetToday
+    && isEditTargetProcessing;
   const isPaymentCompleted = linkedSettlementState === 'COMPLETED';
-  const isCompletedSettlementLocked = modalMode === 'edit' && isPaymentCompleted;
+  // 정산 완료 + 예약 완료/취소 조합인 경우는 폼 자체를 잠가서 데이터 변경을 막는다.
+  const isCompletedSettlementLocked =
+    modalMode === 'edit' && isPaymentCompleted && isEditTargetCompleted;
   const isReservationFormLocked =
-    isDbBusy || isSettlementStateLoading || isCompletedSettlementLocked;
+    isDbBusy || isSettlementStateLoading || isCompletedSettlementLocked || isEditReadOnly;
+  const isSaveButtonDisabled = isReservationFormLocked || isFormStatusClosed;
   const isQuickPaymentReadOnly = isPaymentCompleted || isSettlementStateLoading;
-  const isPaymentCancelAction = modalMode === 'edit' && isPaymentCompleted;
-  const isPaymentActionDisabled = isPaymentCancelAction
-    ? isDbBusy || isSettlementStateLoading || !editingId
-    : isDbBusy || isSettlementStateLoading || isPaymentCompleted;
-  const paymentActionLabel = isPaymentCancelAction ? pt('t130') : pt('t122');
+  const isPaymentActionDisabled = isDbBusy || isSettlementStateLoading || isPaymentCompleted;
 
   // 빠른 결제 입력용 결제수단(쿠폰 제외, 회원전용 수단은 회원 선택 시만)
   const manualPaymentMethodOptions = useMemo(
@@ -919,7 +1019,10 @@ export default function ReservationCalendarPage() {
   const calculatorRemainingAmount = calculatorPayableAmount - calculatorPaidTotal;
 
   // 공통코드/시술목록 조회: 예약 폼에서 쓰는 선택값을 준비한다.
+  // - 화면 렌더 전에 필요한 기준 데이터(상태/카테고리/시술/결제수단/회원/직원)를 한번에 가져온다.
+  // - 각 데이터는 "표시용 라벨 + 저장용 코드/ID" 형태로 정규화한다.
   const loadLookupData = async () => {
+    // 1) 서로 독립적인 조회는 병렬 호출해 초기 진입 속도를 줄인다.
     const [commonResult, serviceResult, memberResult, employeeResult] = await Promise.all([
       invokeDbCommand<{
         success: boolean;
@@ -966,6 +1069,7 @@ export default function ReservationCalendarPage() {
     ]);
 
     const details = commonResult.details || [];
+    // 2) 공통코드(예약상태) 정리
     const loadedStatuses = details
       .filter((detail) => detail.group === STATUS_GROUP_ID && detail.use_yn === 'Y')
       .sort(
@@ -977,6 +1081,7 @@ export default function ReservationCalendarPage() {
         order: detail.order,
       }));
 
+    // 3) 시술 카탈로그 정리(미사용 제외 + 카테고리/서비스명 정렬)
     const loadedServices = (serviceResult.items || [])
       .filter((item) => item.use_yn === 'Y')
       .map((item) => ({
@@ -993,6 +1098,7 @@ export default function ReservationCalendarPage() {
         return a.serviceName.localeCompare(b.serviceName);
       });
 
+    // 4) 카테고리 코드 정리
     const loadedCategories = details
       .filter((detail) => detail.group === CATEGORY_GROUP_ID && detail.use_yn === 'Y')
       .sort(
@@ -1004,6 +1110,7 @@ export default function ReservationCalendarPage() {
         order: detail.order,
       }));
 
+    // 5) 결제수단 코드 정리
     const loadedPaymentMethods = details
       .filter((detail) => detail.group === PAYMENT_METHOD_GROUP_ID && detail.use_yn === 'Y')
       .sort(
@@ -1015,6 +1122,7 @@ export default function ReservationCalendarPage() {
         order: detail.order,
       }));
 
+    // 6) 카테고리 공통코드가 비어 있을 때를 대비해, 시술 데이터에서 카테고리를 유도한다.
     const serviceDerivedCategories = Array.from(
       loadedServices.reduce((map, item) => {
         if (!map.has(item.categoryCode)) {
@@ -1028,6 +1136,7 @@ export default function ReservationCalendarPage() {
       }, new Map<string, CodeOption>()),
     ).map(([, value]) => value);
 
+    // 7) 화면에서 항상 셀렉트가 동작하도록 fallback 데이터를 보장한다.
     const nextStatuses =
       loadedStatuses.length > 0 ? loadedStatuses : FALLBACK_STATUSES;
     const nextCategories =
@@ -1044,6 +1153,7 @@ export default function ReservationCalendarPage() {
           label: getPaymentMethodLabelByCode(method.code),
         }));
 
+    // 8) 회원 데이터 정규화
     // 고객 선택은 회원명/전화번호를 함께 제공해 예약 등록 시 식별 정확도를 높인다.
     const nextMembers = (memberResult.users || [])
       .map((user) => {
@@ -1065,6 +1175,7 @@ export default function ReservationCalendarPage() {
           || a.phone.localeCompare(b.phone)
           || (a.id - b.id),
       );
+    // 이름 -> 전화번호 맵: 화면표시/보조매칭용
     const nextMemberPhoneByName = (memberResult.users || []).reduce((map, user) => {
       const key = normalizeNameKey(user.name || '');
       const phone = (user.phone || '').trim();
@@ -1072,6 +1183,8 @@ export default function ReservationCalendarPage() {
       map.set(key, phone);
       return map;
     }, new Map<string, string>());
+    // 이름 -> 회원ID 맵: 저장 시 이름 기반 자동매칭용
+    // 동일 이름이 중복되면 null로 마킹해 오매핑을 막는다.
     const nextMemberIdByName = (memberResult.users || []).reduce((map, user) => {
       const key = normalizeNameKey(user.name || '');
       const userId = Number(user.user_id);
@@ -1090,6 +1203,7 @@ export default function ReservationCalendarPage() {
 
       return map;
     }, new Map<string, number | null>());
+    // 9) 직원(디자이너) 목록 정규화
     const nextDesignerNames = toUniqueSortedNames(
       (employeeResult.employees || []).map((employee) => employee.employee_name || ''),
     );
@@ -1101,6 +1215,7 @@ export default function ReservationCalendarPage() {
       return map;
     }, new Map<string, number>());
 
+    // 10) 계산된 기준 데이터를 상태에 반영
     setStatusOptions(nextStatuses);
     setCategories(nextCategories);
     setServiceItems(loadedServices);
@@ -1118,6 +1233,7 @@ export default function ReservationCalendarPage() {
   };
 
   // 예약 목록 조회: 헤더 + 시술라인을 화면에서 쓰는 구조로 변환한다.
+  // - API 응답 row를 화면 모델(ReservationRecord)로 변환 후 정렬해 저장한다.
   const loadReservations = async (phoneMap?: Map<string, string>) => {
     const result = await invokeDbCommand<{
       success: boolean;
@@ -1148,6 +1264,7 @@ export default function ReservationCalendarPage() {
   };
 
   // 수정 모달 진입 시 연결 정산 상태/결제 스냅샷 로드
+  // - requestId로 최신 요청만 반영해, 빠른 모달 전환 시 이전 응답이 덮어쓰지 않게 한다.
   const loadLinkedSettlementState = async (
     reservation: ReservationRecord,
     requestId: number,
@@ -1159,6 +1276,7 @@ export default function ReservationCalendarPage() {
       const settlementState = normalizeSettlementState(linkedSettlement?.status);
       setLinkedSettlementState(settlementState);
 
+      // 완료 정산(COMPLETED)일 때만 결제 계산기 스냅샷을 복원한다.
       if (settlementState !== 'COMPLETED' || !linkedSettlement) return;
 
       const settlementMemberId = resolveMemberUserIdFromIdentifier(linkedSettlement.member_user_id);
@@ -1710,6 +1828,7 @@ export default function ReservationCalendarPage() {
     });
   };
 
+  // 비회원 고객을 즉시 회원으로 등록하고, 모달 상태를 신규 회원 기준으로 동기화한다.
   const registerGuestAsMember = async (
     memberNameRaw: string,
     memberGenderRaw?: string,
@@ -1730,6 +1849,7 @@ export default function ReservationCalendarPage() {
         ? normalizedGender
         : undefined;
 
+    // 1) 회원 등록/업데이트 API 호출
     await invokeDbCommand<{ success: boolean; message: string }>('upsert_user_management', {
       user: {
         name: memberName,
@@ -1738,6 +1858,7 @@ export default function ReservationCalendarPage() {
       },
     });
 
+    // 2) 로컬 기준 데이터(회원 목록)를 즉시 새로고침해 방금 등록한 회원을 찾는다.
     const lookupData = await loadLookupData();
     const normalizedName = normalizeNameKey(memberName);
     const matchedMember =
@@ -1751,6 +1872,7 @@ export default function ReservationCalendarPage() {
       throw new Error(pt('t142'));
     }
 
+    // 3) 모달 입력값을 "회원 선택 상태"로 맞춘다.
     setSelectedCustomerMemberId(String(matchedMember.id));
     setForm((prev) => ({ ...prev, customerName: matchedMember.name }));
     setCustomerPhoneQuery(matchedMember.phone);
@@ -1766,15 +1888,18 @@ export default function ReservationCalendarPage() {
       forcedMember?: MemberLookup | null;
     },
   ) => {
+    // Step 1. 폼 검증 실패 시 즉시 종료
     if (!validateReservationForm(targetForm, { forcedMember: options?.forcedMember })) return false;
     let reservationSaved = false;
     try {
       setIsMutating(true);
+      // Step 2. 예약 헤더/라인 저장
       const result = await upsertReservationItem(targetForm, {
         forcedMember: options?.forcedMember,
       });
       reservationSaved = true;
 
+      // Step 3. 상태가 진행중이면 정산(PROCESSING) 스냅샷까지 동기화
       const shouldSyncProcessingSettlement =
         options?.forceSyncProcessingSettlement || isReservationProcessingStatus(targetForm.status);
 
@@ -1788,6 +1913,7 @@ export default function ReservationCalendarPage() {
         });
       }
 
+      // Step 4. 목록 재조회 -> 기준일 갱신 -> 모달 닫기
       await loadReservations();
       setSelectedDate(targetForm.reservationDate);
       closeModal();
@@ -1812,6 +1938,7 @@ export default function ReservationCalendarPage() {
     if (isCompletedSettlementLocked) return;
     const successFallbackText = modalMode === 'edit' ? pt('t036') : pt('t037');
 
+    // 신규 등록 + 비회원인 경우, 저장 전에 회원등록 여부를 한 번 더 확인한다.
     if (modalMode === 'create' && !selectedMemberUserId) {
       const shouldRegisterMember = window.confirm(pt('t139'));
       if (shouldRegisterMember) {
@@ -1826,6 +1953,7 @@ export default function ReservationCalendarPage() {
 
         try {
           setIsMutating(true);
+          // 회원 등록 완료 후, 회원 정보가 반영된 폼으로 저장을 이어간다.
           const registeredMember = await registerGuestAsMember(nextMemberName, form.gender);
           await saveReservationRecord(
             {
@@ -1848,12 +1976,14 @@ export default function ReservationCalendarPage() {
       }
     }
 
+    // 일반 저장(create/edit 공통)
     await saveReservationRecord(form, successFallbackText);
   };
 
   // 시술 시작: 상태를 진행중 계열로 강제하여 저장
   const startReservationService = async () => {
     if (isCompletedSettlementLocked) return;
+    // 사용자가 현재 폼의 상태를 바꿔두었더라도, 시술 시작 버튼에서는 상태를 강제로 진행중 코드로 저장한다.
     const nextForm: ReservationForm = {
       ...form,
       status: serviceStartStatusCode,
@@ -1905,11 +2035,14 @@ export default function ReservationCalendarPage() {
 
   // 결제 처리: 예약 저장 후 정산 저장(회원 충전금 차감 포함)을 수행한다.
   const processReservationPayment = async () => {
+    // Step 1. 예약 폼 기본 유효성 검증
     if (!validateReservationForm(form)) return;
+    // Step 2. 이미 완료 정산이면 중복 결제 방지
     if (isPaymentCompleted) {
       alert(pt('t129'));
       return;
     }
+    // Step 3. 수정 모드에서는 서버 최신 정산 상태를 재확인(동시성 방어)
     if (modalMode === 'edit' && editingId) {
       try {
         const latestLinkedSettlement = await findLinkedSettlementByReservationId(editingId);
@@ -1927,6 +2060,7 @@ export default function ReservationCalendarPage() {
         return;
       }
     }
+    // Step 4. 결제 라인 정규화(코드 대문자화 + 금액 숫자화 + 0원/빈 코드 제거)
     const normalizedQuickPayments = quickPaymentLines
       .map((line) => ({
         methodCode: line.methodCode.trim().toUpperCase(),
@@ -1937,11 +2071,13 @@ export default function ReservationCalendarPage() {
       alert(pt('t123'));
       return;
     }
+    // Step 5. 결제 처리는 예약 상태가 완료(COMPLETED)일 때만 허용
     if (form.status.trim().toUpperCase() !== 'COMPLETED') {
       alert(pt('t124'));
       return;
     }
 
+    // Step 6. 충전금 계열 수단 사용 시 회원 선택 필수
     if (
       normalizedQuickPayments.some((line) => isBalancePaymentMethod(line.methodCode))
       && !selectedMemberUserId
@@ -1949,6 +2085,7 @@ export default function ReservationCalendarPage() {
       alert(pt('t146'));
       return;
     }
+    // Step 7. 정산 담당자(manager_employee_id)는 디자이너명 -> 직원ID 맵으로 해석
     const managerEmployeeIdForSettlement = normalizedQuickPayments.length > 0
       ? designerIdByName.get(normalizeNameKey(form.designerName))
       : undefined;
@@ -1961,6 +2098,7 @@ export default function ReservationCalendarPage() {
 
     try {
       setIsMutating(true);
+      // Step 8. 결제 전에 예약 정보(상태/시술/담당자)를 먼저 저장해 기준 데이터를 최신화한다.
       const result = await upsertReservationItem(form);
       reservationSaved = true;
 
@@ -1969,6 +2107,7 @@ export default function ReservationCalendarPage() {
         throw new Error(pt('t144'));
       }
 
+      // Step 9. 기존 정산이 있으면 쿠폰 결제 라인(COUPON)을 가능한 범위에서 보존한다.
       const linkedSettlement = await findLinkedSettlementByReservationId(savedReservationId);
       const serviceIds = form.services.map((service) => service.serviceId);
       const selectedServiceCountMap = serviceIds.reduce((map, serviceId) => {
@@ -1995,6 +2134,7 @@ export default function ReservationCalendarPage() {
           coupon_service_id: Number(payment.coupon_service_id),
         }));
 
+      // Step 10. 정산 저장(현금/카드 등 신규 결제 + 보존 쿠폰 결제 병합)
       const settlementResult = await invokeDbCommand<{ success: boolean; message: string }>('upsert_sales_settlement', {
         settlement: {
           settlement_id: linkedSettlement?.settlement_id || undefined,
@@ -2018,6 +2158,7 @@ export default function ReservationCalendarPage() {
         },
       });
 
+      // Step 11. 목록 새로고침 후 모달 종료
       await loadReservations();
       setSelectedDate(form.reservationDate);
       closeModal();
@@ -2908,43 +3049,62 @@ export default function ReservationCalendarPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="submit"
-                    disabled={isReservationFormLocked}
-                    className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2"
-                  >
-                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
-                    {pt('t121')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startReservationService}
-                    disabled={isReservationFormLocked}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
-                      isReservationFormLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'
-                    }`}
-                  >
-                    {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
-                    {pt('t127')}
-                  </button>
+                  {/* 버튼 노출 규칙
+                     - 닫기 버튼은 항상 노출
+                     - 완료 상태(editTargetCompleted)에서는 저장 버튼 숨김
+                     - 저장 버튼은 그 외 상태에서 노출(활성/비활성은 isSaveButtonDisabled로 제어)
+                     - shouldShowStartServiceButton: 오늘 + 수정 + 진행전
+                     - shouldShowPaymentButton: 오늘 + 수정 + 진행중
+                  */}
                   <button
                     type="button"
-                    onClick={isPaymentCancelAction ? cancelCompletedReservationPayment : processReservationPayment}
-                    disabled={isPaymentActionDisabled}
+                    onClick={closeModal}
+                    disabled={isDbBusy}
                     className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
-                      isPaymentActionDisabled
-                        ? 'bg-slate-400 cursor-not-allowed'
-                        : isPaymentCancelAction
-                          ? 'bg-rose-600 hover:bg-rose-700'
-                          : 'bg-emerald-600 hover:bg-emerald-700'
+                      isDbBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-600 hover:bg-slate-700'
                     }`}
                   >
-                    {(isMutating || isSettlementStateLoading)
-                      ? <Loader2 size={15} className="animate-spin" />
-                      : <Clock3 size={15} />}
-                    {paymentActionLabel}
+                    <X size={15} />
+                    {pt('t151')}
                   </button>
-                  
+                  {!isEditTargetCompleted && (
+                    <button
+                      type="submit"
+                      disabled={isSaveButtonDisabled}
+                      className="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-primary hover:bg-primary/90 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={15} />}
+                      {pt('t121')}
+                    </button>
+                  )}
+                  {shouldShowStartServiceButton && (
+                    <button
+                      type="button"
+                      onClick={startReservationService}
+                      disabled={isReservationFormLocked}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
+                        isReservationFormLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'
+                      }`}
+                    >
+                      {isMutating ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
+                      {pt('t127')}
+                    </button>
+                  )}
+                  {shouldShowPaymentButton && (
+                    <button
+                      type="button"
+                      onClick={processReservationPayment}
+                      disabled={isPaymentActionDisabled}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 ${
+                        isPaymentActionDisabled ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                      }`}
+                    >
+                      {(isMutating || isSettlementStateLoading)
+                        ? <Loader2 size={15} className="animate-spin" />
+                        : <Clock3 size={15} />}
+                      {pt('t122')}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>

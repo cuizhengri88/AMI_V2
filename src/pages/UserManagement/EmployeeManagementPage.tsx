@@ -5,55 +5,94 @@ import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripH
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import { normalizeGenderForForm } from '../utils/pageCommon';
 
+// 직원 목록 테이블에서 사용하는 1건의 직원 데이터 모델
 type Employee = {
+  // DB 기본키(직원 고유번호)
   employee_id: number;
+  // 직원명
   employee_name: string;
+  // 사내 직원 코드(예: EMP001)
   employee_code: string;
+  // 역할 코드(권한/직군 식별값)
   role_id?: string;
+  // 역할 표시명(예: 디자이너, 매니저)
   role_name?: string;
+  // 이메일
   email?: string;
+  // 성별 원본값(M/F/문자열)
   gender?: string;
+  // 연락처
   phone?: string;
+  // 입사일(yyyy-mm-dd)
   hire_date?: string;
+  // 재직 상태 텍스트(재직중/휴직/퇴직)
   status?: string;
+  // 비고
   remarks?: string;
 };
 
+// 등록/수정 모달에서 저장용으로 사용하는 폼 상태 모델
 type FormData = {
+  // 수정 모드에서만 존재하는 직원 ID
   employee_id?: number;
+  // 필수 입력: 직원명
   employee_name: string;
+  // 필수 입력: 직원 코드
   employee_code: string;
+  // 선택 입력: 역할 코드
   role_id?: string;
+  // 선택 입력: 이메일
   email?: string;
+  // 선택 입력: 성별
   gender?: string;
+  // 선택 입력: 연락처
   phone?: string;
+  // 선택 입력: 입사일
   hire_date?: string;
+  // 선택 입력: 재직 상태
   status?: string;
+  // 선택 입력: 비고
   remarks?: string;
 };
 
+// 역할 선택 박스 옵션 모델
 type Role = {
+  // 역할 코드
   role_id: string;
+  // 역할명
   role_name: string;
 };
 
 export default function EmployeeManagementPage() {
+  // 페이지별 다국어 텍스트 조회 헬퍼
   const pt = usePageText('user_management_employee_management');
   const { t } = useTranslation();
+  // 전체 직원 원본 목록
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // 검색 조건이 반영된 화면 표시용 목록
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+  // 역할 드롭다운 옵션 목록
   const [roles, setRoles] = useState<Role[]>([]);
+  // 이름/전화 통합 검색 입력값
   const [searchText, setSearchText] = useState('');
+  // 데이터 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 저장/삭제 등 변경 작업 진행 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 등록/수정 모달 열림 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // 모달 동작 모드(add: 신규, edit: 수정)
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  // 모달 입력 폼 상태
   const [formData, setFormData] = useState<FormData>({ employee_name: '', employee_code: '', email: '', gender: '' });
+  // 상태값 상수(화면 비교/라벨 변환 기준)
   const STATUS_ACTIVE = '재직중';
   const STATUS_ON_LEAVE = '휴직';
   const STATUS_RESIGNED = '퇴직';
 
+  // 역할 목록 조회
   const loadRoles = async () => {
     try {
       const result = await invokeDbCommand<{ success: boolean; roles: Role[] }>('get_role_management_data');
@@ -63,6 +102,7 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  // 직원 목록 조회(원본 + 필터 목록 동기화)
   const loadEmployees = async () => {
     try {
       setIsLoading(true);
@@ -76,11 +116,13 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  // 최초 진입 시 역할/직원 데이터 로드
   useEffect(() => {
     loadRoles();
     loadEmployees();
   }, []);
 
+  // 검색어 변경 시 이름/전화 기준으로 화면 목록 재계산
   useEffect(() => {
     const normalizedSearchText = searchText.trim().toLowerCase();
     const normalizedSearchPhone = searchText.replace(/\D/g, '');
@@ -94,25 +136,21 @@ export default function EmployeeManagementPage() {
     setFilteredEmployees(filtered);
   }, [searchText, employees]);
 
-  const normalizeGenderForForm = (gender?: string) => {
-    const normalized = (gender || '').trim().toUpperCase();
-    if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') return 'M';
-    if (normalized === 'F' || normalized === 'FEMALE' || normalized === '여' || normalized === '여성') return 'F';
-    return '';
-  };
-
+  // 신규 등록 모달 오픈 + 폼 초기화
   const handleAddClick = () => {
     setModalMode('add');
     setFormData({ employee_name: '', employee_code: '', email: '', gender: '' });
     setIsModalOpen(true);
   };
 
+  // 수정 모달 오픈 + 선택 직원 데이터 주입
   const handleEditClick = (employee: Employee) => {
     setModalMode('edit');
     setFormData({ ...employee, email: employee.email || '', gender: normalizeGenderForForm(employee.gender) });
     setIsModalOpen(true);
   };
 
+  // 등록/수정 저장 처리
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.employee_name || !formData.employee_code) {
@@ -135,6 +173,7 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  // 직원 삭제 처리
   const handleDelete = async (employeeId: number) => {
     if (!window.confirm(pt('t008'))) return;
     try {
@@ -149,6 +188,7 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  // DB 상태값을 화면 라벨로 변환
   const getStatusLabel = (status?: string) => {
     switch (status) {
       case STATUS_ON_LEAVE:
@@ -164,6 +204,7 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  // 성별 코드/문자열을 화면 표시용 라벨로 변환
   const getGenderLabel = (gender?: string) => {
     const normalized = (gender || '').trim().toUpperCase();
     if (normalized === 'M') return pt('t049');
@@ -171,6 +212,7 @@ export default function EmployeeManagementPage() {
     return gender?.trim() || '-';
   };
 
+  // 상태 배지 색상 클래스 결정
   const getStatusBadgeClass = (status?: string) =>
     status === STATUS_ACTIVE || !status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
 
@@ -427,6 +469,7 @@ export default function EmployeeManagementPage() {
 }
 
 function DraggableModal({ title, children, onClose, icon }: { title: string; children: React.ReactNode; onClose: () => void; icon: React.ReactNode }) {
+  // 헤더 드래그 핸들 제어 객체
   const dragControls = useDragControls();
 
   return (

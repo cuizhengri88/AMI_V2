@@ -4,68 +4,85 @@ import { Search, Filter, History, User, RotateCcw, X, Calendar } from 'lucide-re
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import { formatCurrency, formatDateTimeYmdHms, toDateOnly } from '../utils/pageCommon';
 
+// 회원 선택 드롭다운에서 사용하는 최소 회원 정보
 type MemberOption = {
+  // 회원 고유 ID
   id: number;
+  // 회원명
   name: string;
 };
 
+// 포인트/쿠폰 이력 테이블 1행 모델
 type PointHistoryItem = {
+  // 이력 고유 ID
   id: number;
+  // 이력 유형(RECHARGE: 충전, USE: 사용)
   actionType: 'RECHARGE' | 'USE';
+  // 회원 ID
   userId: number;
+  // 회원명
   userName: string;
+  // 회원 연락처
   userPhone: string;
+  // 충전 유형(BALANCE/COUPON 등)
   rechargeType: string;
+  // 충전/사용 금액
   amount: number | null;
+  // 실수령 금액(할인/프로모션 포함 시 별도 저장)
+  receivedAmount: number | null;
+  // 쿠폰 대상 서비스명(쿠폰 충전/사용 시)
   serviceName: string | null;
+  // 쿠폰 수량
   couponCount: number | null;
+  // 결제 수단 표시명
   paymentMethodName: string;
+  // 메모
   memo: string;
+  // 생성일시
   createdAt: string;
+  // 충전 취소 여부
   isCancelled: boolean;
+  // 취소 사유
   cancelReason: string | null;
+  // 취소 일시
   cancelledAt: string | null;
 };
 
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
-}
-
-function formatDateTime(raw: string) {
-  if (!raw) return '-';
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString();
-}
-
-function toDateOnly(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return '';
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-}
-
 export default function MemberPointHistoryPage() {
+  // 페이지 번역 키 접근 함수
   const pt = usePageText('user_management_member_point_history');
+  // 초기/재조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 취소 처리 등 변경 작업 로딩 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 회원 드롭다운 목록
   const [members, setMembers] = useState<MemberOption[]>([]);
+  // 전체 이력 원본 목록
   const [histories, setHistories] = useState<PointHistoryItem[]>([]);
+  // 선택 회원 필터('all'이면 전체)
   const [selectedMemberId, setSelectedMemberId] = useState('all');
+  // 이력 유형 필터
   const [actionFilter, setActionFilter] = useState<'all' | 'RECHARGE' | 'USE' | 'RECHARGE_CANCELLED'>('all');
+  // 검색어(회원명/전화/메모 등 통합)
   const [searchTerm, setSearchTerm] = useState('');
+  // 시작일 필터
   const [startDate, setStartDate] = useState('');
+  // 종료일 필터
   const [endDate, setEndDate] = useState('');
 
+  // 충전 취소 모달 열림 여부
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  // 취소 대상 이력(선택된 RECHARGE 건)
   const [cancelTarget, setCancelTarget] = useState<PointHistoryItem | null>(null);
+  // 취소 사유 입력값
   const [cancelReason, setCancelReason] = useState('');
 
+  // 화면 전체 비활성화 기준(조회/변경 공통)
   const isBusy = isLoading || isMutating;
 
+  // 회원 목록 + 포인트 이력 동시 조회
   const loadData = async () => {
     try {
       setIsLoading(true);
@@ -84,6 +101,7 @@ export default function MemberPointHistoryPage() {
           user_phone: string | null;
           recharge_type: string;
           amount: number | null;
+          received_amount: number | null;
           service_name: string | null;
           coupon_count: number | null;
           payment_method_name: string;
@@ -113,6 +131,7 @@ export default function MemberPointHistoryPage() {
           userPhone: item.user_phone || '',
           rechargeType: item.recharge_type,
           amount: item.amount,
+          receivedAmount: item.received_amount,
           serviceName: item.service_name,
           couponCount: item.coupon_count,
           paymentMethodName: item.payment_method_name,
@@ -130,11 +149,13 @@ export default function MemberPointHistoryPage() {
     }
   };
 
+  // 최초 진입 시 데이터 로드
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 현재 필터 조건으로 테이블 표시 목록 계산
   const filteredHistories = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
     return histories.filter((item) => {
@@ -163,6 +184,7 @@ export default function MemberPointHistoryPage() {
     });
   }, [actionFilter, endDate, histories, searchTerm, selectedMemberId, startDate]);
 
+  // 상단 요약 카드(충전/사용/취소 건수) 계산
   const summary = useMemo(() => {
     return filteredHistories.reduce(
       (acc, item) => {
@@ -175,6 +197,7 @@ export default function MemberPointHistoryPage() {
     );
   }, [filteredHistories]);
 
+  // 충전 취소 모달 오픈
   const openCancelModal = (item: PointHistoryItem) => {
     if (item.actionType !== 'RECHARGE' || item.isCancelled) return;
     setCancelTarget(item);
@@ -182,12 +205,14 @@ export default function MemberPointHistoryPage() {
     setIsCancelModalOpen(true);
   };
 
+  // 취소 모달 상태 초기화 + 닫기
   const closeCancelModal = () => {
     setIsCancelModalOpen(false);
     setCancelTarget(null);
     setCancelReason('');
   };
 
+  // 충전 취소 확정 처리
   const handleCancelRecharge = async () => {
     if (!cancelTarget) return;
     const reason = cancelReason.trim();
@@ -325,6 +350,7 @@ export default function MemberPointHistoryPage() {
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t023')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t003')}</th>
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t040')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th>
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t002')}</th>
@@ -333,7 +359,7 @@ export default function MemberPointHistoryPage() {
           <tbody className="divide-y divide-slate-100">
             {filteredHistories.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
+                <td colSpan={11} className="py-10 text-center text-sm text-slate-400">
                   {pt('t029')}
                 </td>
               </tr>
@@ -350,10 +376,14 @@ export default function MemberPointHistoryPage() {
                     : item.actionType === 'RECHARGE'
                       ? `+${formatCurrency(item.amount)}`
                       : `-${formatCurrency(item.amount)}`;
+                const receivedAmount =
+                  item.actionType === 'RECHARGE' ? (item.receivedAmount ?? item.amount) : null;
+                const receivedAmountText =
+                  receivedAmount == null ? '-' : formatCurrency(receivedAmount);
 
                 return (
                   <tr key={`${item.actionType}-${item.id}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6 text-xs text-slate-500">{formatDateTime(item.createdAt)}</td>
+                    <td className="py-4 px-6 text-xs text-slate-500">{formatDateTimeYmdHms(item.createdAt)}</td>
                     <td className="py-4 px-6">
                       {item.actionType === 'RECHARGE' ? (
                         item.isCancelled ? (
@@ -381,6 +411,7 @@ export default function MemberPointHistoryPage() {
                     >
                       {signedAmount}
                     </td>
+                    <td className="py-4 px-6 text-sm text-right font-bold text-slate-700">{receivedAmountText}</td>
                     <td className="py-4 px-6 text-xs text-slate-500">{item.paymentMethodName || '-'}</td>
                     <td className="py-4 px-6 text-xs text-slate-500">
                       <div>{item.memo || '-'}</div>
@@ -388,7 +419,7 @@ export default function MemberPointHistoryPage() {
                         <div className="text-rose-600 mt-1">
                           {pt('t033', {
                             reason: item.cancelReason || '-',
-                            date: formatDateTime(item.cancelledAt || ''),
+                            date: formatDateTimeYmdHms(item.cancelledAt || ''),
                           })}
                         </div>
                       )}</td>

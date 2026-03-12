@@ -5,88 +5,154 @@ import { Users, UserPlus, Mail, MapPin, Phone, FileText, Search, Edit2, X, GripH
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  formatCurrency,
+  formatDateTime,
+  isSamePhoneDigits,
+  normalizeNameKey,
+  normalizePhoneDigits,
+  toTimestamp,
+} from '../utils/pageCommon';
 
+// 회원 관리 테이블 1행 모델
 type User = {
+  // 회원 ID
   user_id: number;
+  // 회원명
   name: string;
+  // 이메일
   email?: string;
+  // 성별
   gender?: string;
+  // 전화번호
   phone?: string;
+  // 주소
   address?: string;
+  // 비고
   remarks?: string;
 };
 
+// 회원 등록/수정 모달 폼 모델
 type FormData = {
+  // 수정 시 대상 회원 ID
   user_id?: number;
+  // 필수 입력: 회원명
   name: string;
+  // 선택 입력: 이메일
   email?: string;
+  // 선택 입력: 성별
   gender?: string;
+  // 선택 입력: 전화번호
   phone?: string;
+  // 선택 입력: 주소
   address?: string;
+  // 선택 입력: 비고
   remarks?: string;
 };
 
+// 회원 보유 쿠폰 모델
 type MemberPointCoupon = {
+  // 시술 ID
   service_id: number;
+  // 시술명
   service_name: string;
+  // 쿠폰 수량
   count: number;
 };
 
+// 포인트/쿠폰 조회 결과의 회원 모델
 type MemberPointMember = {
+  // 회원 ID
   user_id: number;
+  // 회원명
   user_name: string;
+  // 연락처
   phone: string | null;
+  // 포인트 잔액
   point_balance: number;
+  // 보유 쿠폰 목록
   coupons: MemberPointCoupon[];
 };
 
+// 정산 결제 상세 모델
 type SalesSettlementPayment = {
+  // 결제수단 코드
   payment_method_code: string;
+  // 결제 금액
   amount: number;
+  // 쿠폰 결제 시 시술 ID
   coupon_service_id: number | null;
 };
 
+// 정산 데이터 모델(회원 히스토리 모달 구성에 사용)
 type SalesSettlement = {
+  // 정산 ID
   settlement_id: number;
+  // 정산일시
   settlement_datetime: string;
+  // 회원 식별자(ID/전화/이름 혼합 저장 가능)
   member_user_id: string | null;
+  // 비회원 고객명
   guest_customer_name?: string | null;
+  // 비회원 고객 연락처
   guest_customer_phone?: string | null;
+  // 담당 직원 ID
   manager_employee_id: number;
+  // 시술 ID 목록
   service_ids: number[];
+  // 총 결제금액
   total_amount: number;
+  // 결제 상세 라인
   payments: SalesSettlementPayment[];
+  // 정산 상태
   status: string;
+  // 연결 예약 ID
   reservation_ref: string | null;
+  // 취소 사유
   cancel_reason: string | null;
+  // 취소 일시
   cancelled_at: string | null;
 };
 
+// 예약 시술 최소 모델
 type ReservationService = {
+  // 시술명
   service_name: string;
 };
 
+// 예약 히스토리 원본 모델
 type Reservation = {
+  // 예약 ID
   reservation_id: number;
+  // 예약일
   reservation_date: string;
+  // 시작 시간
   start_time: string;
+  // 고객명
   customer_name: string;
+  // 디자이너명
   designer_name: string;
+  // 예약 상태
   status: string;
+  // 예약 메모
   note: string | null;
+  // 예약 시술 목록
   services: ReservationService[];
 };
 
+// 직원 최소 모델(이름 매핑용)
 type Employee = {
   employee_id: number;
   employee_name: string;
 };
 
+// 시술 카탈로그 최소 모델
 type ServiceCatalogItem = {
   service_id: number;
   service_name: string;
 };
 
+// 공통코드 상세 모델(결제수단명 매핑용)
 type CommonCodeDetail = {
   group: string;
   code: string;
@@ -94,6 +160,7 @@ type CommonCodeDetail = {
   use_yn: 'Y' | 'N';
 };
 
+// 회원 시술 이력 행 모델(정산/예약 연동 결과)
 type MemberTreatmentHistoryRow = {
   history_key: string;
   datetime: string;
@@ -107,6 +174,7 @@ type MemberTreatmentHistoryRow = {
   source: 'SETTLEMENT' | 'RESERVATION';
 };
 
+// 회원 예약 이력 행 모델
 type MemberReservationHistoryRow = {
   reservation_id: number;
   datetime: string;
@@ -117,24 +185,7 @@ type MemberReservationHistoryRow = {
   is_linked: boolean;
 };
 
-function formatCurrency(value: number | null | undefined) {
-  return `¥${Number(value || 0).toLocaleString()}`;
-}
-
-function toTimestamp(raw: string | null | undefined) {
-  if (!raw) return Number.MIN_SAFE_INTEGER;
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return Number.MIN_SAFE_INTEGER;
-  return parsed.getTime();
-}
-
-function formatDateTime(raw: string | null | undefined) {
-  if (!raw) return '-';
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString(undefined, { hour12: false });
-}
-
+// 예약일/시간 조합 문자열 표시
 function formatReservationDateTime(date: string | null | undefined, time: string | null | undefined) {
   const dateValue = (date || '').trim();
   const timeValue = (time || '').trim();
@@ -144,21 +195,7 @@ function formatReservationDateTime(date: string | null | undefined, time: string
   return `${dateValue} ${timeValue}`;
 }
 
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
-
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
-}
-
+// 회원-예약/정산 매칭 규칙(이름/전화)
 function isMatchedByNameOrPhone(
   customerName?: string | null,
   customerPhone?: string | null,
@@ -183,38 +220,60 @@ function isMatchedByNameOrPhone(
   return false;
 }
 
+// 예약 상태가 완료인지 판정
 function isCompletedReservationStatus(status?: string | null) {
   const normalized = (status || '').trim().toUpperCase();
   return normalized === 'COMPLETED' || normalized === '완료';
 }
 
+// 정산 상태가 완료인지 판정
 function isCompletedSettlementStatus(status?: string | null) {
   const normalized = (status || '').trim().toUpperCase();
   return normalized === 'COMPLETED';
 }
 
 export default function UserManagementPage() {
+  // 페이지별 번역 텍스트 접근
   const pt = usePageText('user_management_user_management');
   const { t } = useTranslation();
+  // 회원 원본 목록
   const [users, setUsers] = useState<User[]>([]);
+  // 검색 반영된 회원 목록
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  // 이름/전화 통합 검색어
   const [searchText, setSearchText] = useState('');
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 저장/삭제 등 변경 작업 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 회원 등록/수정 모달 열림 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // 모달 모드(add/edit)
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  // 회원 등록/수정 입력값
   const [formData, setFormData] = useState<FormData>({ name: '', email: '', gender: '' });
+  // 히스토리 모달 열림 여부
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  // 히스토리 로딩 상태
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  // 히스토리 조회 에러 메시지
   const [historyError, setHistoryError] = useState('');
+  // 히스토리 조회 대상 회원
   const [selectedHistoryUser, setSelectedHistoryUser] = useState<User | null>(null);
+  // 대상 회원의 포인트 잔액
   const [memberPointBalance, setMemberPointBalance] = useState(0);
+  // 대상 회원의 보유 쿠폰 목록
   const [memberCoupons, setMemberCoupons] = useState<MemberPointCoupon[]>([]);
+  // 대상 회원의 시술 이력 목록
   const [memberTreatmentHistories, setMemberTreatmentHistories] = useState<MemberTreatmentHistoryRow[]>([]);
+  // 대상 회원의 예약 이력 목록
   const [memberReservationHistories, setMemberReservationHistories] = useState<MemberReservationHistoryRow[]>([]);
+  // 이름 매칭으로 연결된 예약이 있는지 표시
   const [hasNameMatchedReservation, setHasNameMatchedReservation] = useState(false);
+  // 펼쳐진 시술 목록 행 키(아코디언 상태)
   const [expandedServiceHistoryKey, setExpandedServiceHistoryKey] = useState<string | null>(null);
 
+  // 회원 목록 조회
   const loadUsers = async () => {
     try {
       setIsLoading(true);
@@ -228,10 +287,12 @@ export default function UserManagementPage() {
     }
   };
 
+  // 최초 진입 시 회원 목록 로드
   useEffect(() => {
     loadUsers();
   }, []);
 
+  // 검색어 변경 시 화면 목록 재계산
   useEffect(() => {
     const normalizedSearchText = searchText.trim().toLowerCase();
     const normalizedSearchPhone = searchText.replace(/\D/g, '');
@@ -245,6 +306,7 @@ export default function UserManagementPage() {
     setFilteredUsers(filtered);
   }, [searchText, users]);
 
+  // 성별 표현값을 M/F로 정규화
   const normalizeGenderForForm = (gender?: string) => {
     const normalized = (gender || '').trim().toUpperCase();
     if (normalized === 'M' || normalized === 'MALE' || normalized === '남' || normalized === '남성') return 'M';
@@ -252,18 +314,21 @@ export default function UserManagementPage() {
     return '';
   };
 
+  // 신규 회원 모달 오픈
   const handleAddClick = () => {
     setModalMode('add');
     setFormData({ name: '', email: '', gender: '' });
     setIsModalOpen(true);
   };
 
+  // 수정 모달 오픈 + 선택 회원 데이터 주입
   const handleEditClick = (user: User) => {
     setModalMode('edit');
     setFormData({ ...user, email: user.email || '', gender: normalizeGenderForForm(user.gender) });
     setIsModalOpen(true);
   };
 
+  // 회원 저장(등록/수정)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) {
@@ -286,6 +351,7 @@ export default function UserManagementPage() {
     }
   };
 
+  // 회원 삭제 처리
   const handleDelete = async (userId: number) => {
     if (!window.confirm(pt('t003'))) return;
     try {
@@ -300,6 +366,7 @@ export default function UserManagementPage() {
     }
   };
 
+  // 성별 라벨 표시
   const getGenderLabel = (gender?: string) => {
     const normalized = (gender || '').trim().toUpperCase();
     if (normalized === 'M') return pt('t009');
@@ -307,6 +374,7 @@ export default function UserManagementPage() {
     return gender?.trim() || '-';
   };
 
+  // 정산 상태 라벨 표시
   const getSettlementStatusLabel = (status: string) => {
     const normalized = status?.trim().toUpperCase();
     if (normalized === 'COMPLETED') return pt('t053');
@@ -315,6 +383,7 @@ export default function UserManagementPage() {
     return pt('t047');
   };
 
+  // 예약 상태 라벨 표시
   const getReservationStatusLabel = (status: string) => {
     const normalized = status?.trim().toUpperCase();
     if (normalized === 'RESERVED') return pt('t044');
@@ -323,6 +392,7 @@ export default function UserManagementPage() {
     return status?.trim() || pt('t047');
   };
 
+  // 히스토리 모달 내부 상태 초기화
   const resetHistoryState = () => {
     setHistoryError('');
     setMemberPointBalance(0);
@@ -333,10 +403,12 @@ export default function UserManagementPage() {
     setExpandedServiceHistoryKey(null);
   };
 
+  // 시술 목록 펼침/접힘 토글
   const toggleServiceList = (historyKey: string) => {
     setExpandedServiceHistoryKey((prev) => (prev === historyKey ? null : historyKey));
   };
 
+  // 회원 상세 히스토리(포인트/정산/예약) 조회 및 가공
   const loadMemberHistory = async (user: User) => {
     const targetUserId = user.user_id;
     setIsHistoryLoading(true);

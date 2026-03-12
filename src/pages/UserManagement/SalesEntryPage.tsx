@@ -14,91 +14,163 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  findMatchedMemberByNameOrPhone,
+  isBalancePaymentMethod,
+  isCouponPaymentMethod,
+  normalizePhoneDigits,
+  todayIso,
+  toSettlementStatus,
+} from '../utils/pageCommon';
 
+// 회원이 보유한 쿠폰 정보
 type Coupon = {
+  // 시술 ID
   serviceId: number;
+  // 시술명
   name: string;
+  // 보유 수량
   count: number;
 };
 
+// 매출 입력 화면용 회원 모델
 type Member = {
+  // 회원 ID
   id: number;
+  // 회원명
   name: string;
+  // 전화번호
   phone: string;
+  // 포인트/선불 잔액
   balance: number;
+  // 회원 쿠폰 목록
   coupons: Coupon[];
 };
 
+// 담당자(직원) 선택 모델
 type Manager = {
+  // 직원 ID
   id: number;
+  // 직원명
   name: string;
+  // 역할명(디자이너/매니저 등)
   role: string;
 };
 
+// 시술 카테고리 옵션
 type ServiceCategoryOption = {
+  // 카테고리 코드
   code: string;
+  // 카테고리명
   name: string;
+  // 정렬 순서
   order: number;
 };
 
+// 시술 선택 모델
 type Procedure = {
+  // 시술 ID
   id: number;
+  // 시술명
   name: string;
+  // 카테고리 코드
   categoryCode: string;
+  // 카테고리명
   categoryName: string;
+  // 단가
   price: number;
+  // 소요시간(분)
   time: number;
 };
 
+// 예약 조회 결과를 매출 입력에서 재사용하는 모델
 type Reservation = {
+  // 예약 ID(문자열 변환값)
   id: string;
+  // 예약일
   date: string;
+  // 예약 시간
   time: string;
+  // 고객명
   customerName: string;
+  // 고객 전화번호
   customerPhone?: string;
+  // 담당 디자이너명
   designerName: string;
+  // 매칭된 회원 ID
   memberId?: number;
+  // 담당자 ID
   managerId?: number;
+  // 예약된 시술 ID 목록
   procedureIds: number[];
+  // 예약 상태
   status: 'RESERVED' | 'PROCESSING' | 'CANCELLED' | 'COMPLETED';
 };
 
 type PaymentMethodCode = string;
 
+// 결제수단 옵션
 type PaymentMethodOption = {
+  // 결제수단 코드
   code: PaymentMethodCode;
+  // 결제수단명
   name: string;
+  // 정렬 순서
   order: number;
 };
 
+// 결제 상세 라인(다중 결제 지원)
 type PaymentDetail = {
+  // 결제수단 코드
   method: PaymentMethodCode;
+  // 결제 금액
   amount: number;
+  // 쿠폰 결제 시 연결된 시술 ID
   couponServiceId?: number;
 };
 
+// 정산 상태
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+// 정산 취소 유형(결제 취소/시술 취소)
 type SettlementCancelType = 'PAYMENT' | 'PROCEDURE';
+// 화면 탭 상태(예약/작업중/완료)
 type SettlementListTab = 'RESERVATION' | Extract<SettlementStatus, 'PROCESSING' | 'COMPLETED'>;
 
+// 매출 정산 1건 모델
 type Settlement = {
+  // 정산 ID
   id: number;
+  // 정산 일시
   date: string;
+  // 회원 ID(비회원은 GUEST)
   memberId: number | 'GUEST';
+  // 비회원 고객명
   guestCustomerName?: string;
+  // 비회원 고객 연락처
   guestCustomerPhone?: string;
+  // 담당자 ID
   managerId: number;
+  // 시술 ID 목록
   procedureIds: number[];
+  // 총 결제금액
   totalAmount: number;
+  // 총 시술시간
   totalTime: number;
+  // 결제 상세 라인
   payments: PaymentDetail[];
+  // 정산 상태
   status: SettlementStatus;
+  // 연결 예약 ID
   reservationId?: string;
+  // 취소 유형
   cancelType?: SettlementCancelType;
+  // 취소 사유
   cancelReason?: string;
+  // 취소 일시
   cancelledAt?: string;
 };
 
+// 공통 드래그 모달 props
 type ModalProps = {
   title: string;
   children: React.ReactNode;
@@ -115,59 +187,7 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
   { code: 'COUPON', name: 'COUPON', order: 6 },
 ];
 
-function todayIso() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// 전화번호 검색은 하이픈/공백/괄호 입력이 섞여도 동일하게 매칭되도록
-// 숫자만 남긴 비교용 문자열을 사용한다.
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
-
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
-}
-
-function findMatchedMemberByNameOrPhone(
-  members: Member[],
-  customerName?: string | null,
-  customerPhone?: string | null,
-) {
-  const normalizedName = normalizeNameKey(customerName);
-  const phoneCandidates = [
-    normalizePhoneDigits(customerPhone),
-    normalizePhoneDigits(customerName),
-  ].filter((digits) => digits.length >= 7);
-
-  for (const customerDigits of phoneCandidates) {
-    const matchedByPhone = members.find((member) => {
-      const memberPhoneDigits = normalizePhoneDigits(member.phone);
-      if (memberPhoneDigits.length < 7) return false;
-      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
-    });
-    if (matchedByPhone) return matchedByPhone;
-  }
-
-  if (normalizedName) {
-    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
-    if (matchedByName) return matchedByName;
-  }
-
-  return null;
-}
-
+// 정산 저장 시 사용할 회원 식별값(전화 우선, 없으면 이름) 생성
 function getMemberIdentifier(member?: Member | null) {
   if (!member) return null;
   const phone = (member.phone || '').trim();
@@ -178,6 +198,7 @@ function getMemberIdentifier(member?: Member | null) {
 
 const EMPTY_RESERVATIONS: Reservation[] = [];
 
+// 예약 상태 문자열을 화면 enum으로 정규화
 function toReservationStatus(value: string): Reservation['status'] {
   const normalized = value.trim().toUpperCase();
   if (normalized.includes('CANCEL')) return 'CANCELLED';
@@ -187,24 +208,9 @@ function toReservationStatus(value: string): Reservation['status'] {
   return 'RESERVED';
 }
 
-function toSettlementStatus(value: string): SettlementStatus {
-  const normalized = value.trim().toUpperCase();
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  return 'PROCESSING';
-}
-
+// 읽기전용 상태(완료/취소) 여부
 function isClosedSettlementStatus(status: SettlementStatus) {
   return status === 'COMPLETED' || status === 'CANCELLED';
-}
-
-function isCouponPaymentMethod(method: string) {
-  return method?.trim().toUpperCase() === 'COUPON';
-}
-
-function isBalancePaymentMethod(method: string) {
-  const normalized = method?.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
 }
 
 function DraggableModal({ title, children, onClose, icon }: ModalProps) {
@@ -243,29 +249,46 @@ function DraggableModal({ title, children, onClose, icon }: ModalProps) {
 export default function SalesEntryPage() {
   const pt = usePageText('user_management_sales_entry');
   // [상태] 기준 데이터(회원/직원/시술/카테고리/결제수단/정산) 조회 결과
+  // 회원 목록(정산 대상 선택)
   const [members, setMembers] = useState<Member[]>([]);
+  // 담당자 목록
   const [managers, setManagers] = useState<Manager[]>([]);
+  // 시술 목록
   const [procedures, setProcedures] = useState<Procedure[]>([]);
+  // 카테고리 목록
   const [procedureCategories, setProcedureCategories] = useState<ServiceCategoryOption[]>([]);
+  // 결제수단 목록
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(FALLBACK_PAYMENT_METHODS);
+  // 선택일 예약 목록(불러오기/가져오기 대상)
   const [todayReservations, setTodayReservations] = useState<Reservation[]>(EMPTY_RESERVATIONS);
+  // 정산 목록(탭별 필터 원본)
   const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   // [상태] 로딩/저장 중 UI 제어
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
+  // 저장/취소 등 변경 작업 상태
   const [isMutating, setIsMutating] = useState(false);
+  // 정산 등록/수정 모달 열림 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // 수정 중인 정산 데이터
   const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
+  // 예약에서 가져오기 시 현재 대상 예약
   const [modalReservationTarget, setModalReservationTarget] = useState<Reservation | null>(null);
+  // 예약 액션 모달 열림 여부(상태 변경/관리)
   const [isReservationActionModalOpen, setIsReservationActionModalOpen] = useState(false);
+  // 예약 액션 대상 예약
   const [reservationActionTarget, setReservationActionTarget] = useState<Reservation | null>(null);
 
   // [상태] 목록 검색 조건
   const [searchTerm, setSearchTerm] = useState('');
+  // 예약 조회 기준 날짜
   const [filterDate, setFilterDate] = useState(todayIso());
+  // 정산 탭 선택 상태
   const [activeSettlementTab, setActiveSettlementTab] = useState<SettlementListTab>('PROCESSING');
 
   // [상태] 모달 입력값
+  // 선택된 회원 ID(비회원은 GUEST)
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'GUEST'>('GUEST');
   // 고객 검색 입력값(이름/전화번호 공용).
   // 이 값은 "회원 자동완성 목록 필터"와 "비회원 fallback 고객명/전화 추론"에 동시에 사용된다.
@@ -275,21 +298,36 @@ export default function SalesEntryPage() {
   const [guestCustomerPhone, setGuestCustomerPhone] = useState('');
   // 자동완성 드롭다운 표시 제어(onFocus/onBlur + 입력값 조건 기반)
   const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
+  // 선택 담당자 ID
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
+  // 선택된 시술 ID 목록
   const [selectedProcs, setSelectedProcs] = useState<number[]>([]);
+  // 쿠폰 적용된 시술 ID 목록
   const [couponAppliedServiceIds, setCouponAppliedServiceIds] = useState<number[]>([]);
+  // 시술 필터 카테고리
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  // 결제 상세 라인 입력값
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
+  // 예약 가져오기에서 선택된 예약 ID
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
+  // 예약 조회 날짜(가져오기 영역)
   const [reservationImportDate, setReservationImportDate] = useState<string>(todayIso());
+  // 취소 사유 입력 모달 열림 여부
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  // 취소 대상 정산
   const [cancelTarget, setCancelTarget] = useState<Settlement | null>(null);
+  // 취소 사유 입력값
   const [cancelReason, setCancelReason] = useState('');
+  // 최초 로드 1회 제어
   const initialLoadDoneRef = useRef(false);
+  // 중복 로드 호출 방지용 in-flight Promise
   const loadDataInFlightRef = useRef<Promise<void> | null>(null);
 
+  // 화면 전체 busy 상태
   const isBusy = isLoading || isMutating;
+  // 예약 가져오기 기반 신규 입력 모드 여부
   const isReservationEntryMode = !!modalReservationTarget && !editingSettlement;
+  // 완료된 정산 수정 시 읽기 전용 여부
   const isCompletedSettlementReadOnly = editingSettlement?.status === 'COMPLETED';
 
   // [유틸] 결제수단 코드를 다국어 표시명으로 변환

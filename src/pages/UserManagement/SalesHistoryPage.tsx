@@ -22,35 +22,72 @@ import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
+import {
+  findMatchedMemberByNameOrPhone,
+  formatCurrency,
+  formatDateTime,
+  isCouponPaymentMethod,
+  toDateOnly,
+  todayIso,
+  toSettlementStatus,
+  toTimestamp,
+} from '../utils/pageCommon';
 
+// 매칭에 필요한 최소 회원 정보
 type Member = { id: number; name: string; phone: string; balance: number };
+// 담당자 정보
 type Manager = { id: number; name: string; role: string };
+// 시술 정보(통계/필터/금액 계산에 사용)
 type Procedure = { id: number; name: string; categoryName: string; price: number; time: number };
+// 결제수단 정보
 type PaymentMethod = { code: string; name: string; order: number };
+// 결제 상세 라인
 type PaymentDetail = { method: string; amount: number; couponServiceId?: number };
+// 정산 상태 enum
 type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+// 이력 항목 타입(정산/포인트충전)
 type HistoryEntryType = 'SETTLEMENT' | 'POINT_RECHARGE';
+// 매출 이력 화면에서 사용하는 통합 이력 모델
 type Settlement = {
+  // 화면 고유 ID
   id: number;
+  // 원본 소스 ID(settlement_id 또는 history_id)
   sourceId: number;
+  // 항목 타입(정산/포인트충전)
   entryType: HistoryEntryType;
+  // 발생 일시
   date: string;
+  // 회원 ID(비회원은 GUEST)
   memberId: number | 'GUEST';
+  // 고객명(정산 표시용)
   customerName?: string;
+  // 비회원 고객명
   guestCustomerName?: string;
+  // 비회원 고객 연락처
   guestCustomerPhone?: string;
+  // 담당자 ID
   managerId: number | null;
+  // 시술 ID 목록
   procedureIds: number[];
+  // 총 금액
   totalAmount: number;
+  // 총 소요시간
   totalTime: number;
+  // 결제 상세 목록
   payments: PaymentDetail[];
+  // 상태값
   status: SettlementStatus;
+  // 포인트충전 유형(BALANCE/COUPON)
   rechargeType?: 'BALANCE' | 'COUPON';
+  // 연결 예약 ID
   reservationId?: string;
+  // 취소 사유
   cancelReason?: string;
+  // 취소 일시
   cancelledAt?: string;
 };
 
+// 결제수단 코드 정보가 없을 때 쓰는 기본 목록
 const FALLBACK_PAYMENT_METHODS: PaymentMethod[] = [
   { code: 'CASH', name: 'CASH', order: 1 },
   { code: 'CARD', name: 'CARD', order: 2 },
@@ -60,6 +97,7 @@ const FALLBACK_PAYMENT_METHODS: PaymentMethod[] = [
   { code: 'COUPON', name: 'COUPON', order: 6 },
 ];
 
+// 카테고리 데이터가 없을 때 UI에 표기할 기본 카테고리 텍스트 키
 const DEFAULT_CATEGORY_TEXT_KEYS = [
   't053', // 커트
   't054', // 파마
@@ -67,28 +105,33 @@ const DEFAULT_CATEGORY_TEXT_KEYS = [
   't056', // 기타
 ] as const;
 
+// 상태 코드 -> 배지 텍스트 키
 const STATUS_TEXT_KEY_BY_CODE: Record<SettlementStatus, string> = {
   PROCESSING: 't017', // 작업중
   COMPLETED: 't036', // 결제 완료
   CANCELLED: 't037', // 취소
 };
 
+// 상세 모달 상태 코드 -> 텍스트 키
 const DETAIL_STATUS_TEXT_KEY_BY_CODE: Record<SettlementStatus, string> = {
   PROCESSING: 't017', // 작업중
   COMPLETED: 't036', // 결제 완료
   CANCELLED: 't057', // 취소됨
 };
 
+// 항목 타입 -> 텍스트 키
 const ENTRY_TYPE_TEXT_KEY_BY_CODE: Record<HistoryEntryType, string> = {
   SETTLEMENT: 't038', // 정산
   POINT_RECHARGE: 't039', // 포인트충전
 };
 
+// 포인트 충전 타입 -> 텍스트 키
 const RECHARGE_TYPE_TEXT_KEY_BY_CODE: Record<'BALANCE' | 'COUPON', string> = {
   BALANCE: 't040', // 포인트 충전
   COUPON: 't041', // 쿠폰 충전
 };
 
+// 결제수단 코드 -> 텍스트 키
 const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   CASH: 't073', // 현금
   CARD: 't074', // 카드
@@ -99,76 +142,23 @@ const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
   COUPON: 't078', // 쿠폰 사용
 };
 
+// 과거 데이터 호환용 레거시 쿠폰 결제 라벨
 const LEGACY_COUPON_PAYMENT_LABEL = '쿠폰결재건';
 
-function todayIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-function monthStartIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-function toSettlementStatus(value: string): SettlementStatus {
-  const normalized = value?.trim().toUpperCase();
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  return 'PROCESSING';
-}
-
-function toDateOnly(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return '';
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-}
-
-function formatDateTime(raw: string) {
-  if (!raw) return '-';
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleString(undefined, { hour12: false });
-}
-
-function formatCurrency(value: number) {
-  return `¥${value.toLocaleString()}`;
-}
-
-function toDateTime(raw: string) {
-  if (!raw) return null;
-  const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
-function toTimestamp(raw: string) {
-  return toDateTime(raw)?.getTime() ?? Number.MIN_SAFE_INTEGER;
-}
-
-function isCouponPaymentMethod(method: string) {
-  return method?.trim().toUpperCase() === 'COUPON';
-}
-
-function isBalancePaymentMethod(method: string) {
-  const normalized = method?.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
-}
-
+// 결제 라인 금액 합계
 function getTotalPaidAmount(entry: Settlement) {
   return entry.payments.reduce((sum, payment) => sum + payment.amount, 0);
 }
 
+// 실매출(쿠폰 제외) 계산
 function getActualSalesAmount(entry: Settlement) {
-  if (entry.entryType === 'POINT_RECHARGE') return getTotalPaidAmount(entry);
+  if (entry.entryType === 'POINT_RECHARGE') return 0;
   return entry.payments
-    .filter((payment) => !isCouponPaymentMethod(payment.method) && !isBalancePaymentMethod(payment.method))
+    .filter((payment) => !isCouponPaymentMethod(payment.method))
     .reduce((sum, payment) => sum + payment.amount, 0);
 }
 
+// 쿠폰이 커버한 금액 계산(시술단가 합산)
 function getCouponCoveredAmount(entry: Settlement, procedurePriceById: Map<number, number>) {
   if (entry.entryType !== 'SETTLEMENT') return 0;
   return entry.payments
@@ -176,6 +166,7 @@ function getCouponCoveredAmount(entry: Settlement, procedurePriceById: Map<numbe
     .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
 }
 
+// 할인 금액 계산(총액 - 실결제 - 쿠폰커버)
 function getDiscountAmount(entry: Settlement, procedurePriceById: Map<number, number>) {
   if (entry.entryType !== 'SETTLEMENT' || entry.status !== 'COMPLETED') return 0;
   const nonCouponPaidAmount = entry.payments
@@ -189,6 +180,7 @@ function getDiscountAmount(entry: Settlement, procedurePriceById: Map<number, nu
   return Math.max(0, entry.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid));
 }
 
+// 충전 타입 문자열 정규화(BALANCE/COUPON)
 function normalizeRechargeType(value?: string) {
   const raw = value?.trim() || '';
   const normalized = raw.toUpperCase();
@@ -196,6 +188,7 @@ function normalizeRechargeType(value?: string) {
   return 'BALANCE';
 }
 
+// 결제수단 코드 정규화(레거시 '쿠폰결재건' 포함)
 function normalizePaymentMethodCode(value: string) {
   const raw = value?.trim() || '';
   const normalized = raw.toUpperCase();
@@ -203,74 +196,41 @@ function normalizePaymentMethodCode(value: string) {
   return normalized;
 }
 
-function normalizeNameKey(raw?: string | null) {
-  return (raw || '').trim().toLowerCase();
-}
 
-function normalizePhoneDigits(raw?: string | null) {
-  return (raw || '').replace(/\D/g, '');
-}
-
-function isSamePhoneDigits(lhs?: string | null, rhs?: string | null) {
-  const left = normalizePhoneDigits(lhs);
-  const right = normalizePhoneDigits(rhs);
-  if (!left || !right) return false;
-  return left === right || left.endsWith(right) || right.endsWith(left);
-}
-
-function findMatchedMemberByNameOrPhone(
-  members: Member[],
-  customerName?: string | null,
-  customerPhone?: string | null,
-) {
-  const normalizedName = normalizeNameKey(customerName);
-  const phoneCandidates = [
-    normalizePhoneDigits(customerPhone),
-    normalizePhoneDigits(customerName),
-  ].filter((digits) => digits.length >= 7);
-
-  for (const customerDigits of phoneCandidates) {
-    const matchedByPhone = members.find((member) => {
-      const memberPhoneDigits = normalizePhoneDigits(member.phone);
-      if (memberPhoneDigits.length < 7) return false;
-      return isSamePhoneDigits(memberPhoneDigits, customerDigits);
-    });
-    if (matchedByPhone) return matchedByPhone;
-  }
-
-  if (normalizedName) {
-    const matchedByName = members.find((member) => normalizeNameKey(member.name) === normalizedName);
-    if (matchedByName) return matchedByName;
-  }
-
-  return null;
-}
-
+// 실매출 통계에서 제외할 결제코드 여부
 function isActualSalesExcludedPaymentCode(code: string) {
   const normalized = code?.trim().toUpperCase();
-  return normalized === 'PREPAID' || normalized === 'MEMBERSHIP';
+  return normalized === 'COUPON';
 }
 
 export default function SalesHistoryPage() {
   const pt = usePageText('user_management_sales_history');
+  // 기준 데이터
   const [members, setMembers] = useState<Member[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(FALLBACK_PAYMENT_METHODS);
+  // 화면 이력 원본 데이터
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  // 조회 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
 
-  const [startDate, setStartDate] = useState(monthStartIso());
+  // 조회 필터(기간/회원/담당자/카테고리/시술/결제수단)
+  const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
   const [searchMember, setSearchMember] = useState('');
   const [selectedManager, setSelectedManager] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedProcedure, setSelectedProcedure] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('');
+  // 상세 모달 대상 항목
   const [selectedHistory, setSelectedHistory] = useState<Settlement | null>(null);
+  // 상세 모달 드래그 제어
   const detailDragControls = useDragControls();
+  // 최초 로드 1회 제어
   const initialLoadDoneRef = useRef(false);
 
+  // 상태 텍스트 라벨 변환(detail=true면 상세용 문구 사용)
   const getStatusLabelByCode = (status: SettlementStatus, detail = false) => {
     const key = detail ? DETAIL_STATUS_TEXT_KEY_BY_CODE[status] : STATUS_TEXT_KEY_BY_CODE[status];
     return pt(key);
@@ -278,6 +238,7 @@ export default function SalesHistoryPage() {
 
   const getEntryTypeLabel = (entryType: HistoryEntryType) => pt(ENTRY_TYPE_TEXT_KEY_BY_CODE[entryType]);
 
+  // 포인트 충전 이력의 BALANCE/COUPON 라벨 변환
   const getPointRechargeLabel = (entry: Settlement) =>
     pt(RECHARGE_TYPE_TEXT_KEY_BY_CODE[entry.rechargeType === 'COUPON' ? 'COUPON' : 'BALANCE']);
 
@@ -295,11 +256,13 @@ export default function SalesHistoryPage() {
     return fallback || code;
   };
 
+  // 카테고리 필터 목록(실데이터 우선, 없으면 기본 카테고리)
   const categories = useMemo(() => {
     const labels = Array.from(new Set(procedures.map((entry) => entry.categoryName).filter(Boolean)));
     return labels.length > 0 ? labels : DEFAULT_CATEGORY_TEXT_KEYS.map((key) => pt(key));
   }, [procedures, pt]);
 
+  // 이력 1건에서 표시용 고객명/연락처 계산
   const getCustomerInfo = useCallback((entry: Settlement) => {
     const guestName = entry.guestCustomerName?.trim() || '';
     const guestPhone = entry.guestCustomerPhone?.trim() || '';
@@ -321,6 +284,7 @@ export default function SalesHistoryPage() {
     };
   }, [members, pt]);
 
+  // 화면 진입 시 기준 데이터 + 정산/충전 이력 일괄 로드
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -460,11 +424,7 @@ export default function SalesHistoryPage() {
       });
 
       const pointRechargeRows: Settlement[] = (memberResult.histories || [])
-        .filter((entry) => {
-          if (entry.action_type !== 'RECHARGE' || entry.is_cancelled) return false;
-          const paidAmount = Number(entry.received_amount ?? entry.amount ?? 0);
-          return paidAmount > 0;
-        })
+        .filter((entry) => entry.action_type === 'RECHARGE' && !entry.is_cancelled)
         .map((entry) => {
           const rechargeAmount = Number(entry.amount || 0);
           const paidAmount = Number(entry.received_amount ?? entry.amount ?? 0);
@@ -565,7 +525,7 @@ export default function SalesHistoryPage() {
     const counts = new Map<string, number>();
 
     filteredHistory.forEach((entry) => {
-      if (entry.status === 'CANCELLED') return;
+      if (entry.status === 'CANCELLED' || entry.entryType === 'POINT_RECHARGE') return;
 
       entry.payments.forEach((payment) => {
         const normalizedCode = normalizePaymentMethodCode(payment.method);
@@ -610,7 +570,7 @@ export default function SalesHistoryPage() {
   }, [filteredHistory, paymentMethods, paymentMethodNameMap, pt]);
 
   const resetFilters = () => {
-    setStartDate(monthStartIso());
+    setStartDate(todayIso());
     setEndDate(todayIso());
     setSearchMember('');
     setSelectedManager('');
@@ -952,7 +912,7 @@ export default function SalesHistoryPage() {
                   {selectedHistory.entryType === 'POINT_RECHARGE' ? (
                     <div className="p-3 border border-slate-100 rounded-xl bg-emerald-50/40">
                       <p className="text-sm font-bold text-slate-900">{getPointRechargeLabel(selectedHistory)} ({getRechargeTypeDisplayLabel(selectedHistory.rechargeType)})</p>
-                      <p className="text-[10px] text-slate-500 font-bold">{pt('t013')}</p>
+                      <p className="text-[10px] text-slate-500 font-bold">{pt('t079')}</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
