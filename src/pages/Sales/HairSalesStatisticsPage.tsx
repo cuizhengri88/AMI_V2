@@ -24,13 +24,11 @@ import {
   ArrowDownRight,
   Filter,
   Download,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import DateRangeViewSelector from '../../components/DateRangeViewSelector';
 import { usePageText } from '../../i18n/usePageText';
 import {
   type DateRangeViewType,
@@ -578,61 +576,18 @@ export default function HairSalesStatisticsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* 조회 주기 선택 버튼 군 */}
-          <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
-            {(['daily', 'period'] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => handleViewTypeChange(type)} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewType === type
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                    : 'text-slate-400 hover:text-slate-600'
-                  }`}
-              >
-                {type === 'daily' ? pt('t017') : pt('t020')}
-              </button>
-            ))}</div>
-
-          {viewType === 'daily' && (
-            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
-              <button
-                type="button"
-                onClick={() => moveDailyDate(-1)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-                aria-label="Previous day"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="px-2 text-xs font-black text-slate-700 min-w-[100px] text-center">
-                {startDate}
-              </span>
-              <button
-                type="button"
-                onClick={() => moveDailyDate(1)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-                aria-label="Next day"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* 기간 직접 선택 모드 시 날짜 Picker 노출 */}
-          {viewType === 'period' && (
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 px-2">
-              <Calendar size={14} className="text-slate-400" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none"
-              />
-              <span className="text-slate-300 font-bold">~</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none"
-              />
-            </div>
-          )}
+          <DateRangeViewSelector
+            viewType={viewType}
+            startDate={startDate}
+            endDate={endDate}
+            dailyLabel={pt('t017')}
+            periodLabel={pt('t020')}
+            onViewTypeChange={handleViewTypeChange}
+            onMoveDailyDate={moveDailyDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            variant="compact"
+          />
 
           <button
             onClick={() => { void exportCsv(); }}

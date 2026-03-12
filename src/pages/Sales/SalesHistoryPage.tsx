@@ -11,8 +11,6 @@ import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Search,
   Calendar,
-  ChevronLeft,
-  ChevronRight,
   User,
   Scissors,
   CreditCard,
@@ -31,6 +29,7 @@ import {
 import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import DateRangeViewSelector from '../../components/DateRangeViewSelector';
 import { usePageText } from '../../i18n/usePageText';
 import {
   type DateRangeViewType,
@@ -720,53 +719,18 @@ export default function SalesHistoryPage() {
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2 lg:col-span-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Calendar size={12} />{pt('t021') /* "조회 기간" */}</label>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
-                {(['daily', 'period'] as const).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => applyDateRangeByViewType(type)}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewType === type
-                      ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                      : 'text-slate-400 hover:text-slate-600'
-                      }`}
-                  >
-                    {type === 'daily' ? '일별' : '기간별'}
-                  </button>
-                ))}
-              </div>
-              {viewType === 'daily' && (
-                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
-                  <button
-                    type="button"
-                    onClick={() => moveDailyDate(-1)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-                    aria-label="Previous day"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="px-2 text-xs font-black text-slate-700 min-w-[100px] text-center">
-                    {startDate}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => moveDailyDate(1)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-                    aria-label="Next day"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-              {viewType === 'period' && (
-                <div className="flex-1 min-w-[260px] flex items-center gap-2">
-                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
-                  <span className="text-slate-300 font-bold">~</span>
-                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
-                </div>
-              )}
-            </div>
+            <DateRangeViewSelector
+              viewType={viewType}
+              startDate={startDate}
+              endDate={endDate}
+              dailyLabel="일별"
+              periodLabel="기간별"
+              onViewTypeChange={applyDateRangeByViewType}
+              onMoveDailyDate={moveDailyDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              variant="panel"
+            />
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><User size={12} />{pt('t035') /* "회원명/전화번호" */}</label>
