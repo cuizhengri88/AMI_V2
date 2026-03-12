@@ -1,6 +1,6 @@
 {
-  "productName": "GovDataManagement",
-  "version": "0.1.0",
+  "productName": "AMI",
+  "version": "0.1.1",
   "identifier": "com.gov-data.management",
   "build": {
     "beforeDevCommand": "npm run dev",
