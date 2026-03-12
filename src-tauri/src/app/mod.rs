@@ -1,9 +1,7 @@
-// 앱 런타임 엔트리 모듈
-// - include!를 사용해 기존 대형 main.rs를 기능별 파일로 분리합니다.
-// - 각 파일은 동일 모듈 스코프에서 컴파일되므로 기존 함수/타입 의존을 안전하게 유지합니다.
-
 pub mod core;
 pub mod commands;
+
+use tauri_plugin_updater::UpdaterExt; // 추가: 업데이트 기능을 사용하기 위해 필요합니다.
 
 use crate::app::commands::system::*;
 use crate::app::commands::menu::*;
@@ -17,10 +15,22 @@ use crate::app::commands::point::*;
 use crate::app::commands::sales::*;
 use crate::app::commands::reset::*;
 
-// Tauri 앱을 실행하는 진입 함수입니다.
-// main.rs에서는 이 함수만 호출하도록 단순화해 유지보수성을 높입니다.
 pub fn run() {
     tauri::Builder::default()
+        // 1. 업데이트 플러그인 등록
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // 2. 앱 시작 시 업데이트 자동 체크 (필요한 경우)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // 앱 시작 시 조용히 업데이트를 확인합니다.
+                if let Ok(Some(update)) = handle.updater().expect("failed to get updater").check().await {
+                    println!("새로운 업데이트 발견: {}", update.version);
+                    // 여기서 사용자에게 알림을 띄우거나 다운로드를 시작할 수 있습니다.
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             test_db_connection,
             backup_database_to_file,
