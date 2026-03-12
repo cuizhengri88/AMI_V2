@@ -26,8 +26,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           VITE_DB_HOST: ${{ secrets.VITE_DB_HOST }}
           VITE_DB_PORT: ${{ secrets.VITE_DB_PORT }}
           VITE_DB_NAME: ${{ secrets.VITE_DB_NAME }}
@@ -43,26 +43,3 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           includeRelease: true
-
-      # [최종 해결책] PowerShell로 모든 하위 폴더의 .zip과 .sig를 강제로 올립니다.
-      - name: Force upload updater assets
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          Write-Host "Target Tag: $tag"
-          
-          # 하위 폴더를 모두 뒤져서 업데이트에 필요한 zip과 sig 파일을 찾습니다.
-          $assets = Get-ChildItem -Path "src-tauri/target/release/bundle" -Include *.zip, *.sig -Recurse
-          
-          if ($assets.Count -eq 0) {
-            Write-Error "업로드할 파일을 찾지 못했습니다. 경로를 확인하세요."
-            exit 1
-          }
-
-          foreach ($asset in $assets) {
-            Write-Host "강제 업로드 중: $($asset.FullName)"
-            # gh release upload를 사용하여 기존 파일이 있어도 덮어쓰며 올립니다.
-            & gh release upload $tag $asset.FullName --clobber
-          }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
