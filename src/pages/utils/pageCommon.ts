@@ -168,6 +168,23 @@ export function findMatchedMemberByNameOrPhone<T extends NamePhoneLike>(
   return null;
 }
 
+// 회원 선택 입력창에 표시할 전화번호 값을 정규화한다.
+// - 회원 phone 우선
+// - 비어있거나 '-' 이면 fallback phone 사용
+// - 이름은 반환하지 않는다 (입력창은 전화번호만 표시)
+export function resolveMemberLookupInputValue(
+  member?: NamePhoneLike | null,
+  fallbackPhone?: string | null,
+) {
+  const memberPhone = (member?.phone || '').trim();
+  if (memberPhone && memberPhone !== '-') return memberPhone;
+
+  const fallback = (fallbackPhone || '').trim();
+  if (fallback && fallback !== '-') return fallback;
+
+  return '';
+}
+
 export function toSettlementStatus(value?: string | null): SettlementStatus {
   const normalized = value?.trim().toUpperCase();
   if (normalized === 'CANCELLED') return 'CANCELLED';

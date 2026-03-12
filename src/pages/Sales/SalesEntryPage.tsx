@@ -13,12 +13,14 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import CustomerLookupDropdown from '../../components/CustomerLookupDropdown';
 import { usePageText } from '../../i18n/usePageText';
 import {
   findMatchedMemberByNameOrPhone,
   isBalancePaymentMethod,
   isCouponPaymentMethod,
   normalizePhoneDigits,
+  resolveMemberLookupInputValue,
   todayIso,
   toSettlementStatus,
 } from '../utils/pageCommon';
@@ -941,11 +943,7 @@ export default function SalesEntryPage() {
       setGuestCustomerPhone(initialGuestPhone);
       setCustomerLookupQuery(
         inferredMember
-          ? (
-            inferredMember.phone && inferredMember.phone !== '-'
-              ? `${inferredMember.name} (${inferredMember.phone})`
-              : inferredMember.name
-          )
+          ? resolveMemberLookupInputValue(inferredMember, initialGuestPhone)
           : (initialGuestName || initialGuestPhone),
       );
       setIsCustomerLookupOpen(false);
@@ -997,7 +995,7 @@ export default function SalesEntryPage() {
     setSelectedMemberId(String(member.id));
     setGuestCustomerName(member.name);
     setGuestCustomerPhone(memberPhone);
-    setCustomerLookupQuery(memberPhone ? `${member.name} (${memberPhone})` : member.name);
+    setCustomerLookupQuery(resolveMemberLookupInputValue(member));
     setIsCustomerLookupOpen(false);
   };
 
@@ -1232,7 +1230,7 @@ export default function SalesEntryPage() {
     // (입력창, 요약 라벨, 저장 payload 일관성 유지)
     setGuestCustomerName(selectedMember.name);
     setGuestCustomerPhone(memberPhone);
-    setCustomerLookupQuery(memberPhone ? `${selectedMember.name} (${memberPhone})` : selectedMember.name);
+    setCustomerLookupQuery(resolveMemberLookupInputValue(selectedMember));
     setIsCustomerLookupOpen(false);
   }, [selectedMember]);
 
@@ -1974,29 +1972,13 @@ export default function SalesEntryPage() {
                         {/* 자동완성 드롭다운:
                           blur 시 바로 닫히면 클릭 선택이 끊기기 때문에
                           onBlur 지연 + onMouseDown preventDefault 조합을 사용한다. */}
-                        {isCustomerLookupOpen && customerLookupQuery.trim() && (
-                          <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-40 overflow-y-auto shadow-lg">
-                            {customerLookupMembers.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-slate-400">{pt('t105') /* "일치하는 회원이 없습니다." */}</p>
-                            ) : (
-                              customerLookupMembers.map((member) => (
-                                <button
-                                  key={member.id}
-                                  type="button"
-                                  onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    handleSelectLookupMember(member);
-                                  }}
-                                  className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${selectedMemberId === String(member.id) ? 'bg-primary/5' : ''
-                                    }`}
-                                >
-                                  <p className="text-sm font-semibold text-slate-700">{member.name}</p>
-                                  <p className="text-xs text-slate-500">{member.phone || '-'}</p>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
+                        <CustomerLookupDropdown
+                          open={isCustomerLookupOpen && !!customerLookupQuery.trim()}
+                          members={customerLookupMembers}
+                          selectedMemberId={selectedMemberId}
+                          emptyText={pt('t105') /* "일치하는 회원이 없습니다." */}
+                          onSelect={handleSelectLookupMember}
+                        />
                       </div>
                       <p className="text-[10px] text-slate-500">{pt('t104') /* "회원을 선택하지 않으면 일반고객 정보로 저장됩니다." */}</p>
                     </div>

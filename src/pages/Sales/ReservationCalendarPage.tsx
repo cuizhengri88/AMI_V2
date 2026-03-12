@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import CustomerLookupDropdown from '../../components/CustomerLookupDropdown';
 import { usePageText } from '../../i18n/usePageText';
 import {
   formatCurrency,
@@ -25,6 +26,7 @@ import {
   normalizeGenderForForm,
   normalizeNameKey,
   normalizePhoneDigits,
+  resolveMemberLookupInputValue,
   toIsoDate,
   todayIso,
 } from '../utils/pageCommon';
@@ -994,7 +996,7 @@ export default function ReservationCalendarPage() {
     setEditingId(reservation.id);
     setLinkedSettlementState('NONE');
     setSelectedCustomerMemberId(matchedMember ? String(matchedMember.id) : '');
-    setCustomerPhoneQuery(matchedMember?.phone || reservation.customerPhone || '');
+    setCustomerPhoneQuery(resolveMemberLookupInputValue(matchedMember, reservation.customerPhone));
     setIsCustomerLookupOpen(false);
     setForm({
       reservationDate: reservation.reservationDate,
@@ -1041,7 +1043,7 @@ export default function ReservationCalendarPage() {
       ...prev,
       customerName: matchedMember.name,
     }));
-    setCustomerPhoneQuery(matchedMember.phone);
+    setCustomerPhoneQuery(resolveMemberLookupInputValue(matchedMember));
   };
 
   // 고객 전화 입력 시 실시간 회원 후보/자동연결 처리
@@ -1364,7 +1366,7 @@ export default function ReservationCalendarPage() {
     // 3) 모달 입력값을 "회원 선택 상태"로 맞춘다.
     setSelectedCustomerMemberId(String(matchedMember.id));
     setForm((prev) => ({ ...prev, customerName: matchedMember.name }));
-    setCustomerPhoneQuery(matchedMember.phone);
+    setCustomerPhoneQuery(resolveMemberLookupInputValue(matchedMember));
     return matchedMember;
   };
 
@@ -2156,28 +2158,14 @@ export default function ReservationCalendarPage() {
                       className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                     />
                     {/* 고객 검색 자동완성 레이어 */}
-                    {isCustomerLookupOpen && customerPhoneQueryDigits && !isReservationFormLocked && (
-                      <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 max-h-36 overflow-y-auto shadow-lg">
-                        {customerLookupMembers.length === 0 ? (
-                          <p className="px-3 py-2 text-xs text-slate-400">{pt('t027')}</p>
-                        ) : (
-                          customerLookupMembers.map((member) => (
-                            <button
-                              key={member.id}
-                              type="button"
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                handleCustomerMemberSelect(String(member.id));
-                              }}
-                              className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${selectedCustomerMemberId === String(member.id) ? 'bg-primary/5' : ''}`}
-                            >
-                              <p className="text-sm font-semibold text-slate-700">{member.name}</p>
-                              <p className="text-xs text-slate-500">{member.phone || '-'}</p>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
+                    <CustomerLookupDropdown
+                      open={isCustomerLookupOpen && !!customerPhoneQueryDigits && !isReservationFormLocked}
+                      members={customerLookupMembers}
+                      selectedMemberId={selectedCustomerMemberId}
+                      emptyText={pt('t027')}
+                      maxHeightClassName="max-h-36"
+                      onSelect={(member) => handleCustomerMemberSelect(String(member.id))}
+                    />
                   </div>
                 </div>
 
