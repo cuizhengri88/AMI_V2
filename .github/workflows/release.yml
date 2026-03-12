@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*' # v0.1.1 같은 태그를 푸시하면 실행됩니다.
+      - 'v*'
 
 jobs:
   publish:
@@ -39,7 +39,5 @@ jobs:
           releaseBody: "자동 업데이트 테스트 버전"
           releaseDraft: false
           prerelease: false
-          # --- 아래 3줄을 꼭 확인하세요 ---
           includeUpdaterJson: true
           includeRelease: true
-          includeAssets: true
