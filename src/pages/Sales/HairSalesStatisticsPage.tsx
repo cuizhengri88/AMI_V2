@@ -25,16 +25,20 @@ import {
   Filter,
   Download,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { invokeDbCommand } from '../../lib/dbClient';
 import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 import {
+  type DateRangeViewType,
   formatCurrency as formatCurrencyCommon,
+  getDateRangeByViewType,
   isCouponPaymentMethod,
-  monthStartIso,
   pad2,
+  shiftDailyDateRange,
   toDateOnly,
   toIsoDate,
   todayIso,
@@ -42,9 +46,9 @@ import {
 } from '../utils/pageCommon';
 
 /**
- * 차트 및 조회 단위 정의 (일별, 주간, 월별, 기간 직접 선택)
+ * 차트 및 조회 단위 정의 (일별, 기간 직접 선택)
  */
-type ViewType = 'daily' | 'weekly' | 'monthly' | 'period';
+type ViewType = DateRangeViewType;
 
 /**
  * 정산 상태 타입 (진행 중, 완료됨, 취소됨)
@@ -168,7 +172,6 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000; // 하루를 밀리초로 환산
 function formatCurrency(value: number) {
   return formatCurrencyCommon(value, { locale: 'ko-KR', round: true });
 }
-
 /**
  * 문자열 날짜를 안전하게 Date 객체로 변환
  * @param value ISO 날짜 문자열
@@ -184,13 +187,14 @@ function parseDateSafe(value: string): Date | null {
  */
 export default function HairSalesStatisticsPage() {
   const pt = usePageText('sales_hair_sales_statistics');
+  const initialDateRange = getDateRangeByViewType('daily');
 
   /**
    * 상태 관리 (useState)
    */
-  const [viewType, setViewType] = useState<ViewType>('monthly'); // 조회 단위 (기본: 월별)
-  const [startDate, setStartDate] = useState(monthStartIso()); // 조회 시작일
-  const [endDate, setEndDate] = useState(todayIso()); // 조회 종료일
+  const [viewType, setViewType] = useState<ViewType>('daily'); // 조회 단위 (기본: 일별)
+  const [startDate, setStartDate] = useState(initialDateRange.startDate); // 조회 시작일
+  const [endDate, setEndDate] = useState(initialDateRange.endDate); // 조회 종료일
   const [isLoading, setIsLoading] = useState(false); // 데이터 로딩 오버레이 제어
 
   // DB 원본 데이터 저장소
@@ -198,45 +202,19 @@ export default function HairSalesStatisticsPage() {
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [services, setServices] = useState<ServiceRow[]>([]);
 
-  /**
-   * 뷰 타입 변경 시 날짜 범위 자동 계산
-   * - daily: 오늘 하루
-   * - weekly: 이번 주 월요일 ~ 일요일
-   * - monthly: 이번 달 1일 ~ 말일
-   */
-  useEffect(() => {
-    const now = new Date();
-    let nextStart = startDate;
-    let nextEnd = endDate;
+  // 공유 날짜 프리셋: 일별 -> 오늘, 기간별 -> 7일 전 ~ 오늘
+  const handleViewTypeChange = (nextViewType: ViewType) => {
+    setViewType(nextViewType);
+    const nextRange = getDateRangeByViewType(nextViewType);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+  };
 
-    if (viewType === 'daily') {
-      const today = toIsoDate(now);
-      nextStart = today;
-      nextEnd = today;
-    } else if (viewType === 'weekly') {
-      const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const day = current.getDay();
-      const diffToMonday = day === 0 ? -6 : 1 - day;
-      const monday = new Date(current);
-      monday.setDate(current.getDate() + diffToMonday);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      nextStart = toIsoDate(monday);
-      nextEnd = toIsoDate(sunday);
-    } else if (viewType === 'monthly') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      nextStart = toIsoDate(firstDay);
-      nextEnd = toIsoDate(lastDay);
-    }
-
-    // 'period' 모드가 아닐 때만 자동 계산된 날짜 적용
-    if (viewType !== 'period') {
-      setStartDate(nextStart);
-      setEndDate(nextEnd);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewType]);
+  const moveDailyDate = (dayOffset: number) => {
+    const nextRange = shiftDailyDateRange(startDate, dayOffset);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+  };
 
   /**
    * DB에서 데이터 로드 및 집계용 데이터로 변형
@@ -602,23 +580,41 @@ export default function HairSalesStatisticsPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* 조회 주기 선택 버튼 군 */}
           <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
-            {(['daily', 'weekly', 'monthly', 'period'] as const).map((type) => (
+            {(['daily', 'period'] as const).map((type) => (
               <button
                 key={type}
-                onClick={() => setViewType(type)} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewType === type
+                onClick={() => handleViewTypeChange(type)} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewType === type
                     ? 'bg-primary text-white shadow-lg shadow-primary/20'
                     : 'text-slate-400 hover:text-slate-600'
                   }`}
               >
-                {type === 'daily'
-                  ? pt('t017') // pt('t017') -> 일별
-                  : type === 'weekly'
-                    ? pt('t018') // pt('t018') -> 주간
-                    : type === 'monthly'
-                      ? pt('t019') // pt('t019') -> 월별
-                      : pt('t020')} {/* pt('t020') -> 기간별 */}
+                {type === 'daily' ? pt('t017') : pt('t020')}
               </button>
             ))}</div>
+
+          {viewType === 'daily' && (
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => moveDailyDate(-1)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                aria-label="Previous day"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="px-2 text-xs font-black text-slate-700 min-w-[100px] text-center">
+                {startDate}
+              </span>
+              <button
+                type="button"
+                onClick={() => moveDailyDate(1)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                aria-label="Next day"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
 
           {/* 기간 직접 선택 모드 시 날짜 Picker 노출 */}
           {viewType === 'period' && (

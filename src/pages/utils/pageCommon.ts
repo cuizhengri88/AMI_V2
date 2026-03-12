@@ -16,6 +16,12 @@ type NamePhoneLike = {
 };
 
 export type SettlementStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+export type DateRangeViewType = 'daily' | 'period';
+
+export type DateRangeValue = {
+  startDate: string;
+  endDate: string;
+};
 
 export function pad2(value: number) {
   return String(value).padStart(2, '0');
@@ -31,6 +37,37 @@ export function todayIso(baseDate = new Date()) {
 
 export function monthStartIso(baseDate = new Date()) {
   return `${baseDate.getFullYear()}-${pad2(baseDate.getMonth() + 1)}-01`;
+}
+
+function toLocalDate(baseDate = new Date()) {
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+}
+
+function parseIsoDateOnly(raw?: string | null) {
+  const source = (raw || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return null;
+  const parsed = new Date(`${source}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function getDateRangeByViewType(viewType: DateRangeViewType, baseDate = new Date()): DateRangeValue {
+  const todayDate = toLocalDate(baseDate);
+  const today = toIsoDate(todayDate);
+
+  if (viewType === 'period') {
+    const start = new Date(todayDate);
+    start.setDate(start.getDate() - 7);
+    return { startDate: toIsoDate(start), endDate: today };
+  }
+
+  return { startDate: today, endDate: today };
+}
+
+export function shiftDailyDateRange(currentDate: string, dayOffset: number, baseDate = new Date()): DateRangeValue {
+  const anchorDate = parseIsoDateOnly(currentDate) || toLocalDate(baseDate);
+  anchorDate.setDate(anchorDate.getDate() + dayOffset);
+  const nextDate = toIsoDate(anchorDate);
+  return { startDate: nextDate, endDate: nextDate };
 }
 
 function parseDateTime(raw?: string | null) {

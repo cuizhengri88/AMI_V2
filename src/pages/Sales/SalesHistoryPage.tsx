@@ -11,6 +11,8 @@ import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Search,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   User,
   Scissors,
   CreditCard,
@@ -31,10 +33,13 @@ import { downloadCsvFile } from '../../lib/csvExport';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { usePageText } from '../../i18n/usePageText';
 import {
+  type DateRangeViewType,
   findMatchedMemberByNameOrPhone,
   formatCurrency,
   formatDateTime,
+  getDateRangeByViewType,
   isCouponPaymentMethod,
+  shiftDailyDateRange,
   toDateOnly,
   todayIso,
   toSettlementStatus,
@@ -232,8 +237,11 @@ function isActualSalesExcludedPaymentCode(code: string) {
   return normalized === 'COUPON';
 }
 
+type DateFilterViewType = DateRangeViewType;
+
 export default function SalesHistoryPage() {
   const pt = usePageText('user_management_sales_history');
+  const initialDateRange = getDateRangeByViewType('daily');
   // --- [상태 관리: 기준 데이터] ---
   const [members, setMembers] = useState<Member[]>([]);           // 전체 회원 목록
   const [managers, setManagers] = useState<Manager[]>([]);         // 직원(디자이너) 목록
@@ -245,8 +253,9 @@ export default function SalesHistoryPage() {
   const [isLoading, setIsLoading] = useState(false);               // 데이터 로딩 상태
 
   // --- [상태 관리: 검색 및 필터링 조건] ---
-  const [startDate, setStartDate] = useState(todayIso());          // 검색 시작일
-  const [endDate, setEndDate] = useState(todayIso());            // 검색 종료일
+  const [viewType, setViewType] = useState<DateFilterViewType>('daily'); // 조회 단위 (일별/기간별)
+  const [startDate, setStartDate] = useState(initialDateRange.startDate); // 검색 시작일
+  const [endDate, setEndDate] = useState(initialDateRange.endDate); // 검색 종료일
   const [searchMember, setSearchMember] = useState('');            // 고객명/전화번호 검색어
   const [selectedManager, setSelectedManager] = useState('');      // 담당자 필터 (PK)
   const [selectedCategory, setSelectedCategory] = useState('');    // 시술 카테고리 필터
@@ -590,10 +599,25 @@ export default function SalesHistoryPage() {
     });
   }, [filteredHistory, paymentMethods, paymentMethodNameMap, pt]);
 
+  const applyDateRangeByViewType = (nextViewType: DateFilterViewType) => {
+    setViewType(nextViewType);
+    const nextRange = getDateRangeByViewType(nextViewType);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+  };
+
+  const moveDailyDate = (dayOffset: number) => {
+    const nextRange = shiftDailyDateRange(startDate, dayOffset);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+  };
+
   // [동작] 필터 조건 초기화
   const resetFilters = () => {
-    setStartDate(todayIso());
-    setEndDate(todayIso());
+    const defaultRange = getDateRangeByViewType('daily');
+    setViewType('daily');
+    setStartDate(defaultRange.startDate);
+    setEndDate(defaultRange.endDate);
     setSearchMember('');
     setSelectedManager('');
     setSelectedCategory('');
@@ -696,10 +720,52 @@ export default function SalesHistoryPage() {
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2 lg:col-span-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Calendar size={12} />{pt('t021') /* "조회 기간" */}</label>
-            <div className="flex items-center gap-2">
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
-              <span className="text-slate-300 font-bold">~</span>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
+                {(['daily', 'period'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => applyDateRangeByViewType(type)}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewType === type
+                      ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                      : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                  >
+                    {type === 'daily' ? '일별' : '기간별'}
+                  </button>
+                ))}
+              </div>
+              {viewType === 'daily' && (
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                  <button
+                    type="button"
+                    onClick={() => moveDailyDate(-1)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                    aria-label="Previous day"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="px-2 text-xs font-black text-slate-700 min-w-[100px] text-center">
+                    {startDate}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => moveDailyDate(1)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                    aria-label="Next day"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+              {viewType === 'period' && (
+                <div className="flex-1 min-w-[260px] flex items-center gap-2">
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
+                  <span className="text-slate-300 font-bold">~</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20" />
+                </div>
+              )}
             </div>
           </div>
           <div className="space-y-2">
@@ -1003,4 +1069,3 @@ export default function SalesHistoryPage() {
     </motion.div>
   );
 }
-
