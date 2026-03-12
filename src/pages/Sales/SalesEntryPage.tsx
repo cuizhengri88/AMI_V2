@@ -1546,7 +1546,7 @@ export default function SalesEntryPage() {
           </div>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[1120px]">
+          <table className="w-full text-left border-collapse min-w-[1240px]">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
                 <th className="py-4 px-6">{pt('t026') /* "일시" */}</th>
@@ -1555,6 +1555,7 @@ export default function SalesEntryPage() {
                 <th className="py-4 px-6">{pt('t011') /* "담당자" */}</th>
                 <th className="py-4 px-6">{pt('t019') /* "시술 항목" */}</th>
                 <th className="py-4 px-6">{pt('t007') /* "금액" */}</th>
+                <th className="py-4 px-6">{pt('t107') /* "실수납액" */}</th>
                 <th className="py-4 px-6">{pt('t034') /* "할인" */}</th>
                 <th className="py-4 px-6">{pt('t043') /* "상태" */}</th>
                 <th className="py-4 px-6 text-center">{pt('t044') /* "작업" */}</th>
@@ -1611,6 +1612,9 @@ export default function SalesEntryPage() {
                         <span className="text-slate-300 text-[10px]">-</span>
                       </td>
                       <td className="py-4 px-6">
+                        <span className="text-slate-300 text-[10px]">-</span>
+                      </td>
+                      <td className="py-4 px-6">
                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass}`}>
                           {statusLabel}
                         </span>
@@ -1644,7 +1648,6 @@ export default function SalesEntryPage() {
                     .filter(Boolean)
                     .join(', ');
 
-                  const paidAmount = settlement.payments.reduce((sum, payment) => sum + payment.amount, 0);
                   const nonCouponPaidAmount = settlement.payments
                     .filter((payment) => !isCouponPaymentMethod(payment.method))
                     .reduce((sum, payment) => sum + payment.amount, 0);
@@ -1656,6 +1659,8 @@ export default function SalesEntryPage() {
                     .filter((payment) => isCouponPaymentMethod(payment.method) && typeof payment.couponServiceId === 'number')
                     .reduce((sum, payment) => sum + (procedurePriceById.get(payment.couponServiceId as number) || 0), 0);
                   const effectiveCouponPaid = couponCoveredAmount > 0 ? couponCoveredAmount : couponPaidAmount;
+                  const payableAmount = Math.max(settlement.totalAmount - effectiveCouponPaid, 0);
+                  const receivedAmount = nonCouponPaidAmount;
                   const discount = settlement.status === 'COMPLETED'
                     ? Math.max(0, settlement.totalAmount - (nonCouponPaidAmount + effectiveCouponPaid))
                     : 0;
@@ -1702,8 +1707,13 @@ export default function SalesEntryPage() {
                       <td className="py-4 px-6 text-sm font-bold text-slate-700">{manager?.name || '-'}</td>
                       <td className="py-4 px-6 text-xs text-slate-500 max-w-[220px] truncate">{procedureNames || '-'}</td>
                       <td className="py-4 px-6">
-                        <div className="text-sm font-black text-slate-900">¥{paidAmount.toLocaleString()}</div>
-                        {discount > 0 && <div className="text-[10px] text-slate-400 line-through">¥{settlement.totalAmount.toLocaleString()}</div>}
+                        <div className="text-sm font-black text-slate-900">¥{payableAmount.toLocaleString()}</div>
+                        {settlement.status === 'PROCESSING' && (
+                          <div className="text-[10px] text-slate-400">{pt('t022') /* "실결제 대상" */}</div>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm font-black text-slate-900">¥{receivedAmount.toLocaleString()}</div>
                       </td>
                       <td className="py-4 px-6">
                         {discount > 0 ? (
