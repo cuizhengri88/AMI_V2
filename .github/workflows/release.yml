@@ -45,25 +45,8 @@ jobs:
 
       # [추가된 강제 업로드 단계] Tauri 액션이 놓친 .zip과 .sig 파일을 직접 찾아 올립니다.
       - name: Force upload updater assets
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          Write-Host "Target Tag: $tag"
-
-          # 1. MSI 폴더와 NSIS 폴더를 모두 뒤져서 .zip과 .sig 파일을 다 찾습니다.
-          $files = Get-ChildItem -Path "src-tauri/target/release/bundle/" -Include *.zip, *.sig -Recurse
-          
-          if ($files.Count -eq 0) {
-            Write-Error "파일을 찾지 못했습니다. 빌드 경로가 다른 것 같습니다."
-            exit 1
-          }
-
-          foreach ($file in $files) {
-            # 이미 올라간 msi, exe 등은 제외하고 업데이트용(zip, sig)만 올립니다.
-            if ($file.Extension -eq ".zip" -or $file.Extension -eq ".sig") {
-              Write-Host "강제 업로드 중: $($file.FullName)"
-              & gh release upload $tag $file.FullName --clobber
-            }
-          }
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/bundle/**/*.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
