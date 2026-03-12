@@ -34,10 +34,13 @@ jobs:
           VITE_DB_PASSWORD: ${{ secrets.VITE_DB_PASSWORD }}
           VITE_DB_SCHEMA: ${{ secrets.VITE_DB_SCHEMA }}
         with:
-          tagName: v__VERSION__ # package.json의 버전을 가져와 태그 생성
+          with:
+          tagName: v__VERSION__
           releaseName: "AMI v__VERSION__"
-          releaseBody: "자동 업데이트 테스트 버전입니다."
-          releaseDraft: true
+          releaseBody: "자동 업데이트 테스트 버전"
+          releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true 
+          # --- 아래 3줄을 꼭 확인하세요 ---
+          includeUpdaterJson: true
           includeRelease: true
+          includeAssets: true
