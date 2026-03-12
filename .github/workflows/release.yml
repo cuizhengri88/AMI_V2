@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*' # v0.1.7 같은 태그를 푸시하면 실행됩니다.
+      - 'v*'
 
 jobs:
   publish:
@@ -35,18 +35,34 @@ jobs:
           VITE_DB_PASSWORD: ${{ secrets.VITE_DB_PASSWORD }}
           VITE_DB_SCHEMA: ${{ secrets.VITE_DB_SCHEMA }}
         with:
-          tagName: v__VERSION__
-          releaseName: "AMI v__VERSION__"
+          # v__VERSION__ 대신 실제 푸시된 태그 이름을 사용하여 혼선을 방지합니다.
+          tagName: ${{ github.ref_name }}
+          releaseName: "AMI ${{ github.ref_name }}"
           releaseBody: "자동 업데이트 테스트 버전"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           includeRelease: true
 
-      # [추가된 강제 업로드 단계] Tauri 액션이 놓친 .zip과 .sig 파일을 직접 찾아 올립니다.
+      # [최종 해결책] PowerShell로 모든 하위 폴더의 .zip과 .sig를 강제로 올립니다.
       - name: Force upload updater assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: src-tauri/target/release/bundle/**/*.sig
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Write-Host "Target Tag: $tag"
+          
+          # 하위 폴더를 모두 뒤져서 업데이트에 필요한 zip과 sig 파일을 찾습니다.
+          $assets = Get-ChildItem -Path "src-tauri/target/release/bundle" -Include *.zip, *.sig -Recurse
+          
+          if ($assets.Count -eq 0) {
+            Write-Error "업로드할 파일을 찾지 못했습니다. 경로를 확인하세요."
+            exit 1
+          }
+
+          foreach ($asset in $assets) {
+            Write-Host "강제 업로드 중: $($asset.FullName)"
+            # gh release upload를 사용하여 기존 파일이 있어도 덮어쓰며 올립니다.
+            & gh release upload $tag $asset.FullName --clobber
+          }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
