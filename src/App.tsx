@@ -16,9 +16,9 @@ import SystemSettingsPage from './pages/System/SystemSettingsPage';
 import ServiceCatalogPage from './pages/System/ServiceCatalogPage';
 import PointRechargePage from './pages/UserManagement/PointRechargePage';
 import MemberPointHistoryPage from './pages/UserManagement/MemberPointHistoryPage';
-import ReservationCalendarPage from './pages/UserManagement/ReservationCalendarPage';
-import SalesEntryPage from './pages/UserManagement/SalesEntryPage';
-import SalesHistoryPage from './pages/UserManagement/SalesHistoryPage';
+import ReservationCalendarPage from './pages/Sales/ReservationCalendarPage';
+import SalesEntryPage from './pages/Sales/SalesEntryPage';
+import SalesHistoryPage from './pages/Sales/SalesHistoryPage';
 import { invokeDbCommand } from './lib/dbClient';
 import { normalizeSystemTypeCode, SYSTEM_TYPE_STORAGE_KEY } from './constants/systemType';
 import { normalizeStoreCode, STORE_CODE_STORAGE_KEY } from './constants/store';
@@ -56,26 +56,28 @@ const STATUS_ACTIVE = '사용중';
 const STORE_BINDING_DENIED_MESSAGE = '인증이 거부 되었습니다.';
 
 const ROUTABLE_PATHS = new Set<string>([
-  '/products',
-  '/inventory',
-  '/inventory/history',
-  '/purchases',
-  '/sales-stats',
-  '/hair_sales-stats',
-  '/Hair_sales-stats',
-  '/hair-sales-stats',
-  '/users',
-  '/employees',
-  '/system/menu',
-  '/system/code',
-  '/system/service-catalog',
-  '/system/role',
-  '/system/settings',
-  '/users/points',
-  '/users/point-history',
-  '/users/reservations',
-  '/users/sales',
-  '/users/sales-history',
+  // --- Product (상품관리) ---
+  '/products',                // 상품 관리
+  '/products/stock',          // 재고 관리
+  '/products/stock-history',  // 재고 이력
+  '/products/service-catalog',  // 시술항목 관리
+  // --- Sales (매출관리) ---
+  '/sales/purchases',         // 매입 관리
+  '/sales/statistics',        // 매출 통계
+  '/sales/hair-statistics',   // 시술 매출 통계
+  '/sales/reservations',      // 예약 캘린더
+  '/sales/entry',             // 매출 등록
+  '/sales/history',           // 매출 내역
+  // --- UserManagement (회원관리) ---
+  '/users',                   // 회원 관리
+  '/users/employees',         // 직원 관리
+  '/users/points',            // 포인트 충전
+  '/users/point-history',     // 포인트 이력
+  // --- System (시스템) ---
+  '/system/menu',             // 메뉴 관리
+  '/system/code',             // 공통코드 관리
+  '/system/role',             // 권한 관리
+  '/system/settings',         // 시스템 설정
 ]);
 
 function getErrorMessage(error: unknown): string {
@@ -344,26 +346,28 @@ export default function App() {
         <Routes>
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<MenuAwareRedirect />} />
+            {/* --- Product (상품관리: pages/Product) --- */}
             <Route path="/products" element={<ProductManagementPage />} />
-            <Route path="/inventory" element={<StockManagementPage />} />
-            <Route path="/inventory/history" element={<StockHistoryPage />} />
-            <Route path="/purchases" element={<PurchaseManagementPage />} />
-            <Route path="/sales-stats" element={<SalesStatisticsPage />} />
-            <Route path="/hair_sales-stats" element={<HairSalesStatisticsPage />} />
-            <Route path="/Hair_sales-stats" element={<HairSalesStatisticsPage />} />
-            <Route path="/hair-sales-stats" element={<HairSalesStatisticsPage />} />
+            <Route path="/products/stock" element={<StockManagementPage />} />
+            <Route path="/products/stock-history" element={<StockHistoryPage />} />
+            <Route path="/products/service-catalog" element={<ServiceCatalogPage />} />
+            {/* --- Sales (매출관리: pages/Sales) --- */}
+            <Route path="/sales/purchases" element={<PurchaseManagementPage />} />
+            <Route path="/sales/statistics" element={<SalesStatisticsPage />} />
+            <Route path="/sales/hair-statistics" element={<HairSalesStatisticsPage />} />
+            <Route path="/sales/reservations" element={<ReservationCalendarPage />} />
+            <Route path="/sales/entry" element={<SalesEntryPage />} />
+            <Route path="/sales/history" element={<SalesHistoryPage />} />
+            {/* --- UserManagement (회원관리: pages/UserManagement) --- */}
             <Route path="/users" element={<UserManagementPage />} />
-            <Route path="/employees" element={<EmployeeManagementPage />} />
-            <Route path="/system/menu" element={<MenuManagementPage />} />
-            <Route path="/system/code" element={<CommonCodePage />} />
-            <Route path="/system/service-catalog" element={<ServiceCatalogPage />} />
-            <Route path="/system/role" element={<RoleManagementPage />} />
-            <Route path="/system/settings" element={<SystemSettingsPage />} />
+            <Route path="/users/employees" element={<EmployeeManagementPage />} />
             <Route path="/users/points" element={<PointRechargePage />} />
             <Route path="/users/point-history" element={<MemberPointHistoryPage />} />
-            <Route path="/users/reservations" element={<ReservationCalendarPage />} />
-            <Route path="/users/sales" element={<SalesEntryPage />} />
-            <Route path="/users/sales-history" element={<SalesHistoryPage />} />
+            {/* --- System (시스템: pages/System) --- */}
+            <Route path="/system/menu" element={<MenuManagementPage />} />
+            <Route path="/system/code" element={<CommonCodePage />} />
+            <Route path="/system/role" element={<RoleManagementPage />} />
+            <Route path="/system/settings" element={<SystemSettingsPage />} />
             {/* Fallback */}
             <Route path="*" element={<MenuAwareRedirect />} />
           </Route>

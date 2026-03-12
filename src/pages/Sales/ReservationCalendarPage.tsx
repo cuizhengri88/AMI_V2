@@ -29,555 +29,68 @@ import {
   todayIso,
 } from '../utils/pageCommon';
 
-/**
- * 공통코드(상태, 카테고리 등) 선택 옵션을 위한 타입 정의
- */
-type CodeOption = {
-  code: string;  // 서버와 통신하는 코드값 (예: 'RESERVED')
-  label: string; // 화면에 표시될 텍스트
-  order: number; // 표시 순서
-};
+// --- 분리된 모듈에서 import ---
+import type {
+  CodeOption,
+  LinkedSettlementState,
+  MemberLookup,
+  PaymentMethodOption,
+  QuickPaymentLine,
+  ReservationCustomerSnapshot,
+  ReservationCustomerSnapshotOptions,
+  ReservationForm,
+  ReservationRecord,
+  ReservationRow,
+  ReservationService,
+  ReservationViewMode,
+  ListRangeMode,
+  SalesSettlementRow,
+  ServiceItem,
+  StatusTone,
+} from './Reservation/types';
 
-/**
- * 결제 수단 선택 드롭다운용 옵션 타입
- */
-type PaymentMethodOption = {
-  code: string;  // 결제수단 코드 (예: 'CASH', 'CARD')
-  label: string; // 화면 표시 라벨
-  order: number; // 정렬 순서
-};
+import {
+  A11Y_TEXT_KEYS,
+  CATEGORY_GROUP_ID,
+  CATEGORY_TEXT_KEY_BY_CODE,
+  FALLBACK_CATEGORIES,
+  FALLBACK_PAYMENT_METHODS,
+  FALLBACK_STATUSES,
+  INITIAL_RESERVATIONS,
+  PAYMENT_METHOD_GROUP_ID,
+  PAYMENT_METHOD_TEXT_KEY_BY_CODE,
+  STATUS_GROUP_ID,
+  STATUS_TEXT_KEY_BY_CODE,
+  WEEKDAY_TEXT_KEYS,
+} from './Reservation/constants';
 
-/**
- * 모달 하단 간편 결제 계산기의 각 결제 라인 정보
- */
-type QuickPaymentLine = {
-  lineId: number;     // 화면 내 식별을 위한 임시 ID
-  methodCode: string; // 선태한 결제수단 코드
-  amount: number;     // 해당 수단으로 지불할 금액
-};
+import {
+  buildCalendarCells,
+  buildQuickCalculatorSnapshotFromSettlement,
+  createEmptyForm,
+  extractPhoneText,
+  formatDateLabel,
+  formatMonthLabel,
+  getCalendarDateTone,
+  getExpectedAmount,
+  getExpectedMinutes,
+  getNextLineIdSeed,
+  getStatusTone,
+  getWeekendHeaderTone,
+  isReservationProcessingStatus,
+  mapReservationRowToRecord,
+  normalizeSettlementState,
+  normalizeTimeValue,
+  parseIsoDate,
+  shiftDate,
+  shiftMonth,
+  shiftYear,
+  sortReservations,
+  toAmountNumber,
+  toSettlementStatusByReservationStatus,
+  toUniqueSortedNames,
+} from './Reservation/utils';
 
-/**
- * 시술 항목(카탈로그) 데이터 모델
- */
-type ServiceItem = {
-  id: number;           // 시술 고유 ID
-  categoryCode: string; // 카테고리 코드 (예: 'CUT')
-  categoryName: string; // 카테고리명 (현재 언어 기준)
-  serviceName: string;  // 시술명
-  unitPrice: number;    // 기본 단가
-  durationMinutes: number; // 소요 시간(분)
-};
-
-/**
- * 예약 1건 내에 포함된 개별 시술 항목 정보
- */
-type ReservationService = {
-  lineId: number;          // 예약 시술 라인 고유 ID
-  serviceId: number;       // 대상 시술 ID
-  categoryCode: string;    // 카테고리 코드
-  categoryName: string;    // 카테고리명
-  serviceName: string;     // 시술명
-  unitPrice: number;       // 실제 적용 단가
-  durationMinutes: number; // 소요 시간
-};
-
-/**
- * 화면에서 렌더링에 사용하는 예약 데이터의 최종 구조
- */
-type ReservationRecord = {
-  id: number;                // 예약 ID
-  reservationDate: string;   // 예약일 (yyyy-mm-dd)
-  startTime: string;         // 시작 시각 (HH:mm)
-  customerName: string;      // 고객명
-  customerId: number | null; // 연결된 회원 ID (비회원시 null)
-  gender?: string;           // 성별 (M/F)
-  customerPhone: string;     // 연락처
-  designerName: string;      // 담당 디자이너명
-  status: string;            // 예약 상태 코드
-  note: string;              // 특이사항/메모
-  services: ReservationService[]; // 선택한 시술 목록
-};
-
-/**
- * 예약 등록/수정 모달에서 관리하는 폼 데이터 구조
- */
-type ReservationForm = {
-  reservationDate: string; // 예약 날짜
-  startTime: string;       // 시작 시간
-  customerName: string;    // 고객명
-  gender: string;          // 성별
-  designerName: string;    // 디자이너명
-  status: string;          // 상태
-  note: string;            // 메모
-  selectedCategory: string; // 폼 내 "추가"를 위해 선택된 현재 카테고리
-  selectedServiceId: string; // 폼 내 "추가"를 위해 선택된 현재 시술ID
-  services: ReservationService[]; // 폼 상의 시술 목록
-};
-
-/**
- * 회원 자동 매칭 및 검색을 위한 데이터 구조
- */
-type MemberLookup = {
-  id: number;          // 회원 고유 ID
-  name: string;        // 회원명
-  phone: string;       // 연락처 원문
-  phoneDigits: string; // 숫자만 추출된 연락처 (검색 효율 최적화용)
-};
-
-/**
- * 예약 저장 전 고객 정보를 정규화한 스냅샷 구조
- */
-type ReservationCustomerSnapshot = {
-  customerName: string;      // 최종 저장용 고객명
-  customerId: number | null; // 확정된 회원 ID
-  customerPhone: string;     // 확정된 연락처
-};
-
-/**
- * 고객 정보 확정 시 추가로 넘길 수 있는 옵션
- */
-type ReservationCustomerSnapshotOptions = {
-  forcedMember?: MemberLookup | null; // 자동 탐지 대신 명시적으로 지정할 회원
-};
-
-/**
- * DB에서 내려받는 예약 시술 테이블 로우 원형
- */
-type ReservationServiceRow = {
-  line_id: number;
-  service_id: number;
-  category_code: string;
-  category_name: string;
-  service_name: string;
-  unit_price: number;
-  duration_minutes: number;
-};
-
-/**
- * DB에서 내려받는 예약 헤더 테이블 로우 원형
- */
-type ReservationRow = {
-  reservation_id: number;
-  reservation_date: string;
-  start_time: string;
-  customer_name: string;
-  customer_id?: number | null;
-  customer_phone?: string | null;
-  gender?: string | null;
-  designer_name: string;
-  status: string;
-  note: string | null;
-  services: ReservationServiceRow[];
-};
-
-/**
- * DB 정산 데이터의 개별 결제 수단 정보 로우
- */
-type SalesSettlementPaymentRow = {
-  payment_method_code: string;    // 결제수단 코드
-  amount: number;                 // 해당 수단 결제액
-  coupon_service_id?: number | null; // 쿠폰 결제 시 해당 시술 ID
-};
-
-/**
- * DB에서 내려받는 매출 정산 테이블 로우 원형
- */
-type SalesSettlementRow = {
-  settlement_id: number;          // 정산 고유 번호
-  reservation_ref?: string | null; // 연결된 예약 번호 (문자열)
-  member_user_id?: string | null;  // 회원 식별값
-  manager_employee_id?: number | null; // 담당 직원 ID
-  service_ids?: number[] | null;   // 포함된 시술 ID 목록
-  total_amount?: number;           // 총 매출액
-  status?: string | null;          // 정산 상태 (COMPLETED, PROCESSING 등)
-  payments: SalesSettlementPaymentRow[]; // 결제 상세 목록
-};
-
-/**
- * 예약 건에 대한 정산 진행 상태를 정의 (화면 분기용)
- */
-type LinkedSettlementState = 'NONE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
-
-/**
- * 상태 배지 및 디자인 테마를 구성하는 색상 세트
- */
-type StatusTone = {
-  badge: string; // 외부 배지 Tailwind 클래스
-  chip: string;  // 내부 칩 Tailwind 클래스
-  dot: string;   // 상태 점 색상 Tailwind 클래스
-};
-
-/**
- * 예약 화면의 보기 모드 (달력 vs 리스트)
- */
-type ReservationViewMode = 'calendar' | 'list';
-
-/**
- * 리스트 모드에서 데이터를 조회할 날짜 범위 모드
- */
-type ListRangeMode = 'day' | 'month' | 'year';
-
-/**
- * 시스템 공통 코드 그룹 ID 상수 정의
- */
-const STATUS_GROUP_ID = 'RESERVATION_STATUS'; // 예약 상태 코드 그룹
-const CATEGORY_GROUP_ID = 'T_CATEGORY';        // 시술 카테고리 코드 그룹
-const PAYMENT_METHOD_GROUP_ID = 'PAYMENT_METHOD'; // 결제 수단 코드 그룹
-
-/**
- * 서버 데이터가 없을 경우를 대비한 최하위 대체(Fallback) 코드 목록
- */
-const FALLBACK_STATUS_CODES = ['RESERVED', 'COMPLETED', 'CANCELLED'] as const;
-const FALLBACK_CATEGORY_CODES = ['CUT', 'PERM', 'COLOR'] as const;
-
-const FALLBACK_STATUSES: CodeOption[] = FALLBACK_STATUS_CODES.map((code, index) => ({
-  code,
-  label: '',
-  order: index + 1,
-}));
-
-const FALLBACK_CATEGORIES: CodeOption[] = FALLBACK_CATEGORY_CODES.map((code, index) => ({
-  code,
-  label: '',
-  order: index + 1,
-}));
-
-const FALLBACK_PAYMENT_METHODS: PaymentMethodOption[] = [
-  { code: 'CASH', label: '', order: 1 },
-  { code: 'CARD', label: '', order: 2 },
-  { code: 'WECHAT', label: '', order: 3 },
-  { code: 'ALIPAY', label: '', order: 4 },
-];
-
-/**
- * 요일 헤더를 위한 다국어 키 배열
- */
-const WEEKDAY_TEXT_KEYS = [
-  't028', // 일
-  't029', // 월
-  't030', // 화
-  't031', // 수
-  't032', // 목
-  't033', // 금
-  't034', // 토
-] as const;
-
-/**
- * 예약 상태 코드별 다국어 키 매핑
- */
-const STATUS_TEXT_KEY_BY_CODE: Record<string, string> = {
-  RESERVED: 't080',  // 예약중
-  COMPLETED: 't081', // 완료
-  CANCELLED: 't082', // 예약취소
-};
-
-/**
- * 시술 카테고리 코드별 다국어 키 매핑
- */
-const CATEGORY_TEXT_KEY_BY_CODE: Record<string, string> = {
-  CUT: 't083',   // 커트
-  PERM: 't084',  // 파마
-  COLOR: 't085', // 염색
-};
-
-/**
- * 결제수단 코드별 다국어 키 매핑
- */
-const PAYMENT_METHOD_TEXT_KEY_BY_CODE: Record<string, string> = {
-  CASH: 't112',    // 현금
-  CARD: 't113',    // 카드
-  WECHAT: 't114',  // 위챗페이
-  ALIPAY: 't115',  // 알리페이
-  PREPAID: 't116', // 충전금 차감
-};
-
-/**
- * 접근성 시각 보조용(Aria-label) 다국어 키 세트
- */
-const A11Y_TEXT_KEYS = {
-  PREVIOUS_MONTH: 't086', // 이전 달
-  NEXT_MONTH: 't087',     // 다음 달
-  CLOSE_MODAL: 't088',    // 모달 닫기
-} as const;
-
-// 예약 데이터는 항상 DB에서 불러오므로 초기값은 빈 배열로 유지한다.
-const INITIAL_RESERVATIONS: ReservationRecord[] = [];
-
-// yyyy-mm-dd 문자열을 Date 객체로 변환합니다. (로컬 시간 기준 안전하게 파싱)
-function parseIsoDate(iso: string) {
-  const [y, m, d] = iso.split('-').map((value) => Number(value));
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-
-// 주어진 날짜(ISO)를 특정 일수(diffDays)만큼 이동시킨 후 다시 ISO 형식으로 반환합니다.
-function shiftDate(iso: string, diffDays: number) {
-  const base = parseIsoDate(iso);
-  base.setDate(base.getDate() + diffDays);
-  return toIsoDate(base);
-}
-
-// 특정 날짜의 월 정보를 diffMonths만큼 이동시킵니다. (항상 월의 1일로 초기화됨)
-function shiftMonth(iso: string, diffMonths: number) {
-  const base = parseIsoDate(iso);
-  base.setDate(1);
-  base.setMonth(base.getMonth() + diffMonths);
-  return toIsoDate(base);
-}
-
-// 특정 연도를 diffYears만큼 이동시킵니다. (연도 이동 시 항상 1월 1일로 초기화됨)
-function shiftYear(iso: string, diffYears: number) {
-  const base = parseIsoDate(iso);
-  base.setDate(1);
-  base.setMonth(0);
-  base.setFullYear(base.getFullYear() + diffYears);
-  return toIsoDate(base);
-}
-
-// 문자열 또는 숫자 입력을 검증하여 안전한 양수(결제금액 등)로 변환합니다.
-function toAmountNumber(value: string | number) {
-  const numeric = typeof value === 'number' ? value : Number.parseInt(value, 10);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, numeric);
-}
-
-// 달력 상단에 표시할 "yyyy.mm" 형식의 라벨을 생성합니다.
-function formatMonthLabel(date: Date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  return `${yyyy}.${mm}`;
-}
-
-// 특정 ISO 날짜 뒤에 해당 요일을 괄호로 붙여 반환합니다. (예: 2024-03-12 (화))
-function formatDateLabel(isoDate: string, weekdayLabels: string[]) {
-  const date = parseIsoDate(isoDate);
-  const dayOfWeek = weekdayLabels[date.getDay()] || '';
-  return `${isoDate} (${dayOfWeek})`;
-}
-
-// 시간 입력값을 "HH:mm" 형식으로 최소한의 정규화를 수행합니다.
-function normalizeTimeValue(raw: string) {
-  if (!raw) return '';
-  const match = raw.match(/^(\d{2}:\d{2})/);
-  if (match) return match[1];
-  const parsed = new Date(`1970-01-01T${raw}`);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
-}
-
-// 텍스트 뭉치에서 전화번호 형태(숫자/대시 조합)를 우선적으로 추출합니다.
-function extractPhoneText(raw?: string | null) {
-  const source = (raw || '').trim();
-  if (!source) return '';
-
-  const fullPhoneLike = source.match(/^\+?[\d\s-]{7,}$/);
-  if (fullPhoneLike) return source;
-
-  const embeddedPhoneLike = source.match(/(\+?\d[\d\s-]{6,}\d)/);
-  return embeddedPhoneLike ? embeddedPhoneLike[1].trim() : '';
-}
-
-// 예약 상태(status) 코드를 바탕으로 정산 테이블에 저장할 상태 문자열을 결정합니다.
-function toSettlementStatusByReservationStatus(status: string): 'PROCESSING' | 'COMPLETED' {
-  return status.trim().toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
-}
-
-// 현재 상태가 문자열상 "진행중" 또는 "처리중"을 포함하는지 확인합니다.
-function isReservationProcessingStatus(status: string) {
-  const normalized = status.trim().toUpperCase();
-  return normalized.includes('PROCESS') || normalized.includes('PROGRESS');
-}
-
-// 정산 상태 문자열을 화면 상태값으로 정규화
-function normalizeSettlementState(raw?: string | null): LinkedSettlementState {
-  const normalized = (raw || '').trim().toUpperCase();
-  if (normalized === 'COMPLETED') return 'COMPLETED';
-  if (normalized === 'CANCELLED') return 'CANCELLED';
-  if (normalized === 'PROCESSING') return 'PROCESSING';
-  return 'NONE';
-}
-
-// 완료된 정산 데이터를 빠른 결제 계산기 스냅샷으로 변환
-function buildQuickCalculatorSnapshotFromSettlement(
-  settlement: SalesSettlementRow,
-): { discountAmount: number; paymentLines: QuickPaymentLine[] } {
-  const payments = settlement.payments || [];
-  const nonCouponPayments = payments
-    .filter((payment) => payment.payment_method_code?.trim().toUpperCase() !== 'COUPON')
-    .map((payment, index) => ({
-      lineId: index + 1,
-      methodCode: payment.payment_method_code?.trim().toUpperCase() || '',
-      amount: toAmountNumber(payment.amount),
-    }))
-    .filter((payment) => payment.methodCode.length > 0);
-
-  const nonCouponPaidAmount = nonCouponPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const settlementTotalAmount = toAmountNumber(settlement.total_amount ?? 0);
-  const discountAmount = Math.max(settlementTotalAmount - nonCouponPaidAmount, 0);
-
-  return {
-    discountAmount,
-    paymentLines: nonCouponPayments,
-  };
-}
-
-// 달력 6주(42칸) 셀 생성
-function buildCalendarCells(monthCursor: Date) {
-  const firstDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
-  const startOffset = firstDay.getDay();
-  return Array.from({ length: 42 }, (_, index) => {
-    const cellDate = new Date(
-      monthCursor.getFullYear(),
-      monthCursor.getMonth(),
-      index - startOffset + 1,
-    );
-    return {
-      date: cellDate,
-      isoDate: toIsoDate(cellDate),
-      inMonth: cellDate.getMonth() === monthCursor.getMonth(),
-    };
-  });
-}
-
-// 요일 헤더 색상 결정
-function getWeekendHeaderTone(dayOfWeek: number) {
-  if (dayOfWeek === 0) return 'text-rose-500';
-  if (dayOfWeek === 6) return 'text-blue-500';
-  return 'text-slate-600';
-}
-
-// 날짜 셀 텍스트 색상 결정(주말/당월 여부 반영)
-function getCalendarDateTone(dayOfWeek: number, inMonth: boolean) {
-  if (dayOfWeek === 0) return inMonth ? 'text-rose-500' : 'text-rose-300';
-  if (dayOfWeek === 6) return inMonth ? 'text-blue-500' : 'text-blue-300';
-  return inMonth ? 'text-slate-700' : 'text-slate-400';
-}
-
-// 시술 합계 소요시간 계산
-function getExpectedMinutes(services: ReservationService[]) {
-  return services.reduce((sum, service) => sum + service.durationMinutes, 0);
-}
-
-// 시술 합계 예상금액 계산
-function getExpectedAmount(services: ReservationService[]) {
-  return services.reduce((sum, service) => sum + service.unitPrice, 0);
-}
-
-// 상태 스타일 분기를 위한 비교 문자열 생성
-function normalizeStatusText(code: string, label: string) {
-  return `${code} ${label}`.toUpperCase();
-}
-
-// 상태별 배지/칩 톤 반환
-function getStatusTone(code: string, label: string): StatusTone {
-  const normalized = normalizeStatusText(code, label);
-  if (normalized.includes('CANCEL')) {
-    return {
-      badge: 'bg-rose-50 text-rose-700 border-rose-200',
-      chip: 'bg-rose-100 text-rose-700',
-      dot: 'bg-rose-500',
-    };
-  }
-  if (normalized.includes('COMPLETE')) {
-    return {
-      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      chip: 'bg-emerald-100 text-emerald-700',
-      dot: 'bg-emerald-500',
-    };
-  }
-  return {
-    badge: 'bg-sky-50 text-sky-700 border-sky-200',
-    chip: 'bg-sky-100 text-sky-700',
-    dot: 'bg-sky-500',
-  };
-}
-
-// 날짜/시간 기준 예약 정렬
-function sortReservations(items: ReservationRecord[]) {
-  return [...items].sort((a, b) => {
-    const dateCompare = a.reservationDate.localeCompare(b.reservationDate);
-    if (dateCompare !== 0) return dateCompare;
-    return a.startTime.localeCompare(b.startTime);
-  });
-}
-
-// DB 응답(row) 구조를 화면에서 쓰는 예약 구조로 변환한다.
-function mapReservationRowToRecord(
-  row: ReservationRow,
-  memberPhoneByName: Map<string, string>,
-): ReservationRecord {
-  const explicitPhone = (row.customer_phone || '').trim();
-  const phoneByName = memberPhoneByName.get(normalizeNameKey(row.customer_name)) || '';
-  const phoneFromCustomerName = extractPhoneText(row.customer_name);
-  return {
-    id: row.reservation_id,
-    reservationDate: row.reservation_date,
-    startTime: normalizeTimeValue(row.start_time),
-    customerName: row.customer_name,
-    customerId:
-      typeof row.customer_id === 'number' && Number.isFinite(row.customer_id) && row.customer_id > 0
-        ? row.customer_id
-        : null,
-    gender: row.gender || '',
-    customerPhone: explicitPhone || phoneByName || phoneFromCustomerName,
-    designerName: row.designer_name,
-    status: row.status,
-    note: row.note || '',
-    services: (row.services || []).map((service) => ({
-      lineId: service.line_id,
-      serviceId: service.service_id,
-      categoryCode: service.category_code,
-      categoryName: service.category_name,
-      serviceName: service.service_name,
-      unitPrice: service.unit_price,
-      durationMinutes: service.duration_minutes,
-    })),
-  };
-}
-
-// 새로 추가하는 시술의 임시 lineId가 기존 DB lineId와 겹치지 않도록 보정한다.
-function getNextLineIdSeed(items: ReservationRecord[]) {
-  const maxLineId = items.reduce((max, reservation) => {
-    const currentMax = reservation.services.reduce(
-      (lineMax, service) => Math.max(lineMax, service.lineId),
-      0,
-    );
-    return Math.max(max, currentMax);
-  }, 0);
-
-  return Math.max(maxLineId + 1, 2000);
-}
-
-// 이름 목록은 중복/공백 제거 후 한글 정렬로 맞춰 셀렉트 품질을 일정하게 유지한다.
-function toUniqueSortedNames(items: string[]) {
-  return Array.from(
-    new Set(
-      items
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
-    ),
-  ).sort((a, b) => a.localeCompare(b, 'ko'));
-}
-
-// 모달 신규 등록 기본 폼 생성
-function createEmptyForm(
-  date: string,
-  status: string,
-  category: string,
-  selectedServiceId = '',
-): ReservationForm {
-  return {
-    reservationDate: date,
-    startTime: '10:00',
-    customerName: '',
-    gender: '',
-    designerName: '',
-    status,
-    note: '',
-    selectedCategory: category,
-    selectedServiceId,
-    services: [],
-  };
-}
 
 // 예약 캘린더 관리 페이지 메인 컴포넌트
 /**

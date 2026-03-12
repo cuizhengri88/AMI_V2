@@ -102,6 +102,7 @@ function getIconByPath(path: string): LucideIcon {
   if (path.startsWith('/hr')) return UserCog;
   if (path.startsWith('/purchases')) return ShoppingCart;
   if (path.startsWith('/products')) return ShoppingBag;
+  if (path.startsWith('/products/service-catalog')) return Scissors;
   if (path.startsWith('/inventory/history')) return HistoryIcon;
   if (path.startsWith('/inventory')) return Package;
   if (path.startsWith('/users/points')) return Wallet;
@@ -111,7 +112,6 @@ function getIconByPath(path: string): LucideIcon {
   if (path.startsWith('/users')) return Users;
   if (path.startsWith('/employees')) return Briefcase;
   if (path.startsWith('/system/menu')) return LayoutGrid;
-  if (path.startsWith('/system/service-catalog')) return Scissors;
   if (path.startsWith('/system/code')) return Database;
   if (path.startsWith('/system/role')) return Shield;
   if (path.startsWith('/system/settings')) return Monitor;

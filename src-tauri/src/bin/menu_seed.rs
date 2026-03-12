@@ -20,6 +20,7 @@ fn menu_seeds() -> Vec<MenuSeed> {
         MenuSeed { id: 4, parent_id: Some(100), menu_type: "SUB", path: "/purchases", order: 2, status: "사용중", ko: "구매 관리", en: "Purchase Management", zh: "购买管理" },
         MenuSeed { id: 200, parent_id: None, menu_type: "MAIN", path: "/product-stock", order: 2, status: "사용중", ko: "상품/재고 관리", en: "Product/Stock Management", zh: "产品/库存管理" },
         MenuSeed { id: 2, parent_id: Some(200), menu_type: "SUB", path: "/products", order: 1, status: "사용중", ko: "상품 관리", en: "Product Management", zh: "产品管理" },
+        MenuSeed { id: 15, parent_id: Some(6), menu_type: "SUB", path: "/products/service-catalog", order: 3, status: "사용중", ko: "시술 항목 관리", en: "Service Catalog", zh: "服务项目管理" },
         MenuSeed { id: 31, parent_id: Some(200), menu_type: "SUB", path: "/inventory", order: 2, status: "사용중", ko: "재고 관리", en: "Stock Management", zh: "库存管理" },
         MenuSeed { id: 32, parent_id: Some(200), menu_type: "SUB", path: "/inventory/history", order: 3, status: "사용중", ko: "재고 이력", en: "Stock History", zh: "库存历史" },
         MenuSeed { id: 300, parent_id: None, menu_type: "MAIN", path: "/hr", order: 3, status: "사용중", ko: "인사 관리", en: "HR Management", zh: "人事管理" },
@@ -33,7 +34,6 @@ fn menu_seeds() -> Vec<MenuSeed> {
         MenuSeed { id: 6, parent_id: None, menu_type: "MAIN", path: "/system", order: 4, status: "사용중", ko: "시스템 관리", en: "System Management", zh: "系统管理" },
         MenuSeed { id: 7, parent_id: Some(6), menu_type: "SUB", path: "/system/menu", order: 1, status: "사용중", ko: "메뉴 관리", en: "Menu Management", zh: "菜单管理" },
         MenuSeed { id: 8, parent_id: Some(6), menu_type: "SUB", path: "/system/code", order: 2, status: "사용중", ko: "코드 관리", en: "Code Management", zh: "代码管理" },
-        MenuSeed { id: 15, parent_id: Some(6), menu_type: "SUB", path: "/system/service-catalog", order: 3, status: "사용중", ko: "시술 항목 관리", en: "Service Catalog", zh: "服务项目管理" },
         MenuSeed { id: 9, parent_id: Some(6), menu_type: "SUB", path: "/system/role", order: 4, status: "사용중", ko: "권한 관리", en: "Role Management", zh: "权限管理" },
         MenuSeed { id: 10, parent_id: Some(6), menu_type: "SUB", path: "/system/settings", order: 5, status: "사용중", ko: "시스템 설정", en: "System Settings", zh: "系统设置" },
     ]
