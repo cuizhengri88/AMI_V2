@@ -1,0 +1,41 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*' # v0.1.1 같은 태그를 푸시하면 실행됩니다.
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: install dependencies
+        run: npm install
+
+      - name: build tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          VITE_DB_HOST: ${{ secrets.VITE_DB_HOST }}
+          VITE_DB_PORT: ${{ secrets.VITE_DB_PORT }}
+          VITE_DB_NAME: ${{ secrets.VITE_DB_NAME }}
+          VITE_DB_USER: ${{ secrets.VITE_DB_USER }}
+          VITE_DB_PASSWORD: ${{ secrets.VITE_DB_PASSWORD }}
+          VITE_DB_SCHEMA: ${{ secrets.VITE_DB_SCHEMA }}
+        with:
+          tagName: v__VERSION__ # package.json의 버전을 가져와 태그 생성
+          releaseName: "AMI v__VERSION__"
+          releaseBody: "자동 업데이트 테스트 버전입니다."
+          releaseDraft: true
+          prerelease: false
