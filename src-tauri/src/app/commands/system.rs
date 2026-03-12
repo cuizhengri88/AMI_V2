@@ -1,6 +1,12 @@
-// 시스템/연결/백업/파일 내보내기/매장 바인딩 관련 Tauri 명령입니다.
+/**
+ * @file system.rs
+ * @description 데이터베이스 연결 점검, 데이터 백업/내보내기, DB 무결성 검사 및 장치 바인딩(보안 인증)을 담당하는 시스템 관리 백엔드 명령 정의 파일입니다.
+ */
 
-// 클라이언트가 전달한 DB 접속 정보로 연결/스키마/버전 상태를 즉시 점검합니다.
+/**
+ * @function test_db_connection
+ * @description 클라이언트가 제공한 설정으로 데이터베이스 연결 가능 여부를 테스트하고 서버 정보를 반환합니다.
+ */
 #[tauri::command]
 async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnectionResult, String> {
     let client = connect_with_schema(&payload).await?;
@@ -21,7 +27,11 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
     })
 }
 
-// 선택한 스키마의 주요 관리 테이블을 JSON 파일로 백업합니다.
+/**
+ * @function backup_database_to_file
+ * @description 현재 연결된 스키마의 모든 관리 테이블 데이터를 JSON 형식으로 추출하여 파일로 저장(백업)합니다.
+ * @param payload DatabaseBackupPayload: 백업 파일 경로 및 DB 정보
+ */
 #[tauri::command]
 async fn backup_database_to_file(
     payload: DatabaseBackupPayload,
@@ -71,6 +81,7 @@ async fn backup_database_to_file(
         .await
         .map_err(|e| format!("백업 대상 테이블 조회 실패: {e}"))?;
 
+    // [SQL] 각 테이블의 모든 데이터를 JSONB로 집계하여 텍스트 형태로 가져옵니다.
     let mut tables_json = serde_json::Map::new();
     for row in table_rows {
         let table_name: String = row.get(0);
@@ -161,7 +172,10 @@ fn sanitize_sub_directory(raw: &str) -> Option<PathBuf> {
     }
 }
 
-// 임의 텍스트 콘텐츠를 다운로드 폴더(또는 하위 폴더)에 파일로 저장합니다.
+/**
+ * @function export_text_file
+ * @description 임의의 텍스트 콘텐츠를 사용자의 다운로드 폴더 또는 하위 디렉토리에 파일로 생성합니다.
+ */
 #[tauri::command]
 async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFileResult, String> {
     let raw_file_name = payload.file_name.trim();
@@ -222,7 +236,10 @@ async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFi
     })
 }
 
-// 운영 전후 점검을 위해 필수 테이블/컬럼/코드값 무결성을 일괄 검사합니다.
+/**
+ * @function run_db_integrity_check
+ * @description 시스템 가동에 필요한 테이블, 컬럼, 인덱스 및 필수 기초 코드 데이터의 존재 여부를 검사하고 자동으로 보정합니다.
+ */
 #[tauri::command]
 async fn run_db_integrity_check(
     payload: DbIntegrityCheckPayload,
@@ -250,7 +267,10 @@ async fn run_db_integrity_check(
     })
 }
 
-// 현재 단말(HWID)과 매장 코드의 바인딩 상태를 조회합니다.
+/**
+ * @function get_store_binding_status
+ * @description 현재 실행 중인 장치(HWID)가 특정 점포와 이미 바인딩(인증)되어 있는지 상태를 조회합니다.
+ */
 #[tauri::command]
 async fn get_store_binding_status(
     payload: StoreBindingStatusPayload,
@@ -320,7 +340,10 @@ async fn get_store_binding_status(
     })
 }
 
-// 바인딩이 없으면 등록하고, 있으면 단말/코드 일치 여부를 검증합니다.
+/**
+ * @function verify_or_register_store_binding
+ * @description 미등록 단말인 경우 CDKEY를 통해 점포 코드를 이 장치에 바인딩하고, 보안 인증 정보를 생성합니다.
+ */
 #[tauri::command]
 async fn verify_or_register_store_binding(
     payload: VerifyStoreBindingPayload,

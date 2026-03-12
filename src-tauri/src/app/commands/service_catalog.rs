@@ -1,6 +1,15 @@
-// 시술 항목 카탈로그 관리 도메인 Tauri 명령입니다.
+/**
+ * @file service_catalog.rs
+ * @description 매장에서 제공하는 시술 항목(항목명, 단가, 소요시간 등) 카탈로그를 관리하는 백엔드 명령 정의 파일입니다.
+ * 시술 항목의 대분류(카테고리) 연동 및 기준 데이터를 관리합니다.
+ */
 
-// 시술 카탈로그 목록을 조회합니다.
+/**
+ * @function get_service_catalog_data
+ * @description 등록된 모든 시술 항목과 각 항목의 카테고리 명칭을 포함하여 조회합니다.
+ * @param payload ServiceCatalogQueryPayload: 조회 대상 및 DB 연결 정보
+ * @return ServiceCatalogDataResult: 시술 항목 리스트
+ */
 #[tauri::command]
 async fn get_service_catalog_data(
     payload: ServiceCatalogQueryPayload,
@@ -9,23 +18,8 @@ async fn get_service_catalog_data(
     ensure_service_catalog_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
-    let sql = r#"
-        SELECT
-            s.service_id::BIGINT,
-            s.category_code,
-            COALESCE(c.detail_name, s.category_code) AS category_name,
-            s.service_name,
-            s.unit_price::BIGINT,
-            s.duration_minutes,
-            s.use_yn,
-            s.note
-          FROM service_catalog_management s
-     LEFT JOIN common_code_detail c
-            ON c.group_code_id = 'T_CATEGORY'
-           AND c.detail_code = s.category_code
-         WHERE s.store_code = $1
-         ORDER BY s.service_id DESC
-    "#;
+    // [SQL] 시술 항목 테이블과 공통 코드(카테고리) 테이블을 LEFT JOIN 하여 조회합니다.
+    // - T_CATEGORY 그룹 코드의 상세 명칭을 가져옵니다.
     log_sql!(sql);
     let rows = client
         .query(sql, &[&store_code])
@@ -53,7 +47,11 @@ async fn get_service_catalog_data(
     })
 }
 
-// 시술 카탈로그 항목을 생성/수정합니다.
+/**
+ * @function upsert_service_catalog_item
+ * @description 시술 항목을 신규 등록하거나 기존 정보를 수정합니다.
+ * @param payload UpsertServiceCatalogPayload: 저장할 시술 항목 명세
+ */
 #[tauri::command]
 async fn upsert_service_catalog_item(
     payload: UpsertServiceCatalogPayload,
@@ -62,7 +60,7 @@ async fn upsert_service_catalog_item(
     ensure_service_catalog_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
-    let item = payload.item;
+    // 데이터 전처리 및 유효성 검사를 수행합니다.
     let category_code = item.category_code.trim().to_uppercase();
     let service_name = item.service_name.trim().to_string();
     let unit_price = item.unit_price;
@@ -86,6 +84,7 @@ async fn upsert_service_catalog_item(
         return Err("사용여부(use_yn)는 Y 또는 N만 가능합니다.".to_string());
     }
 
+    // [SQL] 선택된 카테고리 코드가 유효한 공통 코드인지 검증합니다.
     let category_exists = client
         .query_opt(
             r#"
@@ -111,6 +110,7 @@ async fn upsert_service_catalog_item(
             return Err("service_id는 1 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] ID가 존재하는 경우 정보를 업데이트(Upsert)합니다.
         let sql = r#"
             INSERT INTO service_catalog_management (
                 service_id,
@@ -161,6 +161,7 @@ async fn upsert_service_catalog_item(
             .await
             .map_err(|e| format!("시술 항목 저장 실패: {e}"))?;
     } else {
+        // [SQL] ID가 없는 경우 신규 시술 항목을 등록합니다.
         let sql = r#"
             INSERT INTO service_catalog_management (
                 store_code,
@@ -205,7 +206,11 @@ async fn upsert_service_catalog_item(
     })
 }
 
-// 시술 카탈로그 항목을 삭제합니다.
+/**
+ * @function delete_service_catalog_item
+ * @description 등록된 시술 항목을 삭제합니다.
+ * @param payload DeleteServiceCatalogPayload: 삭제할 시술 ID
+ */
 #[tauri::command]
 async fn delete_service_catalog_item(
     payload: DeleteServiceCatalogPayload,

@@ -1,6 +1,15 @@
-// 회원 포인트/쿠폰 충전·사용·취소 도메인 Tauri 명령입니다.
+/**
+ * @file point.rs
+ * @description 회원의 예치금(포인트) 및 서비스 쿠폰의 충전, 사용, 취소 및 이력 관리를 담당하는 백엔드 명령 정의 파일입니다.
+ * 점포별 회원 잔액 관리 및 트랜잭션 기반의 데이터 정합성을 보장합니다.
+ */
 
-// 회원 포인트/쿠폰 잔액과 이력 데이터를 조회합니다.
+/**
+ * @function get_member_point_management_data
+ * @description 특정 회원의 포인트/쿠폰 잔액 정보와 전체 충전/사용 이력을 통합하여 조회합니다.
+ * @param payload MemberPointQueryPayload: 조회 조건(점포, 이력 포함 여부 등)
+ * @return MemberPointDataResult: 회원별 잔액 리스트 및 통합 이력 리스트
+ */
 #[tauri::command]
 async fn get_member_point_management_data(
     payload: MemberPointQueryPayload,
@@ -10,6 +19,9 @@ async fn get_member_point_management_data(
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
     let include_histories = payload.include_histories.unwrap_or(true);
 
+    // [SQL] 전체 회원 목록과 각 회원의 현재 포인트 잔액을 조회합니다.
+    // - user_management(u)와 member_point_balance(pb)를 LEFT JOIN 합니다.
+    // - COALESCE를 사용하여 잔액 정보가 없는 경우 0으로 처리합니다.
     let member_rows = client
         .query(
             r#"
@@ -30,6 +42,9 @@ async fn get_member_point_management_data(
         .await
         .map_err(|e| format!("회원 포인트 회원 조회 실패: {e}"))?;
 
+    // [SQL] 각 회원별로 보유 중인 서비스 쿠폰 잔액을 조회합니다.
+    // - member_coupon_balance(cb)와 service_catalog_management(s)를 JOIN 하여 시술 명칭을 가져옵니다.
+    // - coupon_count > 0 인 유효한 쿠폰만 대상으로 합니다.
     let coupon_rows = client
         .query(
             r#"
@@ -62,6 +77,7 @@ async fn get_member_point_management_data(
         coupon_map.entry(user_id).or_default().push(coupon);
     }
 
+    // 회원 정보와 쿠폰 정보를 결합하여 DTO 리스트를 생성합니다.
     let members = member_rows
         .into_iter()
         .map(|row| {
@@ -76,6 +92,10 @@ async fn get_member_point_management_data(
         })
         .collect::<Vec<_>>();
 
+    // [SQL] 충전 이력(RECHARGE)과 사용 이력(USE)을 UNION ALL로 결합하여 통합 타임라인을 제공합니다.
+    // - 상단 쿼리: member_point_history 테이블에서 충전 및 취소 내역을 조회합니다.
+    // - 하단 쿼리: member_point_usage_history 테이블에서 실제 시술/포인트 사용 내역을 조회합니다.
+    // - x.created_at DESC: 최신 일자 순으로 정렬합니다.
     let histories = if include_histories {
         let history_rows = client
             .query(
@@ -171,24 +191,24 @@ async fn get_member_point_management_data(
         history_rows
             .into_iter()
             .map(|row| MemberPointHistoryDto {
-                id: row.get::<_, i64>(0),
-                action_type: row.get::<_, String>(1),
-                user_id: row.get::<_, i64>(2),
-                user_name: row.get::<_, String>(3),
-                user_phone: row.get::<_, Option<String>>(4),
-                recharge_type: row.get::<_, String>(5),
-                amount: row.get::<_, Option<i64>>(6),
-                received_amount: row.get::<_, Option<i64>>(7),
-                service_id: row.get::<_, Option<i64>>(8),
-                service_name: row.get::<_, Option<String>>(9),
-                coupon_count: row.get::<_, Option<i32>>(10),
-                payment_method_code: row.get::<_, String>(11),
-                payment_method_name: row.get::<_, String>(12),
-                memo: row.get::<_, String>(13),
-                created_at: row.get::<_, String>(14),
-                is_cancelled: row.get::<_, bool>(15),
-                cancel_reason: row.get::<_, Option<String>>(16),
-                cancelled_at: row.get::<_, Option<String>>(17),
+                id: row.get::<_, i64>(0),                // 이력 고유 ID
+                action_type: row.get::<_, String>(1),     // 작업 유형 (RECHARGE/USE)
+                user_id: row.get::<_, i64>(2),           // 회원 ID
+                user_name: row.get::<_, String>(3),       // 회원명
+                user_phone: row.get::<_, Option<String>>(4), // 연락처
+                recharge_type: row.get::<_, String>(5),   // 충전 유형 (BALANCE/COUPON)
+                amount: row.get::<_, Option<i64>>(6),     // 충전/사용 포인트 금액
+                received_amount: row.get::<_, Option<i64>>(7), // 실 수납 금액 (충전 시)
+                service_id: row.get::<_, Option<i64>>(8), // 관련 시술 ID (쿠폰 시)
+                service_name: row.get::<_, Option<String>>(9), // 시술 명칭
+                coupon_count: row.get::<_, Option<i32>>(10), // 쿠폰 횟수
+                payment_method_code: row.get::<_, String>(11), // 결제수단 코드
+                payment_method_name: row.get::<_, String>(12), // 결제수단 명칭 (JOIN 결과)
+                memo: row.get::<_, String>(13),           // 비고
+                created_at: row.get::<_, String>(14),     // 발생 일시
+                is_cancelled: row.get::<_, bool>(15),      // 취소 여부
+                cancel_reason: row.get::<_, Option<String>>(16), // 취소 사유
+                cancelled_at: row.get::<_, Option<String>>(17), // 취소 일시
             })
             .collect::<Vec<_>>()
     } else {
@@ -203,7 +223,11 @@ async fn get_member_point_management_data(
     })
 }
 
-// 포인트/쿠폰 충전을 기록하고 잔액을 반영합니다.
+/**
+ * @function recharge_member_point
+ * @description 회원의 예치금 또는 서비스 쿠폰을 충전하고, 잔액 반영 및 이력을 기록합니다.
+ * @param payload RechargeMemberPointPayload: 충전 대상 회원, 유형, 금액/횟수, 결제 정보 등
+ */
 #[tauri::command]
 async fn recharge_member_point(
     payload: RechargeMemberPointPayload,
@@ -227,6 +251,7 @@ async fn recharge_member_point(
         return Err("결제수단(payment_method_code)은 필수입니다.".to_string());
     }
 
+    // [SQL] 유효한 결제수단 코드인지 확인합니다.
     let payment_method_exists = client
         .query_opt(
             r#"
@@ -244,6 +269,7 @@ async fn recharge_member_point(
         return Err("PAYMENT_METHOD 공통코드에 등록된 사용중 결제수단만 가능합니다.".to_string());
     }
 
+    // [SQL] 해당 점포에 등록된 실제 회원인지 검증합니다.
     let user_exists = client
         .query_opt(
             "SELECT 1 FROM user_management WHERE user_id::BIGINT = $1 AND store_code = $2",
@@ -260,6 +286,7 @@ async fn recharge_member_point(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
+    // 잔액 업데이트와 이력 저장을 하나의 트랜잭션으로 처리합니다.
     let tx = client
         .transaction()
         .await
@@ -275,6 +302,8 @@ async fn recharge_member_point(
             return Err("실수납 금액은 0원 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 예치금 잔액 테이블(member_point_balance)을 업데이트하거나 신규 생성(Upsert)합니다.
+        // - point_balance = point_balance + EXCLUDED.point_balance: 기존 잔액에 충전 금액을 가산합니다.
         tx.execute(
             r#"
             INSERT INTO member_point_balance (store_code, user_id, point_balance)
@@ -293,6 +322,8 @@ async fn recharge_member_point(
         let received_amount_option: Option<i64> = Some(received_amount);
         let none_service_id: Option<i64> = None;
         let none_coupon_count: Option<i32> = None;
+        
+        // [SQL] 충전 이력 테이블에 신규 행을 추가합니다.
         tx.execute(
             r#"
             INSERT INTO member_point_history (
@@ -314,6 +345,7 @@ async fn recharge_member_point(
         .await
         .map_err(|e| format!("예치금 충전 이력 저장 실패: {e}"))?;
     } else {
+        // [COUPON 유형 처리]
         let amount = recharge.amount.unwrap_or(0);
         if amount < 0 {
             return Err("쿠폰 충전 수납 금액은 0원 이상이어야 합니다.".to_string());
@@ -331,6 +363,7 @@ async fn recharge_member_point(
             return Err("쿠폰 충전 횟수는 1 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 충전 대상 시술 항목이 유효하고 사용 중인지 확인합니다.
         let service_exists = tx
             .query_opt(
                 r#"
@@ -348,6 +381,7 @@ async fn recharge_member_point(
             return Err("선택한 점포의 사용중 시술항목만 쿠폰으로 충전할 수 있습니다.".to_string());
         }
 
+        // [SQL] 쿠폰 잔액 테이블(member_coupon_balance)에 횟수를 누적 업데이트(Upsert)합니다.
         tx.execute(
             r#"
             INSERT INTO member_coupon_balance (store_code, user_id, service_id, coupon_count)
@@ -366,6 +400,8 @@ async fn recharge_member_point(
         let none_received_amount: Option<i64> = None;
         let service_id_option: Option<i64> = Some(service_id);
         let coupon_count_option: Option<i32> = Some(coupon_count);
+        
+        // [SQL] 쿠폰 충전 이력을 기록합니다.
         tx.execute(
             r#"
             INSERT INTO member_point_history (
@@ -398,7 +434,11 @@ async fn recharge_member_point(
     })
 }
 
-// 기존 충전 이력을 취소하고 잔액을 원복합니다.
+/**
+ * @function cancel_member_point_recharge
+ * @description 이미 완료된 충전 이력을 취소 처리하고, 해당 금액/횟수만큼 회원 잔액을 원복(차감)합니다.
+ * @param payload CancelMemberPointRechargePayload: 취소할 이력 ID 및 사유
+ */
 #[tauri::command]
 async fn cancel_member_point_recharge(
     payload: CancelMemberPointRechargePayload,
@@ -421,6 +461,7 @@ async fn cancel_member_point_recharge(
         .await
         .map_err(|e| format!("충전 취소 트랜잭션 시작 실패: {e}"))?;
 
+    // [SQL] 취소 대상 이력을 조회하고, 데이터 정합성을 위해 행 잠금(FOR UPDATE)을 수행합니다.
     let recharge_row = tx
         .query_opt(
             r#"
@@ -465,6 +506,8 @@ async fn cancel_member_point_recharge(
             return Err("취소 대상 충전 금액이 올바르지 않습니다.".to_string());
         }
 
+        // [SQL] 예치금 잔액을 다시 차감하여 원복합니다.
+        // - WHERE point_balance >= $3: 취소 후 잔액이 음수가 되는 것을 방지하는 안전 장치입니다.
         let affected = tx
             .execute(
                 r#"
@@ -494,6 +537,8 @@ async fn cancel_member_point_recharge(
             return Err("취소 대상 횟수 정보가 올바르지 않습니다.".to_string());
         }
 
+        // [SQL] 쿠폰 잔여 횟수를 다시 차감하여 원복합니다.
+        // - WHERE coupon_count >= $4: 잔여 횟수 부족 시 취소를 제한하는 정합성 체크입니다.
         let affected = tx
             .execute(
                 r#"
@@ -515,6 +560,7 @@ async fn cancel_member_point_recharge(
         }
     }
 
+    // [SQL] 충전 이력 데이터의 상태를 'CANCELLED'로 실제 업데이트합니다.
     let affected = tx
         .execute(
             r#"
@@ -545,7 +591,11 @@ async fn cancel_member_point_recharge(
     })
 }
 
-// 포인트/쿠폰 사용 내역을 기록하고 잔액을 차감합니다.
+/**
+ * @function use_member_point
+ * @description 시술 결제 시 회원의 예치금 또는 쿠폰을 실제로 사용 처리하고 사용 이력을 기록합니다.
+ * @param payload UseMemberPointPayload: 사용 대상 회원, 유형, 차감 금액/횟수 등
+ */
 #[tauri::command]
 async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -562,6 +612,7 @@ async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResu
         return Err("use_type은 BALANCE 또는 COUPON 이어야 합니다.".to_string());
     }
 
+    // [SQL] 회원 존재 여부를 최종 확인합니다.
     let user_exists = client
         .query_opt(
             "SELECT 1 FROM user_management WHERE user_id::BIGINT = $1 AND store_code = $2",
@@ -589,6 +640,8 @@ async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResu
             return Err("예치금 사용 금액은 1원 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 예치금 잔액을 차감합니다.
+        // - WHERE point_balance >= $3: 잔액이 부족할 경우 업데이트를 방지하여 자동 검증합니다.
         let affected = tx
             .execute(
                 r#"
@@ -611,6 +664,8 @@ async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResu
         let amount_option: Option<i64> = Some(amount);
         let none_service_id: Option<i64> = None;
         let none_coupon_count: Option<i32> = None;
+        
+        // [SQL] 예치금 사용 이력을 usage_history 테이블에 기록합니다.
         tx.execute(
             r#"
             INSERT INTO member_point_usage_history (
@@ -642,6 +697,8 @@ async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResu
             return Err("쿠폰 사용 횟수는 1 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 쿠폰 잔여 횟수를 차감합니다.
+        // - WHERE coupon_count >= $4: 보유 횟수가 차감 횟수보다 많거나 같은지 확인합니다.
         let affected = tx
             .execute(
                 r#"
@@ -665,6 +722,8 @@ async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResu
         let none_amount: Option<i64> = None;
         let service_id_option: Option<i64> = Some(service_id);
         let coupon_count_option: Option<i32> = Some(coupon_count);
+
+        // [SQL] 쿠폰 사용 이력을 usage_history 테이블에 기록합니다.
         tx.execute(
             r#"
             INSERT INTO member_point_usage_history (

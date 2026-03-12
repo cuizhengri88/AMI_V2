@@ -1,12 +1,24 @@
-// 역할/권한 관리 도메인 Tauri 명령입니다.
+/**
+ * @file role.rs
+ * @description 사용자 역할(권한 그룹) 및 각 역할별 메뉴 접근 권한을 관리하는 백엔드 명령 정의 파일입니다.
+ * 시스템의 인가(Authorization) 처리를 위한 기초 데이터를 관리하며, 점포별 독립적인 권한 체계를 지원합니다.
+ */
 
-// 역할(권한 그룹) 목록을 조회합니다.
+/**
+ * @function get_role_management_data
+ * @description 등록된 전체 역할(권한 그룹) 목록을 조회합니다.
+ * @param payload RoleQueryPayload: 조회 조건 및 DB 연결 정보
+ * @return RoleDataResult: 역할 리스트 결과
+ */
 #[tauri::command]
 async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
+    // [SQL] 해당 점포의 모든 역할 정보를 조회합니다.
+    // - role_id: 역할 코드 (예: ADMIN, MANAGER 등)
+    // - user_count: 해당 역할에 할당된 직원 수 (통계용)
     let rows = client
         .query(
             r#"
@@ -37,7 +49,11 @@ async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataR
     })
 }
 
-// 역할 정보를 생성/수정합니다.
+/**
+ * @function upsert_role_management
+ * @description 역할을 신규 등록하거나 기존 역할을 수정합니다.
+ * @param payload UpsertRolePayload: 저장할 역할 데이터 정보
+ */
 #[tauri::command]
 async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -57,6 +73,8 @@ async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationRe
         return Err("역할 ID와 역할명은 필수입니다.".to_string());
     }
 
+    // [SQL] 역할 정보를 저장(Upsert)합니다.
+    // - ON CONFLICT (role_id): 이미 존재하는 역할 ID인 경우 명칭과 설명을 업데이트합니다.
     client
         .execute(
             r#"
@@ -81,7 +99,12 @@ async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationRe
     })
 }
 
-// 역할을 삭제합니다. (연관 권한 정리 포함)
+/**
+ * @function delete_role_management
+ * @description 특정 역할을 삭제합니다. 
+ * (주의: 역할 삭제 시 해당 역할에 부여된 상세 메뉴 권한 데이터도 DB 제약 조건에 의해 연쇄 삭제될 수 있습니다.)
+ * @param payload DeleteRolePayload: 삭제할 역할 ID 정보
+ */
 #[tauri::command]
 async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -111,7 +134,12 @@ async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationRe
     })
 }
 
-// 특정 역할의 메뉴별 접근 권한을 조회합니다.
+/**
+ * @function get_role_menu_permissions
+ * @description 특정 역할에 할당된 모든 메뉴와 각 메뉴별 접근 권한(읽기/쓰기/삭제)을 조회합니다.
+ * @param payload RoleMenuPermissionQueryPayload: 대상 역할 ID 및 DB 연결 정보
+ * @return RoleMenuPermissionDataResult: 메뉴별 상세 권한 설정 리스트
+ */
 #[tauri::command]
 async fn get_role_menu_permissions(
     payload: RoleMenuPermissionQueryPayload,
@@ -136,6 +164,9 @@ async fn get_role_menu_permissions(
         return Err("선택한 역할이 존재하지 않습니다.".to_string());
     }
 
+    // [SQL] 전체 메뉴 목록(menu_management)과 특정 역할의 권한 매핑 정보를 LEFT JOIN 합니다.
+    // - 모든 메뉴를 표시하되, 권한 매핑 데이터가 없는 경우 COALESCE를 통해 FALSE(기본값)로 처리합니다.
+    // - ORDER BY: 메뉴 계층 구조와 정렬 순서에 맞춰 조회합니다.
     let rows = client
         .query(
             r#"
@@ -184,7 +215,11 @@ async fn get_role_menu_permissions(
     })
 }
 
-// 역할-메뉴 권한 매핑을 생성/수정합니다.
+/**
+ * @function upsert_role_menu_permission
+ * @description 특정 역할에 대해 특정 메뉴의 접근 권한 세부 사항을 저장합니다.
+ * @param payload UpsertRoleMenuPermissionPayload: 역할 ID, 메뉴 ID 및 세부 권한 정보
+ */
 #[tauri::command]
 async fn upsert_role_menu_permission(
     payload: UpsertRoleMenuPermissionPayload,
@@ -224,6 +259,8 @@ async fn upsert_role_menu_permission(
         return Err("선택한 점포코드 기준으로 메뉴가 존재하지 않습니다.".to_string());
     }
 
+    // [SQL] 역할-메뉴 매핑 정보를 저장(Upsert)합니다.
+    // - ON CONFLICT (store_code, role_id, menu_id): 이미 설정된 매핑이 있는 경우 권한 플래그만 업데이트합니다.
     client
         .execute(
             r#"

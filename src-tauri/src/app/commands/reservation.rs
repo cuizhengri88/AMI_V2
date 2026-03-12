@@ -1,6 +1,15 @@
-// 예약 캘린더 관리 도메인 Tauri 명령입니다.
+/**
+ * @file reservation.rs
+ * @description 매장의 예약 캘린더 데이터를 관리하는 백엔드 명령 정의 파일입니다.
+ * 예약 기본 정보(헤더)와 예약에 포함된 여러 시술 내역(라인)을 통합하여 처리하며, 트랜잭션을 통한 데이터 정합성을 보장합니다.
+ */
 
-// 예약 캘린더 화면용 예약 목록/연관 정보를 조회합니다.
+/**
+ * @function get_reservation_calendar_data
+ * @description 예약 캘린더 화면에서 사용할 전체 예약 목록과 각 예약별 시술 상세 정보를 조회합니다.
+ * @param payload ReservationCalendarQueryPayload: 조회 조건 및 DB 연결 정보
+ * @return ReservationCalendarDataResult: 예약 정보 및 하위 시술 리스트가 결합된 결과
+ */
 #[tauri::command]
 async fn get_reservation_calendar_data(
     payload: ReservationCalendarQueryPayload,
@@ -9,7 +18,10 @@ async fn get_reservation_calendar_data(
     ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
-    // 예약 헤더(날짜/시간/고객/상태)를 먼저 조회한다.
+    // [SQL] 예약 기본 정보(헤더)를 조회합니다.
+    // - reservation_date::TEXT: 날짜 형식을 텍스트로 변환하여 클라이언트에 전달합니다.
+    // - TO_CHAR: 시작 시간을 HH24:MI 형식으로 포맷팅합니다.
+    // - store_code = $1: 현재 점포의 예약 데이터만 필터링합니다.
     let reservation_rows = client
         .query(
             r#"
@@ -33,7 +45,9 @@ async fn get_reservation_calendar_data(
         .await
         .map_err(|e| format!("예약 목록 조회 실패: {e}"))?;
 
-    // 예약별 시술 라인은 별도 조회 후 HashMap으로 묶어서 조립한다.
+    // [SQL] 각 예약에 연결된 시술 상세 내역(라인)을 전체 조회합니다.
+    // - 모든 라인 데이터를 가져온 후 메모리 상에서 각 예약 ID별로 그룹화(HashMap)하여 조립합니다.
+    // - unit_price::BIGINT: 가격 정보를 64비트 정수로 변환합니다.
     let service_line_rows = client
         .query(
             r#"
@@ -47,7 +61,7 @@ async fn get_reservation_calendar_data(
                 l.unit_price::BIGINT,
                 l.duration_minutes::INTEGER
               FROM reservation_calendar_service_line l
-             WHERE l.store_code = $1
+            WHERE l.store_code = $1
              ORDER BY l.reservation_id DESC, l.line_no ASC
             "#,
             &[&store_code],
@@ -72,6 +86,7 @@ async fn get_reservation_calendar_data(
             });
     }
 
+    // 조회된 예약 정보와 시술 내역을 결합하여 최종 DTO를 생성합니다.
     let reservations = reservation_rows
         .into_iter()
         .map(|row| {
@@ -99,7 +114,11 @@ async fn get_reservation_calendar_data(
     })
 }
 
-// 예약(시술 라인 포함)을 생성/수정합니다.
+/**
+ * @function upsert_reservation_calendar_item
+ * @description 신규 예약을 등록하거나 기존 예약을 수정합니다. 서비스 시술 항목들을 함께 저장합니다.
+ * @param payload UpsertReservationCalendarPayload: 저장할 예약 데이터 정보
+ */
 #[tauri::command]
 async fn upsert_reservation_calendar_item(
     payload: UpsertReservationCalendarPayload,
@@ -109,6 +128,7 @@ async fn upsert_reservation_calendar_item(
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
     let item = payload.item;
+    // 데이터 전처리: 공백 제거 및 대문자 변환
     let reservation_date_text = item.reservation_date.trim().to_string();
     let start_time_text = item.start_time.trim().to_string();
     let customer_name = item.customer_name.trim().to_string();
@@ -173,8 +193,8 @@ async fn upsert_reservation_calendar_item(
         return Err("시술 항목은 1건 이상 필요합니다.".to_string());
     }
 
-    // RESERVATION_STATUS 공통코드가 있으면 해당 코드만 허용하고,
-    // 아직 코드 세팅 전이면 기본 상태 3종만 허용한다.
+    // [SQL] 요청된 예약 상태값이 유효한지 검증합니다.
+    // - RESERVATION_STATUS 공통코드 데이터와 비교합니다.
     let status_rows = client
         .query(
             r#"
@@ -222,6 +242,9 @@ async fn upsert_reservation_calendar_item(
         }
     }
 
+    // [SQL] 선택된 시술 항목들이 실제로 데이터베이스에 존재하고 사용 중인지 확인합니다.
+    // - service_catalog_management 테이블과 공통 코드 테이블을 JOIN 하여 항목 상세 정보를 가져옵니다.
+    // - ANY($2::BIGINT[]) 구문을 사용하여 여러 시술 ID를 한 번에 검찰합니다.
     let service_rows = client
         .query(
             r#"
@@ -280,6 +303,7 @@ async fn upsert_reservation_calendar_item(
             return Err("reservation_id는 1 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 기존 예약 정보를 업데이트(HEADER UPDATE)합니다.
         let affected = tx
             .execute(
                 r#"
@@ -294,8 +318,8 @@ async fn upsert_reservation_calendar_item(
                        status_code = $10,
                        note = $11,
                        updated_at = NOW()
-                 WHERE reservation_id = $1
-                   AND store_code = $2
+                  WHERE reservation_id = $1
+                    AND store_code = $2
                 "#,
                 &[
                     &reservation_id,
@@ -318,6 +342,7 @@ async fn upsert_reservation_calendar_item(
             return Err("수정 대상 예약이 없습니다.".to_string());
         }
 
+        // [SQL] 기존 시술 라인 내역을 삭제하고 재인서트(Delete-Insert) 방식으로 업데이트 처리합니다.
         tx.execute(
             "DELETE FROM reservation_calendar_service_line WHERE reservation_id = $1 AND store_code = $2",
             &[&reservation_id, &store_code],
@@ -327,6 +352,8 @@ async fn upsert_reservation_calendar_item(
 
         reservation_id
     } else {
+        // [SQL] 신규 예약 정보를 삽입(HEADER INSERT)합니다.
+        // - RETURNING reservation_id: 자동 생성된 시퀀스 ID를 반환받습니다.
         tx.query_one(
             r#"
             INSERT INTO reservation_calendar_management (
@@ -366,7 +393,8 @@ async fn upsert_reservation_calendar_item(
             return Err("예약 저장 중 시술 스냅샷이 유실되었습니다.".to_string());
         };
 
-        // 프론트에서 선택한 순서를 보존하기 위해 line_no는 전달 순서(index+1)로 기록한다.
+        // [SQL] 예약 시술 라인 정보를 삽입(LINE INSERT)합니다.
+        // - 프론트에서 선택한 순서를 보존하기 위해 line_no는 전달 순서(index+1)로 기록합니다.
         let line_no = (index + 1) as i32;
         tx.execute(
             r#"
@@ -413,7 +441,11 @@ async fn upsert_reservation_calendar_item(
     })
 }
 
-// 예약 및 연관 시술 라인을 삭제합니다.
+/**
+ * @function delete_reservation_calendar_item
+ * @description 지정된 예약 정보를 삭제합니다. 이 때 연관된 시술 라인 데이터도 함께 삭제됩니다(DB 제약 조건 또는 직접 삭제).
+ * @param payload DeleteReservationCalendarPayload: 삭제할 예약 정보 ID
+ */
 #[tauri::command]
 async fn delete_reservation_calendar_item(
     payload: DeleteReservationCalendarPayload,
@@ -426,6 +458,7 @@ async fn delete_reservation_calendar_item(
         return Err("삭제할 reservation_id가 올바르지 않습니다.".to_string());
     }
 
+    // [SQL] 특정 예약 ID를 기반으로 예약 정보를 삭제합니다.
     let affected = client
         .execute(
             "DELETE FROM reservation_calendar_management WHERE reservation_id = $1 AND store_code = $2",

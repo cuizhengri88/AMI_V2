@@ -1,12 +1,22 @@
-// 회원(고객) 관리 도메인 Tauri 명령입니다.
+/**
+ * @file user.rs
+ * @description 매장의 회원(고객) 기본 정보(이름, 연락처, 성별, 주소 등)를 관리하는 백엔드 명령 정의 파일입니다.
+ * 회원별 데이터를 점포 코드로 격리하여 관리하며, 데이터 저장 시 정규화 과정을 포함합니다.
+ */
 
-// 회원(고객) 목록을 조회합니다.
+/**
+ * @function get_user_management_data
+ * @description 등록된 전체 회원 목록을 조회합니다. 최신 등록된 회원이 상단에 노출되도록 정렬합니다.
+ * @param payload UserQueryPayload: 조회 조건 및 DB 연결 정보
+ * @return UserDataResult: 회원 리스트 결과
+ */
 #[tauri::command]
 async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
+    // [SQL] 해당 점포의 모든 회원 정보를 조회합니다. (ID 역순 정렬)
     let sql = r#"
         SELECT user_id::BIGINT, name, email, gender, phone, address, remarks
           FROM user_management
@@ -48,6 +58,8 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
 
     let user = payload.user;
     let name = user.name.trim().to_string();
+    
+    // 데이터 정규화: 이메일은 소문자로 변환하고, 각 필드의 불필요한 공백을 제거합니다.
     let email = user
         .email
         .map(|v| v.trim().to_lowercase())
@@ -77,6 +89,8 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
         if id <= 0 {
             return Err("user_id는 1 이상이어야 합니다.".to_string());
         }
+        
+        // [SQL] ID가 존재하는 경우 회원 정보를 업데이트(Upsert)합니다.
         let sql = r#"
             INSERT INTO user_management (user_id, store_code, name, email, gender, phone, address, remarks)
             VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7, $8)
@@ -110,6 +124,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
             .await
             .map_err(|e| format!("회원 저장 실패: {e}"))?;
     } else {
+        // [SQL] ID가 없는 경우 신규 회원을 등록합니다.
         let sql = r#"
             INSERT INTO user_management (store_code, name, email, gender, phone, address, remarks)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -130,7 +145,11 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
     })
 }
 
-// 회원(고객) 정보를 삭제합니다.
+/**
+ * @function delete_user_management
+ * @description 등록된 회원 정보를 삭제합니다. 점포 코드를 확인하여 데이터 오삭제를 방지합니다.
+ * @param payload DeleteUserPayload: 삭제할 회원 ID 정보
+ */
 #[tauri::command]
 async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

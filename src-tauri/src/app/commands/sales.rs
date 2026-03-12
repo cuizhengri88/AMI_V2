@@ -1,6 +1,15 @@
-// 시술 정산(매출) 조회/저장/취소/삭제 도메인 코드와 보조 함수를 포함합니다.
+/**
+ * @file sales.rs
+ * @description 매장의 시술 정산(매출) 데이터를 관리하는 백엔드 명령 정의 파일입니다.
+ * 정산 건별 마스터 정보, 상세 시술 내역, 결제 수단별 금액 등을 통합 관리하며, 회원 포인트 및 쿠폰 사용분에 대한 실시간 잔액 반영 및 취소 시 원복 로직을 포함합니다.
+ */
 
-// 시술 정산(매출) 마스터/라인/결제 데이터를 조회합니다.
+/**
+ * @function get_sales_settlement_data
+ * @description 기간별 또는 점포별 시술 정산 목록과 각 건의 시술/결제 상세 정보를 조회합니다.
+ * @param payload SalesSettlementQueryPayload: 조회 조건 및 DB 연결 정보
+ * @return SalesSettlementDataResult: 정산 마스터와 하위 라인들이 조립된 결과 리스트
+ */
 #[tauri::command]
 async fn get_sales_settlement_data(
     payload: SalesSettlementQueryPayload,
@@ -9,6 +18,7 @@ async fn get_sales_settlement_data(
     ensure_sales_settlement_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
+    // [SQL] 정산 마스터 정보를 조회합니다. (최신순 정렬)
     let settlement_rows = client
         .query(
             r#"
@@ -35,6 +45,7 @@ async fn get_sales_settlement_data(
         .await
         .map_err(|e| format!("정산 마스터 조회 실패: {e}"))?;
 
+    // [SQL] 각 정산 건에 포함된 시술 상세 내역(라인)을 조회합니다.
     let service_rows = client
         .query(
             r#"
@@ -51,6 +62,7 @@ async fn get_sales_settlement_data(
         .await
         .map_err(|e| format!("정산 시술 라인 조회 실패: {e}"))?;
 
+    // [SQL] 각 정산 건의 결제수단별 결제 내역을 조회합니다.
     let payment_rows = client
         .query(
             r#"
@@ -165,7 +177,12 @@ fn is_sales_balance_payment_code(code: &str) -> bool {
     code == "PREPAID" || code == "MEMBERSHIP"
 }
 
-// 정산 취소/수정 전에 과거 잔액 사용분을 원복합니다.
+/**
+ * @function restore_sales_settlement_balance_usage
+ * @description 정산 취소나 수정 시, 기존에 사용되었던 회원의 예치금(포인트) 잔액을 다시 복구합니다.
+ * @param tx: 데이터베이스 트랜잭션 세션
+ * @param settlement_id: 대상 정산 PK
+ */
 async fn restore_sales_settlement_balance_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
@@ -191,6 +208,7 @@ async fn restore_sales_settlement_balance_usage(
         .await
         .map_err(|e| format!("정산 충전금 사용 이력 조회 실패: {e}"))?;
 
+    // [SQL] 조회된 이력별로 회원의 포인트 잔액을 다시 늘려줍니다. (Upsert 패턴 처리)
     for row in usage_rows {
         let usage_id = row.get::<_, i64>(0);
         let user_id = row.get::<_, i64>(1);
@@ -231,7 +249,10 @@ async fn restore_sales_settlement_balance_usage(
     Ok(())
 }
 
-// 정산 취소/수정 전에 과거 쿠폰 사용분을 원복합니다.
+/**
+ * @function restore_sales_settlement_coupon_usage
+ * @description 정산 취소나 수정 시, 기존에 사용되었던 회원의 서비스 쿠폰 잔여 횟수를 다시 복구합니다.
+ */
 async fn restore_sales_settlement_coupon_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
@@ -258,6 +279,7 @@ async fn restore_sales_settlement_coupon_usage(
         .await
         .map_err(|e| format!("정산 쿠폰 사용 이력 조회 실패: {e}"))?;
 
+    // [SQL] 조회된 이력별로 회원의 쿠폰 잔여 횟수를 다시 복원합니다. (ON CONFLICT 구문 활용)
     for row in usage_rows {
         let usage_id = row.get::<_, i64>(0);
         let user_id = row.get::<_, i64>(1);
@@ -306,7 +328,10 @@ async fn restore_sales_settlement_coupon_usage(
     Ok(())
 }
 
-// 정산 저장 시 쿠폰 결제 라인을 회원 쿠폰 사용 이력/잔액에 반영합니다.
+/**
+ * @function apply_sales_settlement_coupon_usage
+ * @description 정산 완료 시 결제 수단으로 사용된 쿠폰 정보를 회원의 쿠폰 잔액에서 차감하고 이력을 남깁니다.
+ */
 async fn apply_sales_settlement_coupon_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
@@ -322,6 +347,7 @@ async fn apply_sales_settlement_coupon_usage(
             return Err("쿠폰 사용 횟수는 1 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 회원의 쿠폰 잔여 횟수를 차감합니다. (안전 장치: coupon_count >= $4)
         let affected = tx
             .execute(
                 r#"
@@ -371,7 +397,10 @@ async fn apply_sales_settlement_coupon_usage(
     Ok(())
 }
 
-// 정산 저장 시 잔액 결제 라인을 회원 포인트 사용 이력/잔액에 반영합니다.
+/**
+ * @function apply_sales_settlement_balance_usage
+ * @description 정산 완료 시 예치금(포인트/멤버십)으로 결제된 금액을 회원의 포인트 잔액에서 차감하고 이력을 남깁니다.
+ */
 async fn apply_sales_settlement_balance_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
@@ -384,6 +413,7 @@ async fn apply_sales_settlement_balance_usage(
             return Err("충전금 사용 금액은 1원 이상이어야 합니다.".to_string());
         }
 
+        // [SQL] 회원의 포인트 잔액을 차감합니다. (안전 장치: point_balance >= $3)
         let affected = tx
             .execute(
                 r#"
@@ -1020,7 +1050,11 @@ async fn upsert_sales_settlement(
     })
 }
 
-// 정산 취소 처리 및 연관 포인트/쿠폰 사용 내역을 원복합니다.
+/**
+ * @function cancel_sales_settlement
+ * @description 완료된 시술 정산 건을 취소 처리합니다. 결제 수단에 따라 사용된 포인트/쿠폰을 자동 원복합니다.
+ * @param payload CancelSalesSettlementPayload: 취소 대상 정산 ID 및 취소 사유
+ */
 #[tauri::command]
 async fn cancel_sales_settlement(
     payload: CancelSalesSettlementPayload,
@@ -1175,7 +1209,10 @@ async fn cancel_sales_settlement(
     })
 }
 
-// 정산 데이터를 영구 삭제합니다.
+/**
+ * @function delete_sales_settlement
+ * @description 정산 데이터를 영구 삭제합니다. (주의: 연관된 라인 데이터들도 함께 삭제되어야 함)
+ */
 #[tauri::command]
 async fn delete_sales_settlement(
     payload: DeleteSalesSettlementPayload,

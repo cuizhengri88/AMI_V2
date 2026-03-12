@@ -1,18 +1,29 @@
-// 공통코드 관리 도메인 Tauri 명령입니다.
+/**
+ * @file common_code.rs
+ * @description 애플리케이션 전반에서 사용되는 공통 코드(그룹/상세)의 CRUD 및 동기화를 담당하는 백엔드 명령 정의 파일입니다.
+ */
 
-// 공통코드 그룹/상세 초기 데이터를 DB와 동기화합니다.
+/**
+ * @function sync_common_code_management_to_db
+ * @description 공통코드 그룹 및 상세 초기 데이터를 데이터베이스와 동기화합니다.
+ * @param payload SyncCommonCodePayload: 동기화할 그룹/상세 데이터 및 DB 연결 정보
+ * @return CommonCodeSyncResult: 동기화 결과 (성공 여부 및 처리 건수)
+ */
 #[tauri::command]
 async fn sync_common_code_management_to_db(
     payload: SyncCommonCodePayload,
 ) -> Result<CommonCodeSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
+    // 필요한 테이블(common_code_group, common_code_detail)이 없으면 생성
     ensure_common_code_tables(&client).await?;
 
+    // 데이터 일관성을 위해 트랜잭션 사용
     let transaction = client
         .transaction()
         .await
         .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
+    // [SQL] 기존의 모든 공통코드 데이터를 삭제하여 초기화 상태로 만듭니다.
     transaction
         .batch_execute("TRUNCATE TABLE common_code_detail, common_code_group")
         .await
@@ -30,6 +41,8 @@ async fn sync_common_code_management_to_db(
 
     for group in &groups {
         let detail_count = *detail_count_map.get(group.id.as_str()).unwrap_or(&0);
+        // [SQL] 새로운 공통코드 그룹 데이터를 삽입합니다.
+        // 각 그룹의 고유 ID, 명칭, 설명, 정렬 순서 및 하위 상세 코드 개수를 저장합니다.
         transaction
             .execute(
                 r#"
@@ -42,11 +55,11 @@ async fn sync_common_code_management_to_db(
                 ) VALUES ($1,$2,$3,$4,$5)
                 "#,
                 &[
-                    &group.id,
-                    &group.name,
-                    &group.desc,
-                    &group.display_order,
-                    &detail_count,
+                    &group.id,           // $1: 그룹 코드 ID (예: 'T_CATEGORY')
+                    &group.name,         // $2: 그룹 명칭
+                    &group.desc,         // $3: 그룹 설명
+                    &group.display_order, // $4: 화면 표시 순서
+                    &detail_count,       // $5: 해당 그룹에 속한 상세코드 총 개수
                 ],
             )
             .await
@@ -57,6 +70,8 @@ async fn sync_common_code_management_to_db(
     details.sort_by_key(|d| (d.group_id.clone(), d.sort_order));
 
     for detail in &details {
+        // [SQL] 각 그룹에 속한 상세 코드 데이터를 삽입합니다.
+        // 그룹 ID와의 외래키 관계를 가지며, 실제 업무에서 구분이 되는 최소 단위의 데이터를 저장합니다.
         transaction
             .execute(
                 r#"
@@ -69,11 +84,11 @@ async fn sync_common_code_management_to_db(
                 ) VALUES ($1,$2,$3,$4,$5)
                 "#,
                 &[
-                    &detail.group_id,
-                    &detail.code,
-                    &detail.name,
-                    &detail.sort_order,
-                    &detail.use_yn,
+                    &detail.group_id,   // $1: 부모 그룹 코드 ID
+                    &detail.code,       // $2: 상세 코드값 (예: 'C01')
+                    &detail.name,       // $3: 상세 코드명 (예: '헤어커트')
+                    &detail.sort_order, // $4: 그룹 내 정렬 순서
+                    &detail.use_yn,     // $5: 현재 코드 사용 여부 ('Y'/'N')
                 ],
             )
             .await
@@ -98,7 +113,12 @@ async fn sync_common_code_management_to_db(
     })
 }
 
-// 공통코드 관리 화면용 그룹/상세 목록을 조회합니다.
+/**
+ * @function get_common_code_management_data
+ * @description 공통코드 관리 화면에서 필요한 전체 그룹 목록과 상세 목록을 조회합니다.
+ * @param payload CommonCodeQueryPayload: 조회 필터 및 DB 연결 정보
+ * @return CommonCodeDataResult: 조회된 그룹 및 상세 리스트 결과
+ */
 #[tauri::command]
 async fn get_common_code_management_data(
     payload: CommonCodeQueryPayload,
@@ -106,6 +126,8 @@ async fn get_common_code_management_data(
     let client = connect_with_schema(&payload.connection).await?;
     ensure_common_code_tables(&client).await?;
 
+    // [SQL] 그룹코드 목록을 정렬 순서(display_order)대로 조회합니다.
+    // 설명(description)이 NULL인 경우 빈 문자열로 정규화합니다.
     let group_rows = client
         .query(
             r#"
@@ -122,6 +144,7 @@ async fn get_common_code_management_data(
         .await
         .map_err(|e| format!("그룹코드 조회 실패: {e}"))?;
 
+    // [SQL] 모든 상세코드 데이터를 조회하며, 부모 그룹 코드와 정렬 순서에 맞춰 나열합니다.
     let detail_rows = client
         .query(
             r#"
@@ -168,7 +191,11 @@ async fn get_common_code_management_data(
     })
 }
 
-// 공통코드 그룹을 생성하거나 수정합니다.
+/**
+ * @function upsert_common_code_group
+ * @description 새로운 공통코드 그룹을 생성하거나 기존 그룹 정보를 수정(Upsert)합니다.
+ * @param payload UpsertCommonCodeGroupPayload: 등록/수정할 그룹 정보
+ */
 #[tauri::command]
 async fn upsert_common_code_group(
     payload: UpsertCommonCodeGroupPayload,
@@ -189,6 +216,8 @@ async fn upsert_common_code_group(
         return Err("그룹 ID와 그룹명은 필수입니다.".to_string());
     }
 
+    // [SQL] 그룹 명칭이나 설명 변경 시 'INSERT ... ON CONFLICT' 구문을 사용하여 기존 데이터를 식별하고 업데이트합니다.
+    // group_code_id가 중복될 경우 DO UPDATE를 통해 최신 정보로 갱신하고 updated_at을 기록합니다.
     client
         .execute(
             r#"
@@ -216,7 +245,11 @@ async fn upsert_common_code_group(
     })
 }
 
-// 공통코드 그룹을 삭제하고 연관 상세를 함께 정리합니다.
+/**
+ * @function delete_common_code_group
+ * @description 지정된 공통코드 그룹을 전체 삭제합니다. (하위 상세코드는 DB 제약 조건 또는 별도 로직에 의해 처리됨)
+ * @param payload DeleteCommonCodeGroupPayload: 삭제할 그룹 식별 정보
+ */
 #[tauri::command]
 async fn delete_common_code_group(
     payload: DeleteCommonCodeGroupPayload,
@@ -229,6 +262,7 @@ async fn delete_common_code_group(
         return Err("삭제할 그룹 ID가 비어 있습니다.".to_string());
     }
 
+    // [SQL] 특정 그룹 코드를 삭제합니다. 관계 설정에 따라 해당 그룹의 상세코드도 함께 정리될 수 있습니다.
     let affected = client
         .execute(
             "DELETE FROM common_code_group WHERE group_code_id = $1",
@@ -283,6 +317,8 @@ async fn upsert_common_code_detail(
         return Err("상세코드를 저장할 그룹코드가 존재하지 않습니다.".to_string());
     }
 
+    // [SQL] 상세 코드를 추가하거나 업데이트합니다.
+    // (group_code_id, detail_code) 복합키를 기준으로 충돌 발생 시 명칭, 정렬순서, 사용여부를 덮어씁니다.
     client
         .execute(
             r#"
@@ -313,7 +349,11 @@ async fn upsert_common_code_detail(
     })
 }
 
-// 공통코드 상세 항목을 삭제합니다.
+/**
+ * @function delete_common_code_detail
+ * @description 특정 그룹에 속한 하나의 상세 코드를 삭제합니다.
+ * @param payload DeleteCommonCodeDetailPayload: 그룹ID 및 상세코드 정보
+ */
 #[tauri::command]
 async fn delete_common_code_detail(
     payload: DeleteCommonCodeDetailPayload,
@@ -327,6 +367,7 @@ async fn delete_common_code_detail(
         return Err("삭제할 그룹ID/상세코드 값이 비어 있습니다.".to_string());
     }
 
+    // [SQL] 지정된 그룹의 유니크한 상세 코드를 삭제 쿼리입니다.
     let affected = client
         .execute(
             "DELETE FROM common_code_detail WHERE group_code_id = $1 AND detail_code = $2",

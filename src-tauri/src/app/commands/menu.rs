@@ -1,6 +1,14 @@
-// 메뉴 관리 도메인 Tauri 명령입니다.
+/**
+ * @file menu.rs
+ * @description 애플리케이션의 메뉴 구조(대메뉴/소메뉴)를 관리하고, 점포 및 시스템 타입별로 동적 메뉴 정보를 제공하는 백엔드 명령 정의 파일입니다.
+ */
 
-// 메뉴 기초 데이터를 DB에 일괄 동기화(멱등)합니다.
+/**
+ * @function sync_menu_management_to_db
+ * @description 메뉴 기초 데이터를 데이터베이스에 일괄 동기화(멱등성 보장)합니다.
+ * @param payload SyncMenuPayload: 동기화할 메뉴 배열 및 점포/DB 연결 정보
+ * @return MenuSyncResult: 동기화 결과 (성공 여부 및 처리 건수)
+ */
 #[tauri::command]
 async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -8,11 +16,13 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
     ensure_menu_start_menu_column(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
 
+    // 데이터 일관성을 위해 트랜잭션 사용
     let transaction = client
         .transaction()
         .await
         .map_err(|e| format!("트랜잭션 시작 실패: {e}"))?;
 
+    // [SQL] 현재 점포의 기존 메뉴 데이터를 모두 삭제하여 초기화합니다.
     transaction
         .execute(
             "DELETE FROM menu_management WHERE store_code = $1",
@@ -26,8 +36,12 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
 
     for menu in &menus {
         let system_type_code = normalize_system_type_code(menu.system_type_code.as_deref());
+        // 시작 메뉴 설정 가능 여부 확인: 소메뉴(SUB)만 시작 메뉴로 지정될 수 있습니다.
         let is_start_menu = menu.is_start_menu.unwrap_or(false)
             && menu.menu_type.trim().eq_ignore_ascii_case("SUB");
+
+        // [SQL] 새로운 메뉴 데이터를 삽입합니다.
+        // 각 언어별 명칭(ko, en, zh)과 해당 메뉴를 볼 수 있는 시스템 타입(ALL/MAIN/SUB 등)을 기록합니다.
         transaction
             .execute(
                 r#"
@@ -47,18 +61,18 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                 "#,
                 &[
-                    &menu.id,
-                    &menu.parent_id,
-                    &menu.menu_type,
-                    &menu.path,
-                    &menu.names.ko,
-                    &menu.names.en,
-                    &menu.names.zh,
-                    &system_type_code,
-                    &store_code,
-                    &is_start_menu,
-                    &menu.order,
-                    &menu.status,
+                    &menu.id,               // $1: 메뉴 고유 ID
+                    &menu.parent_id,        // $2: 부모 메뉴 ID (대메뉴면 NULL)
+                    &menu.menu_type,        // $3: 메뉴 타입 (MAIN/SUB)
+                    &menu.path,             // $4: 연결 경로
+                    &menu.names.ko,         // $5: 한국어 명칭
+                    &menu.names.en,         // $6: 영어 명칭
+                    &menu.names.zh,         // $7: 중국어 명칭
+                    &system_type_code,      // $8: 권한 시스템 타입 코드
+                    &store_code,            // $9: 소속 점포 코드
+                    &is_start_menu,         // $10: 시작페이지 설정 여부
+                    &menu.order,            // $11: 정렬 순서
+                    &menu.status,           // $12: 사용 상태 ('사용중' 등)
                 ],
             )
             .await
@@ -77,7 +91,11 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
     })
 }
 
-// 메뉴 관리 화면에서 사용하는 메뉴 목록을 조회합니다.
+/**
+ * @function get_menu_management_data
+ * @description 직원 관리 화면에서 사용할 전체 직원 목록을 조회합니다.
+ * @param payload MenuQueryPayload: 조회 필터(시스템 타입 등) 및 점포 정보
+ */
 #[tauri::command]
 async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -87,7 +105,10 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
 
     let selected_system_type =
         normalize_optional_system_type_code(payload.system_type_code.as_deref());
+        
+    // [SQL] 시스템 타입 필터링에 의한 메뉴 데이터 조회
     let rows = if let Some(system_type_code) = selected_system_type {
+        // 'ALL' 타입이 선택된 경우 전역 메뉴와 현재 점포 메뉴를 모두 조회
         if system_type_code == DEFAULT_SYSTEM_TYPE_CODE {
             client
                 .query(
@@ -111,6 +132,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                 )
                 .await
         } else {
+            // 특정 시스템 타입(MAIN/SUB 등)이 선택된 경우 해당 타입 또는 공통(ALL)인 메뉴만 필터링
             client
                 .query(
                     r#"
@@ -135,6 +157,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
                 .await
         }
     } else {
+        // 필터링 조건이 없을 경우 점포 기준 전체 조회
         client
             .query(
                 r#"
@@ -159,22 +182,23 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
     }
     .map_err(|e| format!("menu data query failed: {e}"))?;
 
+    // 조회된 DB 로우를 DTO 리스트로 가공합니다.
     let menus = rows
         .into_iter()
         .map(|row| MenuDto {
-            id: row.get::<_, i64>(0),
-            parent_id: row.get::<_, Option<i64>>(1),
-            menu_type: row.get::<_, String>(2),
-            path: row.get::<_, String>(3),
-            names: MenuNamesPayload {
+            id: row.get::<_, i64>(0),                // 메뉴 고유 ID
+            parent_id: row.get::<_, Option<i64>>(1), // 부모 ID
+            menu_type: row.get::<_, String>(2),      // 타입 (MAIN/SUB)
+            path: row.get::<_, String>(3),           // 연결 경로
+            names: MenuNamesPayload {                // 다국어 명칭
                 ko: row.get::<_, String>(4),
                 en: row.get::<_, String>(5),
                 zh: row.get::<_, String>(6),
             },
-            system_type_code: row.get::<_, String>(7),
-            is_start_menu: row.get::<_, bool>(8),
-            order: row.get::<_, i32>(9),
-            status: row.get::<_, String>(10),
+            system_type_code: row.get::<_, String>(7), // 접근 권한 코드
+            is_start_menu: row.get::<_, bool>(8),      // 시작 메뉴 여부
+            order: row.get::<_, i32>(9),             // 정렬 순서
+            status: row.get::<_, String>(10),          // 현재 상태
         })
         .collect::<Vec<_>>();
 
@@ -277,6 +301,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
         Some(pid)
     };
 
+    // [SQL] 메뉴 정보를 삽입하거나 기존 정보를 업데이트(Upsert)합니다.
+    // - menu_id가 존재할 경우 최신 데이터로 덮어쓰고 updated_at을 기록합니다.
     client
         .execute(
             r#"
@@ -327,6 +353,8 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
         .await
         .map_err(|e| format!("menu upsert failed: {e}"))?;
 
+    // [SQL] 현재 메뉴가 '시작 메뉴'로 지정된 경우, 동일한 시스템 타입 코드 내의 다른 메뉴들의 시작 메뉴 설정을 해제합니다.
+    // 점포당/시스템타입당 단 하나의 시작 메뉴만 존재하도록 관리합니다.
     if is_start_menu {
         client
             .execute(
@@ -351,7 +379,11 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
     })
 }
 
-// 메뉴 ID 기준으로 메뉴를 삭제합니다.
+/**
+ * @function delete_menu_management
+ * @description 메뉴 ID와 점포 코드를 기준으로 특정 메뉴를 삭제합니다.
+ * @param payload DeleteMenuPayload: 삭제할 메뉴의 고유 ID 정보
+ */
 #[tauri::command]
 async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -362,6 +394,8 @@ async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationRe
         return Err("valid menu_id is required".to_string());
     }
 
+    // [SQL] 특정 메뉴 ID와 점포 코드를 삭제합니다. 
+    // 실제 운영 환경에서는 자식 메뉴가 존재하는 경우 삭제를 금지하거나 하위 메뉴를 함께 연쇄 삭제하는 등의 부가 로직이 필요할 수 있습니다.
     let affected = client
         .execute(
             "DELETE FROM menu_management WHERE menu_id = $1 AND store_code = $2",

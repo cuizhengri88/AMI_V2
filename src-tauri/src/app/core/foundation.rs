@@ -1,4 +1,7 @@
-// 공통 기반 코드: 타입 정의, 전역 상태, DB/스키마 보조 유틸을 포함합니다.
+/**
+ * @file foundation.rs
+ * @description 애플리케이션의 공용 기반 코드, 전역 상태 관리, 데이터베이스 연결 유틸리티 및 스키마 무결성 점검 로직을 포함하는 핵심 파일입니다.
+ */
 
 use chrono::{NaiveDate, NaiveTime, Utc};
 use rfd::FileDialog;
@@ -13,19 +16,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tokio_postgres::{Client, NoTls};
 
-// 앱 전반에서 재사용하는 기본 코드값/식별자입니다.
-const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";
-const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";
-const DEFAULT_STORE_CODE: &str = "HAIR_001";
-const STORE_CODE_GROUP_ID: &str = "STR_CD";
-const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다.";
-const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";
-const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v2";
-const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2";
-const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__";
-const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__";
+// 앱 전반에서 사용하는 기본 상수값 및 식별자 정의
+const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";                // 기본 시스템 타입 코드
+const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";           // 시스템 타입 공통코드 그룹 ID
+const DEFAULT_STORE_CODE: &str = "HAIR_001";                // 기본 매장 코드
+const STORE_CODE_GROUP_ID: &str = "STR_CD";                  // 매장 코드 공통코드 그룹 ID
+const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다."; // 보안 인증 거부 메시지
+const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";   // 로컬 캐시 저장 디렉토리명
+const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v2"; // 예약 마이그레이션 식별자
+const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2"; // 전체 무결성 검사 식별자
+const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__"; // 매출 쿠폰 사용 메모 접두사
+const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__"; // 매출 잔액 사용 메모 접두사
+
 #[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+const CREATE_NO_WINDOW: u32 = 0x08000000; // 윈도우에서 콘솔 창 없이 명령 실행하기 위한 플래그
 
 // 로컬 마이그레이션 점검 여부를 캐시하는 구조체입니다.
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -33,11 +37,12 @@ struct LocalMigrationCache {
     checked_keys: HashSet<String>,
 }
 
-static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new();
-static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);
-static HOST_NAME_CACHE: OnceLock<String> = OnceLock::new();
-static CPU_ID_CACHE: OnceLock<String> = OnceLock::new();
-static HWID_CACHE: OnceLock<String> = OnceLock::new();
+// 런타임에 결정되는 전역 상태 및 캐시 정보
+static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new(); // 로컬 마이그레이션 이력 캐시
+static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);               // DB 무결성 점검 모드 활성화 여부
+static HOST_NAME_CACHE: OnceLock<String> = OnceLock::new();                        // 호스트명 캐시
+static CPU_ID_CACHE: OnceLock<String> = OnceLock::new();                           // CPU ID 캐시
+static HWID_CACHE: OnceLock<String> = OnceLock::new();                              // 하드웨어 고유 ID (HWID) 캐시
 
 // 로컬 캐시 파일 경로를 OS별로 계산합니다.
 fn migration_cache_file_path() -> PathBuf {
@@ -970,6 +975,12 @@ fn get_safe_schema(schema: &str) -> Result<String, String> {
     Ok(trimmed.replace('\"', "\"\""))
 }
 
+/**
+ * @function connect_client
+ * @description 데이터베이스 연결 객체를 생성합니다.
+ * @param connection DbConnectionPayload: 호스트, 포트, 계정 정보 등 연결 명세
+ * @return Result<Client, String>: 성공 시 Postgres 클라이언트 객체 반환
+ */
 async fn connect_client(connection: &DbConnectionPayload) -> Result<Client, String> {
     let mut config = tokio_postgres::Config::new();
     config
@@ -993,6 +1004,12 @@ async fn connect_client(connection: &DbConnectionPayload) -> Result<Client, Stri
     Ok(client)
 }
 
+/**
+ * @function prepare_schema
+ * @description 지정된 스키마가 존재하지 않으면 생성하고, 현재 세션의 search_path를 해당 스키마로 변경합니다.
+ * @param client &Client: 활성화된 DB 클라이언트
+ * @param schema &str: 타겟 스키마명
+ */
 async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
     let safe_schema = get_safe_schema(schema)?;
     client
@@ -1007,6 +1024,10 @@ async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
     Ok(())
 }
 
+/**
+ * @function connect_with_schema
+ * @description DB 연결과 스키마 준비(Search Path 설정)를 한 번에 수행합니다.
+ */
 async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client, String> {
     let client = connect_client(connection).await?;
     prepare_schema(&client, &connection.schema).await?;
@@ -1014,6 +1035,10 @@ async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client,
 }
 
 // 입력값 표준화를 통해 도메인 코드/매장코드 검증을 단순화합니다.
+/**
+ * @function normalize_system_type_code
+ * @description 시스템 타입 코드를 대문자로 변환하고 비어있을 경우 기본값(ALL)으로 채워 반환합니다.
+ */
 fn normalize_system_type_code(value: Option<&str>) -> String {
     let normalized = value.unwrap_or("").trim().to_uppercase();
     if normalized.is_empty() {
@@ -1032,6 +1057,10 @@ fn normalize_optional_system_type_code(value: Option<&str>) -> Option<String> {
     }
 }
 
+/**
+ * @function normalize_store_code
+ * @description 매장 코드를 대문자로 변환하고 비어있을 경우 기본 매장 코드로 채워 반환합니다.
+ */
 fn normalize_store_code(value: Option<&str>) -> String {
     let normalized = value.unwrap_or("").trim().to_uppercase();
     if normalized.is_empty() {
@@ -1041,6 +1070,10 @@ fn normalize_store_code(value: Option<&str>) -> String {
     }
 }
 
+/**
+ * @function normalize_phone_digits
+ * @description 문자열에서 숫자만 추출하여 반환합니다. (전화번호 비교용 정규화)
+ */
 fn normalize_phone_digits(value: &str) -> String {
     value.chars().filter(|ch| ch.is_ascii_digit()).collect()
 }
@@ -1056,6 +1089,7 @@ async fn resolve_member_snapshot_by_identifier(
         return Ok(None);
     }
 
+    // 1단계: 입력값이 숫자로만 구성된 경우, 회원 고유 ID(user_id)로 직접 조회를 시도합니다.
     if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
         let member_by_id = client
             .query_opt(
@@ -1080,6 +1114,7 @@ async fn resolve_member_snapshot_by_identifier(
         }
     }
 
+    // 2단계: 입력값이 문자열인 경우, 이름 또는 전화번호(텍스트 일치)로 조회를 시도합니다.
     let member_by_phone_or_name = client
         .query_opt(
             r#"
@@ -1106,11 +1141,7 @@ async fn resolve_member_snapshot_by_identifier(
         )));
     }
 
-    let digits = normalize_phone_digits(trimmed);
-    if digits.len() < 7 {
-        return Ok(None);
-    }
-
+    // 3단계: 특수문자가 섞인 경우 숫자만 추출하여(정규화) 전화번호 패턴 매칭을 시도합니다.
     let member_by_phone_digits = client
         .query_opt(
             r#"
@@ -1160,6 +1191,10 @@ fn extract_non_empty_lines(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/**
+ * @function run_command_output
+ * @description 시스템 명령을 실행하고 그 결과를 문자열로 반환합니다. 윈도우 환경에서는 콘솔 창을 띄우지 않도록 설정합니다.
+ */
 fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
@@ -1178,6 +1213,10 @@ fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
     Some(stdout)
 }
 
+/**
+ * @function read_windows_machine_guid
+ * @description 윈도우 레지스트리(HKLM\SOFTWARE\Microsoft\Cryptography)에서 MachineGuid 값을 읽어옵니다.
+ */
 fn read_windows_machine_guid() -> Option<String> {
     if !cfg!(target_os = "windows") {
         return None;
@@ -1209,6 +1248,10 @@ fn read_windows_machine_guid() -> Option<String> {
     None
 }
 
+/**
+ * @function read_windows_wmic_value
+ * @description wmic 명령을 통해 특정 하드웨어 정보(CPU ID, UUID 등)의 속성값을 읽어옵니다.
+ */
 fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
     if !cfg!(target_os = "windows") {
         return None;
@@ -1227,6 +1270,10 @@ fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
     None
 }
 
+/**
+ * @function detect_host_name
+ * @description 환경 변수에서 컴퓨터 호스트명을 감지하여 정규화 후 반환합니다. 결과는 캐싱됩니다.
+ */
 fn detect_host_name() -> String {
     HOST_NAME_CACHE
         .get_or_init(|| {
@@ -1243,6 +1290,10 @@ fn detect_host_name() -> String {
         .clone()
 }
 
+/**
+ * @function detect_cpu_id
+ * @description wmic 또는 환경 변수에서 CPU 고유 식별자(ID)를 감지합니다. 결과는 캐싱됩니다.
+ */
 fn detect_cpu_id() -> String {
     CPU_ID_CACHE
         .get_or_init(|| {
@@ -1257,6 +1308,11 @@ fn detect_cpu_id() -> String {
         .clone()
 }
 
+/**
+ * @function detect_hwid
+ * @description 윈도우의 MachineGuid, 제품 UUID, CPU ID, 호스트명을 조합하여 장치 고유 식별자(HWID)를 생성합니다.
+ * @return String: 파이프(|)로 연결된 장치 정보 문자열
+ */
 fn detect_hwid() -> String {
     HWID_CACHE
         .get_or_init(|| {
@@ -1284,7 +1340,10 @@ fn detect_hwid() -> String {
         .clone()
 }
 
-// 매장 단말 바인딩 보안 테이블을 준비합니다.
+/**
+ * @function ensure_store_binding_table
+ * @description 점포 단말 바인딩 정보를 저장하는 보안 테이블(security_store_binding)을 생성하고 컬럼을 보정합니다.
+ */
 async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
@@ -1363,6 +1422,10 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
     Ok(())
 }
 
+/**
+ * @function ensure_cdkey_table
+ * @description 보안 인증에 사용되는 CDKEY 관리 테이블을 생성하고, 서버 가동 시 최소 20개의 여유 CDKEY가 상시 존재하도록 자동 생성 로직을 수행합니다.
+ */
 async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
@@ -1489,6 +1552,10 @@ async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
     Ok(())
 }
 
+/**
+ * @function validate_store_code_in_str_cd
+ * @description 입력된 점포 코드가 공통 코드(STR_CD) 시스템에 유효하게 등록되어 있는지 검증합니다.
+ */
 async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<(), String> {
     ensure_common_code_tables(client).await?;
 
@@ -1516,6 +1583,10 @@ async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<()
     Ok(())
 }
 
+/**
+ * @function validate_store_code
+ * @description 기본 점포 코드를 포함하여, 입력된 점포 코드가 전체 시스템 기준에 부합하는지 확인합니다.
+ */
 async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
     if code == DEFAULT_STORE_CODE {
         return Ok(());
@@ -1524,6 +1595,11 @@ async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> 
     validate_store_code_in_str_cd(client, code).await
 }
 
+/**
+ * @function assert_store_binding
+ * @description 현재 장치(HWID)가 해당 점포 코드로 정상적으로 바인딩(인증)되어 있는지 확인합니다.
+ * 인증되지 않거나 차단된 장치의 접근을 방지하는 보안 게이트웨이 역할을 합니다.
+ */
 async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), String> {
     ensure_store_binding_table(client).await?;
 
@@ -1596,6 +1672,10 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
     Ok(())
 }
 
+/**
+ * @function resolve_store_code
+ * @description 입력받은 점포 코드를 정규화하고, 시스템 유효성 검증 및 장치 바인딩 확인을 일괄 수행하여 신뢰할 수 있는 매장 코드를 반환합니다.
+ */
 async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<String, String> {
     let store_code = normalize_store_code(value);
     validate_store_code(client, &store_code).await?;
@@ -1603,6 +1683,10 @@ async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<Stri
     Ok(store_code)
 }
 
+/**
+ * @function validate_system_type_code
+ * @description 시스템 타입(기능 구분) 코드가 공통 코드 정의에 유효한지 검사합니다.
+ */
 async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), String> {
     if code == DEFAULT_SYSTEM_TYPE_CODE {
         return Ok(());
@@ -1634,7 +1718,10 @@ async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), St
     Ok(())
 }
 
-// 메뉴 관리 스키마를 준비합니다.
+/**
+ * @function ensure_menu_table
+ * @description 메뉴 관리 테이블(menu_management)의 존재 여부를 확인하고, 필요한 컬럼 및 인덱스를 자동 보정합니다.
+ */
 async fn ensure_menu_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -1658,10 +1745,11 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
                 menu_status VARCHAR(20) NOT NULL DEFAULT '사용중',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            // [SQL] 시스템 타입 코드 컬럼이 없는 경우 추가하고 기본값(ALL)으로 채웁니다.
             ALTER TABLE menu_management
-            ADD COLUMN IF NOT EXISTS system_type_code VARCHAR(100);
 
             UPDATE menu_management
                SET system_type_code = 'ALL'
@@ -1677,8 +1765,8 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_system_type
             ON menu_management (system_type_code);
 
+            // [SQL] 매장 코드 컬럼이 없는 경우 추가하고 기본 매장 코드로 초기화합니다.
             ALTER TABLE menu_management
-            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
 
             UPDATE menu_management
                SET store_code = 'HAIR_001'
@@ -1694,8 +1782,8 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_store
             ON menu_management (store_code);
 
+            // [SQL] 시작 메뉴 여부(is_start_menu) 컬럼을 추가하고 인덱스를 생성합니다.
             ALTER TABLE menu_management
-            ADD COLUMN IF NOT EXISTS is_start_menu BOOLEAN;
 
             UPDATE menu_management
                SET is_start_menu = FALSE
@@ -1710,6 +1798,7 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_store_system_start
             ON menu_management (store_code, system_type_code, is_start_menu);
 
+            // [SQL] 기존 유니크 제약을 제거하고, 매장별 경로(store_code, menu_path) 유니크 인덱스를 생성합니다.
             ALTER TABLE menu_management
             DROP CONSTRAINT IF EXISTS menu_management_menu_path_key;
 
@@ -1746,6 +1835,10 @@ async fn ensure_menu_start_menu_column(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("menu_management 시작메뉴 컬럼 보정 실패: {e}"))
 }
 
+/**
+ * @function get_next_menu_id
+ * @description 저장된 메뉴 중 최대 ID값을 조회하여 다음 등록할 메뉴의 ID를 결정합니다.
+ */
 async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
     let row = client
         .query_one(
@@ -1757,7 +1850,10 @@ async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
     Ok(row.get::<_, i64>(0))
 }
 
-// 공통코드 그룹/상세 스키마를 준비합니다.
+/**
+ * @function ensure_common_code_tables
+ * @description 공통 코드 그룹(common_code_group) 및 상세 코드(common_code_detail) 테이블을 생성합니다.
+ */
 async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -1795,6 +1891,10 @@ async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("공통코드 테이블 생성 실패: {e}"))
 }
 
+/**
+ * @function refresh_group_detail_count
+ * @description 특정 공통 코드 그룹에 속한 상세 코드의 개수를 집계하여 그룹 테이블의 detail_count 컬럼을 동기화합니다.
+ */
 async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(), String> {
     client
         .execute(
@@ -1816,7 +1916,10 @@ async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(
     Ok(())
 }
 
-// 역할 및 메뉴권한 스키마를 준비합니다.
+/**
+ * @function ensure_role_management_tables
+ * @description 역할(role_management) 및 역할별 메뉴 권한(role_menu_permission) 테이블을 생성하고 보정합니다.
+ */
 async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -1896,7 +1999,10 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("권한 테이블 생성 실패: {e}"))
 }
 
-// 직원 관리 스키마를 준비합니다.
+/**
+ * @function ensure_employee_management_table
+ * @description 직원 관리 테이블(employee_management)을 생성하고, 하위 호환성을 위해 컬럼 타입을 보정합니다.
+ */
 async fn ensure_employee_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -1953,7 +2059,10 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
         .map_err(|e| format!("직원 테이블 생성 실패: {e}"))
 }
 
-// 회원(고객) 관리 스키마를 준비합니다.
+/**
+ * @function ensure_user_management_table
+ * @description 회원(고객) 관리 테이블(user_management)을 생성하고 컬럼 누락 시 보정합니다.
+ */
 async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -2003,7 +2112,10 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("회원 테이블 생성 실패: {e}"))
 }
 
-// 시술 카탈로그 스키마를 준비합니다.
+/**
+ * @function ensure_service_catalog_management_table
+ * @description 시술 항목 카탈로그 테이블(service_catalog_management)을 생성하고 제약 조건 및 인덱스를 설정합니다.
+ */
 async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -2063,6 +2175,7 @@ async fn ensure_reservation_calendar_management_tables(
         return Ok(());
     }
 
+    // [Logic] 중복 마이그레이션을 방지하기 위해 로컬 캐시를 확인합니다.
     let migration_key = build_reservation_store_code_migration_key(connection);
     if is_local_migration_checked(&migration_key) {
         return Ok(());
@@ -2124,6 +2237,7 @@ async fn ensure_reservation_calendar_management_tables(
         .await
         .map_err(|e| format!("예약 캘린더 테이블 생성 실패: {e}"))?;
 
+    // [SQL] 기존 예약 데이터에 대해 매장 코드(store_code) 누락 시 마이그레이션을 수행합니다.
     let patch_sql = r#"
         ALTER TABLE reservation_calendar_management
         ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
@@ -2178,7 +2292,10 @@ async fn ensure_reservation_calendar_management_tables(
     Ok(())
 }
 
-// 회원 포인트/쿠폰 잔액 및 이력 스키마를 준비합니다.
+/**
+ * @function ensure_member_point_management_tables
+ * @description 회원 포인트 잔액, 쿠폰 잔액, 충전/사용 이력 테이블들을 일괄 생성 및 보정합니다.
+ */
 async fn ensure_member_point_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -2316,7 +2433,10 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
     Ok(())
 }
 
-// 포인트 충전 취소 상태 컬럼을 보강합니다.
+/**
+ * @function ensure_member_point_recharge_cancel_log_table
+ * @description 포인트 충전 이력에 취소 사유 및 상태값(status_code) 관련 컬럼을 추가합니다.
+ */
 async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
@@ -2349,7 +2469,10 @@ async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Resul
         .map_err(|e| format!("회원 포인트 충전 취소 상태 컬럼 준비 실패: {e}"))
 }
 
-// 정산(매출) 마스터/라인/결제 스키마를 준비합니다.
+/**
+ * @function ensure_sales_settlement_management_tables
+ * @description 시술 정산 마스터, 시술 상세 라인, 결제 상세 라인 테이블을 생성하고 연관 관계를 보정합니다.
+ */
 async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
