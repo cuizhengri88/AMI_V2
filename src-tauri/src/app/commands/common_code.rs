@@ -1,3 +1,6 @@
+use crate::app::core::foundation::*;
+use std::collections::HashMap;
+
 /**
  * @file common_code.rs
  * @description 애플리케이션 전반에서 사용되는 공통 코드(그룹/상세)의 CRUD 및 동기화를 담당하는 백엔드 명령 정의 파일입니다.
@@ -10,7 +13,7 @@
  * @return CommonCodeSyncResult: 동기화 결과 (성공 여부 및 처리 건수)
  */
 #[tauri::command]
-async fn sync_common_code_management_to_db(
+pub async fn sync_common_code_management_to_db(
     payload: SyncCommonCodePayload,
 ) -> Result<CommonCodeSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -120,7 +123,7 @@ async fn sync_common_code_management_to_db(
  * @return CommonCodeDataResult: 조회된 그룹 및 상세 리스트 결과
  */
 #[tauri::command]
-async fn get_common_code_management_data(
+pub async fn get_common_code_management_data(
     payload: CommonCodeQueryPayload,
 ) -> Result<CommonCodeDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -197,7 +200,7 @@ async fn get_common_code_management_data(
  * @param payload UpsertCommonCodeGroupPayload: 등록/수정할 그룹 정보
  */
 #[tauri::command]
-async fn upsert_common_code_group(
+pub async fn upsert_common_code_group(
     payload: UpsertCommonCodeGroupPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -251,7 +254,7 @@ async fn upsert_common_code_group(
  * @param payload DeleteCommonCodeGroupPayload: 삭제할 그룹 식별 정보
  */
 #[tauri::command]
-async fn delete_common_code_group(
+pub async fn delete_common_code_group(
     payload: DeleteCommonCodeGroupPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -283,7 +286,7 @@ async fn delete_common_code_group(
 
 // 공통코드 상세 항목을 생성하거나 수정합니다.
 #[tauri::command]
-async fn upsert_common_code_detail(
+pub async fn upsert_common_code_detail(
     payload: UpsertCommonCodeDetailPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -355,7 +358,7 @@ async fn upsert_common_code_detail(
  * @param payload DeleteCommonCodeDetailPayload: 그룹ID 및 상세코드 정보
  */
 #[tauri::command]
-async fn delete_common_code_detail(
+pub async fn delete_common_code_detail(
     payload: DeleteCommonCodeDetailPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

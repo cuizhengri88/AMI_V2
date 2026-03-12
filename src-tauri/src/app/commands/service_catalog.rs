@@ -1,3 +1,5 @@
+use crate::app::core::foundation::*;
+
 /**
  * @file service_catalog.rs
  * @description 매장에서 제공하는 시술 항목(항목명, 단가, 소요시간 등) 카탈로그를 관리하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +13,7 @@
  * @return ServiceCatalogDataResult: 시술 항목 리스트
  */
 #[tauri::command]
-async fn get_service_catalog_data(
+pub async fn get_service_catalog_data(
     payload: ServiceCatalogQueryPayload,
 ) -> Result<ServiceCatalogDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -20,7 +22,21 @@ async fn get_service_catalog_data(
 
     // [SQL] 시술 항목 테이블과 공통 코드(카테고리) 테이블을 LEFT JOIN 하여 조회합니다.
     // - T_CATEGORY 그룹 코드의 상세 명칭을 가져옵니다.
-    log_sql!(sql);
+    let sql = r#"
+        SELECT s.service_id,
+               s.category_code,
+               COALESCE(c.detail_name, s.category_code) AS category_name,
+               s.service_name,
+               s.unit_price,
+               s.duration_minutes,
+               s.use_yn,
+               s.note
+          FROM service_catalog_management s
+          LEFT JOIN common_code_detail c ON c.group_code_id = 'T_CATEGORY' AND c.detail_code = s.category_code
+         WHERE s.store_code = $1
+         ORDER BY s.category_code, s.service_name
+    "#;
+    log_sql_fn(sql, None);
     let rows = client
         .query(sql, &[&store_code])
         .await
@@ -53,12 +69,14 @@ async fn get_service_catalog_data(
  * @param payload UpsertServiceCatalogPayload: 저장할 시술 항목 명세
  */
 #[tauri::command]
-async fn upsert_service_catalog_item(
+pub async fn upsert_service_catalog_item(
     payload: UpsertServiceCatalogPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_service_catalog_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
+
+    let item = &payload.item;
 
     // 데이터 전처리 및 유효성 검사를 수행합니다.
     let category_code = item.category_code.trim().to_uppercase();
@@ -68,8 +86,9 @@ async fn upsert_service_catalog_item(
     let use_yn = item.use_yn.trim().to_uppercase();
     let note = item
         .note
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
+        .as_ref()
+        .map(|v: &String| v.trim().to_string())
+        .filter(|v: &String| !v.is_empty());
 
     if category_code.is_empty() || service_name.is_empty() {
         return Err("카테고리와 시술명은 필수입니다.".to_string());
@@ -133,17 +152,7 @@ async fn upsert_service_catalog_item(
                 note = EXCLUDED.note,
                 updated_at = NOW()
         "#;
-        log_sql!(
-            sql,
-            service_id,
-            &store_code,
-            &category_code,
-            &service_name,
-            unit_price,
-            duration_minutes,
-            &use_yn,
-            &note
-        );
+        log_sql_fn(sql, Some(format!("{:?}", (service_id, &store_code, &category_code, &service_name, unit_price, duration_minutes, &use_yn, &note))));
         client
             .execute(
                 sql,
@@ -173,16 +182,7 @@ async fn upsert_service_catalog_item(
                 note
             ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#;
-        log_sql!(
-            sql,
-            &store_code,
-            &category_code,
-            &service_name,
-            unit_price,
-            duration_minutes,
-            &use_yn,
-            &note
-        );
+        log_sql_fn(sql, Some(format!("{:?}", (&store_code, &category_code, &service_name, unit_price, duration_minutes, &use_yn, &note))));
         client
             .execute(
                 sql,
@@ -212,7 +212,7 @@ async fn upsert_service_catalog_item(
  * @param payload DeleteServiceCatalogPayload: 삭제할 시술 ID
  */
 #[tauri::command]
-async fn delete_service_catalog_item(
+pub async fn delete_service_catalog_item(
     payload: DeleteServiceCatalogPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -224,7 +224,7 @@ async fn delete_service_catalog_item(
     }
 
     let sql = "DELETE FROM service_catalog_management WHERE service_id = $1 AND store_code = $2";
-    log_sql!(sql, payload.service_id, &store_code);
+    log_sql_fn(sql, Some(format!("{:?}", (payload.service_id, &store_code))));
     let affected = client
         .execute(sql, &[&payload.service_id, &store_code])
         .await

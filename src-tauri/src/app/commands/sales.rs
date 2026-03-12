@@ -1,3 +1,6 @@
+use crate::app::core::foundation::*;
+use std::collections::{HashMap, HashSet};
+
 /**
  * @file sales.rs
  * @description 매장의 시술 정산(매출) 데이터를 관리하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +14,7 @@
  * @return SalesSettlementDataResult: 정산 마스터와 하위 라인들이 조립된 결과 리스트
  */
 #[tauri::command]
-async fn get_sales_settlement_data(
+pub async fn get_sales_settlement_data(
     payload: SalesSettlementQueryPayload,
 ) -> Result<SalesSettlementDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -183,7 +186,7 @@ fn is_sales_balance_payment_code(code: &str) -> bool {
  * @param tx: 데이터베이스 트랜잭션 세션
  * @param settlement_id: 대상 정산 PK
  */
-async fn restore_sales_settlement_balance_usage(
+pub async fn restore_sales_settlement_balance_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
     settlement_id: i64,
@@ -253,7 +256,7 @@ async fn restore_sales_settlement_balance_usage(
  * @function restore_sales_settlement_coupon_usage
  * @description 정산 취소나 수정 시, 기존에 사용되었던 회원의 서비스 쿠폰 잔여 횟수를 다시 복구합니다.
  */
-async fn restore_sales_settlement_coupon_usage(
+pub async fn restore_sales_settlement_coupon_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
     settlement_id: i64,
@@ -332,7 +335,7 @@ async fn restore_sales_settlement_coupon_usage(
  * @function apply_sales_settlement_coupon_usage
  * @description 정산 완료 시 결제 수단으로 사용된 쿠폰 정보를 회원의 쿠폰 잔액에서 차감하고 이력을 남깁니다.
  */
-async fn apply_sales_settlement_coupon_usage(
+pub async fn apply_sales_settlement_coupon_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
     settlement_id: i64,
@@ -401,7 +404,7 @@ async fn apply_sales_settlement_coupon_usage(
  * @function apply_sales_settlement_balance_usage
  * @description 정산 완료 시 예치금(포인트/멤버십)으로 결제된 금액을 회원의 포인트 잔액에서 차감하고 이력을 남깁니다.
  */
-async fn apply_sales_settlement_balance_usage(
+pub async fn apply_sales_settlement_balance_usage(
     tx: &tokio_postgres::Transaction<'_>,
     store_code: &str,
     settlement_id: i64,
@@ -464,7 +467,7 @@ async fn apply_sales_settlement_balance_usage(
 
 // 시술 정산 데이터를 생성/수정하고 포인트/쿠폰 사용 내역을 동기화합니다.
 #[tauri::command]
-async fn upsert_sales_settlement(
+pub async fn upsert_sales_settlement(
     payload: UpsertSalesSettlementPayload,
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -1056,7 +1059,7 @@ async fn upsert_sales_settlement(
  * @param payload CancelSalesSettlementPayload: 취소 대상 정산 ID 및 취소 사유
  */
 #[tauri::command]
-async fn cancel_sales_settlement(
+pub async fn cancel_sales_settlement(
     payload: CancelSalesSettlementPayload,
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -1214,7 +1217,7 @@ async fn cancel_sales_settlement(
  * @description 정산 데이터를 영구 삭제합니다. (주의: 연관된 라인 데이터들도 함께 삭제되어야 함)
  */
 #[tauri::command]
-async fn delete_sales_settlement(
+pub async fn delete_sales_settlement(
     payload: DeleteSalesSettlementPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

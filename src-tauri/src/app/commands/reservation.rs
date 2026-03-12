@@ -1,3 +1,7 @@
+use crate::app::core::foundation::*;
+use std::collections::{HashMap, HashSet};
+use chrono::{NaiveDate, NaiveTime};
+
 /**
  * @file reservation.rs
  * @description 매장의 예약 캘린더 데이터를 관리하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +15,7 @@
  * @return ReservationCalendarDataResult: 예약 정보 및 하위 시술 리스트가 결합된 결과
  */
 #[tauri::command]
-async fn get_reservation_calendar_data(
+pub async fn get_reservation_calendar_data(
     payload: ReservationCalendarQueryPayload,
 ) -> Result<ReservationCalendarDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -120,7 +124,7 @@ async fn get_reservation_calendar_data(
  * @param payload UpsertReservationCalendarPayload: 저장할 예약 데이터 정보
  */
 #[tauri::command]
-async fn upsert_reservation_calendar_item(
+pub async fn upsert_reservation_calendar_item(
     payload: UpsertReservationCalendarPayload,
 ) -> Result<ReservationMutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -447,7 +451,7 @@ async fn upsert_reservation_calendar_item(
  * @param payload DeleteReservationCalendarPayload: 삭제할 예약 정보 ID
  */
 #[tauri::command]
-async fn delete_reservation_calendar_item(
+pub async fn delete_reservation_calendar_item(
     payload: DeleteReservationCalendarPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

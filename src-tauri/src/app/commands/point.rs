@@ -1,3 +1,6 @@
+use crate::app::core::foundation::*;
+use std::collections::HashMap;
+
 /**
  * @file point.rs
  * @description 회원의 예치금(포인트) 및 서비스 쿠폰의 충전, 사용, 취소 및 이력 관리를 담당하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +14,7 @@
  * @return MemberPointDataResult: 회원별 잔액 리스트 및 통합 이력 리스트
  */
 #[tauri::command]
-async fn get_member_point_management_data(
+pub async fn get_member_point_management_data(
     payload: MemberPointQueryPayload,
 ) -> Result<MemberPointDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -229,7 +232,7 @@ async fn get_member_point_management_data(
  * @param payload RechargeMemberPointPayload: 충전 대상 회원, 유형, 금액/횟수, 결제 정보 등
  */
 #[tauri::command]
-async fn recharge_member_point(
+pub async fn recharge_member_point(
     payload: RechargeMemberPointPayload,
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -440,7 +443,7 @@ async fn recharge_member_point(
  * @param payload CancelMemberPointRechargePayload: 취소할 이력 ID 및 사유
  */
 #[tauri::command]
-async fn cancel_member_point_recharge(
+pub async fn cancel_member_point_recharge(
     payload: CancelMemberPointRechargePayload,
 ) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
@@ -597,7 +600,7 @@ async fn cancel_member_point_recharge(
  * @param payload UseMemberPointPayload: 사용 대상 회원, 유형, 차감 금액/횟수 등
  */
 #[tauri::command]
-async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResult, String> {
+pub async fn use_member_point(payload: UseMemberPointPayload) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_member_point_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;

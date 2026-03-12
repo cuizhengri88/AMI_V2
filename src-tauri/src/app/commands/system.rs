@@ -1,3 +1,9 @@
+use crate::app::core::foundation::*;
+use std::fs;
+use std::path::{Path, PathBuf};
+use chrono::Utc;
+use rfd::FileDialog;
+
 /**
  * @file system.rs
  * @description 데이터베이스 연결 점검, 데이터 백업/내보내기, DB 무결성 검사 및 장치 바인딩(보안 인증)을 담당하는 시스템 관리 백엔드 명령 정의 파일입니다.
@@ -8,7 +14,7 @@
  * @description 클라이언트가 제공한 설정으로 데이터베이스 연결 가능 여부를 테스트하고 서버 정보를 반환합니다.
  */
 #[tauri::command]
-async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnectionResult, String> {
+pub async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnectionResult, String> {
     let client = connect_with_schema(&payload).await?;
 
     let row = client
@@ -33,7 +39,7 @@ async fn test_db_connection(payload: DbConnectionPayload) -> Result<DbConnection
  * @param payload DatabaseBackupPayload: 백업 파일 경로 및 DB 정보
  */
 #[tauri::command]
-async fn backup_database_to_file(
+pub async fn backup_database_to_file(
     payload: DatabaseBackupPayload,
 ) -> Result<DatabaseBackupResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -177,7 +183,7 @@ fn sanitize_sub_directory(raw: &str) -> Option<PathBuf> {
  * @description 임의의 텍스트 콘텐츠를 사용자의 다운로드 폴더 또는 하위 디렉토리에 파일로 생성합니다.
  */
 #[tauri::command]
-async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFileResult, String> {
+pub async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFileResult, String> {
     let raw_file_name = payload.file_name.trim();
     if raw_file_name.is_empty() {
         return Err("저장할 파일명이 비어 있습니다.".to_string());
@@ -185,9 +191,9 @@ async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFi
 
     let file_name = Path::new(raw_file_name)
         .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+        .and_then(|value: &std::ffi::OsStr| value.to_str())
+        .map(|value: &str| value.trim().to_string())
+        .filter(|value: &String| !value.is_empty())
         .ok_or_else(|| "유효한 파일명이 아닙니다.".to_string())?;
 
     let mut initial_dir = resolve_downloads_dir();
@@ -241,7 +247,7 @@ async fn export_text_file(payload: ExportTextFilePayload) -> Result<ExportTextFi
  * @description 시스템 가동에 필요한 테이블, 컬럼, 인덱스 및 필수 기초 코드 데이터의 존재 여부를 검사하고 자동으로 보정합니다.
  */
 #[tauri::command]
-async fn run_db_integrity_check(
+pub async fn run_db_integrity_check(
     payload: DbIntegrityCheckPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -272,7 +278,7 @@ async fn run_db_integrity_check(
  * @description 현재 실행 중인 장치(HWID)가 특정 점포와 이미 바인딩(인증)되어 있는지 상태를 조회합니다.
  */
 #[tauri::command]
-async fn get_store_binding_status(
+pub async fn get_store_binding_status(
     payload: StoreBindingStatusPayload,
 ) -> Result<StoreBindingStatusResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -345,7 +351,7 @@ async fn get_store_binding_status(
  * @description 미등록 단말인 경우 CDKEY를 통해 점포 코드를 이 장치에 바인딩하고, 보안 인증 정보를 생성합니다.
  */
 #[tauri::command]
-async fn verify_or_register_store_binding(
+pub async fn verify_or_register_store_binding(
     payload: VerifyStoreBindingPayload,
 ) -> Result<VerifyStoreBindingResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;

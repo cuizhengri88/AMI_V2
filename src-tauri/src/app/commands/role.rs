@@ -1,3 +1,5 @@
+use crate::app::core::foundation::*;
+
 /**
  * @file role.rs
  * @description 사용자 역할(권한 그룹) 및 각 역할별 메뉴 접근 권한을 관리하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +13,7 @@
  * @return RoleDataResult: 역할 리스트 결과
  */
 #[tauri::command]
-async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataResult, String> {
+pub async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -55,7 +57,7 @@ async fn get_role_management_data(payload: RoleQueryPayload) -> Result<RoleDataR
  * @param payload UpsertRolePayload: 저장할 역할 데이터 정보
  */
 #[tauri::command]
-async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationResult, String> {
+pub async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -106,7 +108,7 @@ async fn upsert_role_management(payload: UpsertRolePayload) -> Result<MutationRe
  * @param payload DeleteRolePayload: 삭제할 역할 ID 정보
  */
 #[tauri::command]
-async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationResult, String> {
+pub async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_role_management_tables(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -141,7 +143,7 @@ async fn delete_role_management(payload: DeleteRolePayload) -> Result<MutationRe
  * @return RoleMenuPermissionDataResult: 메뉴별 상세 권한 설정 리스트
  */
 #[tauri::command]
-async fn get_role_menu_permissions(
+pub async fn get_role_menu_permissions(
     payload: RoleMenuPermissionQueryPayload,
 ) -> Result<RoleMenuPermissionDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -221,7 +223,7 @@ async fn get_role_menu_permissions(
  * @param payload UpsertRoleMenuPermissionPayload: 역할 ID, 메뉴 ID 및 세부 권한 정보
  */
 #[tauri::command]
-async fn upsert_role_menu_permission(
+pub async fn upsert_role_menu_permission(
     payload: UpsertRoleMenuPermissionPayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

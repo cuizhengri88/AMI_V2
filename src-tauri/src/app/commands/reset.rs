@@ -1,3 +1,5 @@
+use crate::app::core::foundation::*;
+
 /**
  * @file reset.rs
  * @description 매장의 도메인별 데이터를 초기화(삭제)하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +13,7 @@
  * @return MutationResult: 초기화 성공 여부 및 결과 메시지
  */
 #[tauri::command]
-async fn reset_salon_data(payload: ResetSalonDataPayload) -> Result<MutationResult, String> {
+pub async fn reset_salon_data(payload: ResetSalonDataPayload) -> Result<MutationResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_sales_settlement_management_tables(&client).await?;
     ensure_reservation_calendar_management_tables(&client, &payload.connection).await?;

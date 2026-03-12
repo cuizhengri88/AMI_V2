@@ -8,10 +8,10 @@ export type DbConnectionConfig = {
 };
 
 export const DB_CONNECTION: DbConnectionConfig = {
-  host: '103.127.242.233',
-  port: 5432,
-  database: 'postgres',
-  username: 'postgres',
-  password: '12qwaszx',
-  schema: 'czr_ami',
+  host: import.meta.env.VITE_DB_HOST || 'localhost',
+  port: parseInt(import.meta.env.VITE_DB_PORT || '5432'),
+  database: import.meta.env.VITE_DB_NAME || 'postgres',
+  username: import.meta.env.VITE_DB_USER || 'postgres',
+  password: import.meta.env.VITE_DB_PASSWORD || '',
+  schema: import.meta.env.VITE_DB_SCHEMA || 'public',
 };

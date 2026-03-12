@@ -2,18 +2,21 @@
 // - include!를 사용해 기존 대형 main.rs를 기능별 파일로 분리합니다.
 // - 각 파일은 동일 모듈 스코프에서 컴파일되므로 기존 함수/타입 의존을 안전하게 유지합니다.
 
-include!("core/foundation.rs");
-include!("commands/system.rs");
-include!("commands/menu.rs");
-include!("commands/common_code.rs");
-include!("commands/role.rs");
-include!("commands/employee.rs");
-include!("commands/service_catalog.rs");
-include!("commands/reservation.rs");
-include!("commands/user.rs");
-include!("commands/point.rs");
-include!("commands/sales.rs");
-include!("commands/reset.rs");
+pub mod core;
+pub mod commands;
+
+use crate::app::core::foundation::*;
+use crate::app::commands::system::*;
+use crate::app::commands::menu::*;
+use crate::app::commands::common_code::*;
+use crate::app::commands::role::*;
+use crate::app::commands::employee::*;
+use crate::app::commands::service_catalog::*;
+use crate::app::commands::reservation::*;
+use crate::app::commands::user::*;
+use crate::app::commands::point::*;
+use crate::app::commands::sales::*;
+use crate::app::commands::reset::*;
 
 // Tauri 앱을 실행하는 진입 함수입니다.
 // main.rs에서는 이 함수만 호출하도록 단순화해 유지보수성을 높입니다.

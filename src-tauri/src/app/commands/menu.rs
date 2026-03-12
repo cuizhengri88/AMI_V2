@@ -1,3 +1,5 @@
+use crate::app::core::foundation::*;
+
 /**
  * @file menu.rs
  * @description 애플리케이션의 메뉴 구조(대메뉴/소메뉴)를 관리하고, 점포 및 시스템 타입별로 동적 메뉴 정보를 제공하는 백엔드 명령 정의 파일입니다.
@@ -10,7 +12,7 @@
  * @return MenuSyncResult: 동기화 결과 (성공 여부 및 처리 건수)
  */
 #[tauri::command]
-async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSyncResult, String> {
+pub async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSyncResult, String> {
     let mut client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
     ensure_menu_start_menu_column(&client).await?;
@@ -97,7 +99,7 @@ async fn sync_menu_management_to_db(payload: SyncMenuPayload) -> Result<MenuSync
  * @param payload MenuQueryPayload: 조회 필터(시스템 타입 등) 및 점포 정보
  */
 #[tauri::command]
-async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataResult, String> {
+pub async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
     ensure_menu_start_menu_column(&client).await?;
@@ -211,7 +213,7 @@ async fn get_menu_management_data(payload: MenuQueryPayload) -> Result<MenuDataR
 
 // 메뉴를 신규 등록하거나 기존 데이터를 수정합니다.
 #[tauri::command]
-async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationResult, String> {
+pub async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
     ensure_menu_start_menu_column(&client).await?;
@@ -385,7 +387,7 @@ async fn upsert_menu_management(payload: UpsertMenuPayload) -> Result<MutationRe
  * @param payload DeleteMenuPayload: 삭제할 메뉴의 고유 ID 정보
  */
 #[tauri::command]
-async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationResult, String> {
+pub async fn delete_menu_management(payload: DeleteMenuPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_menu_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;

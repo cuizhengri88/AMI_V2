@@ -17,35 +17,35 @@ use std::sync::{Mutex, OnceLock};
 use tokio_postgres::{Client, NoTls};
 
 // 앱 전반에서 사용하는 기본 상수값 및 식별자 정의
-const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";                // 기본 시스템 타입 코드
-const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";           // 시스템 타입 공통코드 그룹 ID
-const DEFAULT_STORE_CODE: &str = "HAIR_001";                // 기본 매장 코드
-const STORE_CODE_GROUP_ID: &str = "STR_CD";                  // 매장 코드 공통코드 그룹 ID
-const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다."; // 보안 인증 거부 메시지
-const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";   // 로컬 캐시 저장 디렉토리명
-const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v2"; // 예약 마이그레이션 식별자
-const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2"; // 전체 무결성 검사 식별자
-const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__"; // 매출 쿠폰 사용 메모 접두사
-const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__"; // 매출 잔액 사용 메모 접두사
+pub const DEFAULT_SYSTEM_TYPE_CODE: &str = "ALL";                // 기본 시스템 타입 코드
+pub const SYSTEM_TYPE_GROUP_ID: &str = "SYSTEM_TYPE";           // 시스템 타입 공통코드 그룹 ID
+pub const DEFAULT_STORE_CODE: &str = "HAIR_001";                // 기본 매장 코드
+pub const STORE_CODE_GROUP_ID: &str = "STR_CD";                  // 매장 코드 공통코드 그룹 ID
+pub const STORE_BINDING_DENIED_MESSAGE: &str = "인증이 거부 되었습니다."; // 보안 인증 거부 메시지
+pub const LOCAL_MIGRATION_CACHE_DIR: &str = "GovDataManagement";   // 로컬 캐시 저장 디렉토리명
+pub const RESERVATION_STORE_CODE_MIGRATION_ID: &str = "reservation_store_code_migration_v2"; // 예약 마이그레이션 식별자
+pub const FULL_DB_INTEGRITY_CHECK_ID: &str = "full_db_integrity_check_v2"; // 전체 무결성 검사 식별자
+pub const SALES_COUPON_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_COUPON_USAGE__"; // 매출 쿠폰 사용 메모 접두사
+pub const SALES_BALANCE_USAGE_MEMO_PREFIX: &str = "__SETTLEMENT_BALANCE_USAGE__"; // 매출 잔액 사용 메모 접두사
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000; // 윈도우에서 콘솔 창 없이 명령 실행하기 위한 플래그
 
 // 로컬 마이그레이션 점검 여부를 캐시하는 구조체입니다.
 #[derive(Debug, Serialize, Deserialize, Default)]
-struct LocalMigrationCache {
-    checked_keys: HashSet<String>,
+pub struct LocalMigrationCache {
+    pub checked_keys: HashSet<String>,
 }
 
 // 런타임에 결정되는 전역 상태 및 캐시 정보
-static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new(); // 로컬 마이그레이션 이력 캐시
-static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);               // DB 무결성 점검 모드 활성화 여부
-static HOST_NAME_CACHE: OnceLock<String> = OnceLock::new();                        // 호스트명 캐시
-static CPU_ID_CACHE: OnceLock<String> = OnceLock::new();                           // CPU ID 캐시
-static HWID_CACHE: OnceLock<String> = OnceLock::new();                              // 하드웨어 고유 ID (HWID) 캐시
+pub static LOCAL_MIGRATION_CACHE: OnceLock<Mutex<LocalMigrationCache>> = OnceLock::new(); // 로컬 마이그레이션 이력 캐시
+pub static DB_INTEGRITY_CHECK_MODE: AtomicBool = AtomicBool::new(false);               // DB 무결성 점검 모드 활성화 여부
+pub static HOST_NAME_CACHE: OnceLock<String> = OnceLock::new();                        // 호스트명 캐시
+pub static CPU_ID_CACHE: OnceLock<String> = OnceLock::new();                           // CPU ID 캐시
+pub static HWID_CACHE: OnceLock<String> = OnceLock::new();                              // 하드웨어 고유 ID (HWID) 캐시
 
 // 로컬 캐시 파일 경로를 OS별로 계산합니다.
-fn migration_cache_file_path() -> PathBuf {
+pub fn migration_cache_file_path() -> PathBuf {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
         return PathBuf::from(local_app_data)
             .join(LOCAL_MIGRATION_CACHE_DIR)
@@ -61,7 +61,7 @@ fn migration_cache_file_path() -> PathBuf {
     PathBuf::from("migration_cache.json")
 }
 
-fn load_local_migration_cache() -> LocalMigrationCache {
+pub fn load_local_migration_cache() -> LocalMigrationCache {
     let cache_path = migration_cache_file_path();
     let Ok(raw_json) = fs::read_to_string(cache_path) else {
         return LocalMigrationCache::default();
@@ -70,11 +70,11 @@ fn load_local_migration_cache() -> LocalMigrationCache {
     serde_json::from_str::<LocalMigrationCache>(&raw_json).unwrap_or_default()
 }
 
-fn local_migration_cache() -> &'static Mutex<LocalMigrationCache> {
+pub fn local_migration_cache() -> &'static Mutex<LocalMigrationCache> {
     LOCAL_MIGRATION_CACHE.get_or_init(|| Mutex::new(load_local_migration_cache()))
 }
 
-fn persist_local_migration_cache(cache: &LocalMigrationCache) -> Result<(), String> {
+pub fn persist_local_migration_cache(cache: &LocalMigrationCache) -> Result<(), String> {
     let cache_path = migration_cache_file_path();
 
     if let Some(parent) = cache_path.parent() {
@@ -103,7 +103,7 @@ fn build_reservation_store_code_migration_key(connection: &DbConnectionPayload) 
     )
 }
 
-fn is_local_migration_checked(key: &str) -> bool {
+pub fn is_local_migration_checked(key: &str) -> bool {
     match local_migration_cache().lock() {
         Ok(cache) => cache.checked_keys.contains(key),
         Err(poisoned) => {
@@ -113,7 +113,7 @@ fn is_local_migration_checked(key: &str) -> bool {
     }
 }
 
-fn mark_local_migration_checked(key: &str) {
+pub fn mark_local_migration_checked(key: &str) {
     let mut cache = match local_migration_cache().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -128,7 +128,7 @@ fn mark_local_migration_checked(key: &str) {
     }
 }
 
-fn build_full_db_integrity_check_key(connection: &DbConnectionPayload) -> String {
+pub fn build_full_db_integrity_check_key(connection: &DbConnectionPayload) -> String {
     format!(
         "{}::{}::{}::{}::{}",
         FULL_DB_INTEGRITY_CHECK_ID,
@@ -139,12 +139,12 @@ fn build_full_db_integrity_check_key(connection: &DbConnectionPayload) -> String
     )
 }
 
-fn is_db_integrity_check_mode() -> bool {
+pub fn is_db_integrity_check_mode() -> bool {
     DB_INTEGRITY_CHECK_MODE.load(Ordering::SeqCst)
 }
 
 // 무결성 점검 모드를 함수 스코프에서 안전하게 on/off 하기 위한 가드입니다.
-struct DbIntegrityCheckGuard;
+pub struct DbIntegrityCheckGuard;
 
 impl Drop for DbIntegrityCheckGuard {
     fn drop(&mut self) {
@@ -152,782 +152,781 @@ impl Drop for DbIntegrityCheckGuard {
     }
 }
 
-fn enter_db_integrity_check_mode() -> DbIntegrityCheckGuard {
+pub fn enter_db_integrity_check_mode() -> DbIntegrityCheckGuard {
     DB_INTEGRITY_CHECK_MODE.store(true, Ordering::SeqCst);
     DbIntegrityCheckGuard
 }
 
-// SQL 로깅을 통일해서 출력하기 위한 헬퍼 매크로입니다.
-macro_rules! log_sql {
-    ($sql:expr) => {
-        println!("[SQL] {}", $sql);
-    };
-    ($sql:expr, $($param:expr),+) => {
-        println!("[SQL] {} | params: {}", $sql, format!("{:?}", ($($param),+)));
-    };
+// SQL 로깅을 통일해서 출력하기 위한 헬퍼 함수입니다.
+pub fn log_sql_fn(sql: &str, params: Option<String>) {
+    if let Some(p) = params {
+        println!("[SQL] {} | params: {}", sql, p);
+    } else {
+        println!("[SQL] {}", sql);
+    }
 }
 
 // 프론트에서 전달받는 공통 DB 연결 페이로드입니다.
 #[derive(Debug, Deserialize, Clone)]
-struct DbConnectionPayload {
-    host: String,
-    port: u16,
-    database: String,
-    username: String,
-    password: String,
-    schema: String,
+pub struct DbConnectionPayload {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+    pub schema: String,
 }
 
 #[derive(Debug, Serialize)]
-struct DbConnectionResult {
-    success: bool,
-    message: String,
-    current_schema: String,
-    server_version: String,
+pub struct DbConnectionResult {
+    pub success: bool,
+    pub message: String,
+    pub current_schema: String,
+    pub server_version: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct DbIntegrityCheckPayload {
-    connection: DbConnectionPayload,
+pub struct DbIntegrityCheckPayload {
+    pub connection: DbConnectionPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DatabaseBackupPayload {
-    connection: DbConnectionPayload,
-    target_path: String,
+pub struct DatabaseBackupPayload {
+    pub connection: DbConnectionPayload,
+    pub target_path: String,
 }
 
 #[derive(Debug, Serialize)]
-struct DatabaseBackupResult {
-    success: bool,
-    message: String,
-    output_path: String,
-    table_count: usize,
-    generated_at: String,
+pub struct DatabaseBackupResult {
+    pub success: bool,
+    pub message: String,
+    pub output_path: String,
+    pub table_count: usize,
+    pub generated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct ExportTextFilePayload {
-    file_name: String,
-    content: String,
-    sub_dir: Option<String>,
+pub struct ExportTextFilePayload {
+    pub file_name: String,
+    pub content: String,
+    pub sub_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct ExportTextFileResult {
-    success: bool,
-    cancelled: bool,
-    message: String,
-    output_path: Option<String>,
-    bytes: usize,
+pub struct ExportTextFileResult {
+    pub success: bool,
+    pub cancelled: bool,
+    pub message: String,
+    pub output_path: Option<String>,
+    pub bytes: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct MenuNamesPayload {
-    ko: String,
-    en: String,
-    zh: String,
+pub struct MenuNamesPayload {
+    pub ko: String,
+    pub en: String,
+    pub zh: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct MenuRowPayload {
-    id: i64,
-    parent_id: Option<i64>,
-    menu_type: String,
-    path: String,
-    system_type_code: Option<String>,
-    is_start_menu: Option<bool>,
-    order: i32,
-    status: String,
-    names: MenuNamesPayload,
+pub struct MenuRowPayload {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub menu_type: String,
+    pub path: String,
+    pub system_type_code: Option<String>,
+    pub is_start_menu: Option<bool>,
+    pub order: i32,
+    pub status: String,
+    pub names: MenuNamesPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct SyncMenuPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    menus: Vec<MenuRowPayload>,
+pub struct SyncMenuPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub menus: Vec<MenuRowPayload>,
 }
 
 #[derive(Debug, Serialize)]
-struct MenuSyncResult {
-    success: bool,
-    message: String,
-    inserted_count: usize,
+pub struct MenuSyncResult {
+    pub success: bool,
+    pub message: String,
+    pub inserted_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-struct MenuQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    system_type_code: Option<String>,
+pub struct MenuQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub system_type_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertMenuPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    menu: MenuRowPayload,
+pub struct UpsertMenuPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub menu: MenuRowPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteMenuPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    menu_id: i64,
+pub struct DeleteMenuPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub menu_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct MenuDto {
-    id: i64,
-    parent_id: Option<i64>,
-    menu_type: String,
-    path: String,
-    system_type_code: String,
-    is_start_menu: bool,
-    order: i32,
-    status: String,
-    names: MenuNamesPayload,
+pub struct MenuDto {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub menu_type: String,
+    pub path: String,
+    pub system_type_code: String,
+    pub is_start_menu: bool,
+    pub order: i32,
+    pub status: String,
+    pub names: MenuNamesPayload,
 }
 
 #[derive(Debug, Serialize)]
-struct MenuDataResult {
-    success: bool,
-    message: String,
-    menus: Vec<MenuDto>,
+pub struct MenuDataResult {
+    pub success: bool,
+    pub message: String,
+    pub menus: Vec<MenuDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CodeGroupPayload {
-    id: String,
-    name: String,
-    desc: String,
-    display_order: i32,
+pub struct CodeGroupPayload {
+    pub id: String,
+    pub name: String,
+    pub desc: String,
+    pub display_order: i32,
 }
 
 #[derive(Debug, Deserialize)]
-struct CodeDetailPayload {
-    group_id: String,
-    code: String,
-    name: String,
-    sort_order: i32,
-    use_yn: String,
+pub struct CodeDetailPayload {
+    pub group_id: String,
+    pub code: String,
+    pub name: String,
+    pub sort_order: i32,
+    pub use_yn: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct SyncCommonCodePayload {
-    connection: DbConnectionPayload,
-    groups: Vec<CodeGroupPayload>,
-    details: Vec<CodeDetailPayload>,
+pub struct SyncCommonCodePayload {
+    pub connection: DbConnectionPayload,
+    pub groups: Vec<CodeGroupPayload>,
+    pub details: Vec<CodeDetailPayload>,
 }
 
 #[derive(Debug, Serialize)]
-struct CommonCodeSyncResult {
-    success: bool,
-    message: String,
-    group_count: usize,
-    detail_count: usize,
+pub struct CommonCodeSyncResult {
+    pub success: bool,
+    pub message: String,
+    pub group_count: usize,
+    pub detail_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-struct CommonCodeQueryPayload {
-    connection: DbConnectionPayload,
+pub struct CommonCodeQueryPayload {
+    pub connection: DbConnectionPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertCommonCodeGroupPayload {
-    connection: DbConnectionPayload,
-    group: CodeGroupPayload,
+pub struct UpsertCommonCodeGroupPayload {
+    pub connection: DbConnectionPayload,
+    pub group: CodeGroupPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteCommonCodeGroupPayload {
-    connection: DbConnectionPayload,
-    group_id: String,
+pub struct DeleteCommonCodeGroupPayload {
+    pub connection: DbConnectionPayload,
+    pub group_id: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertCommonCodeDetailPayload {
-    connection: DbConnectionPayload,
-    detail: CodeDetailPayload,
+pub struct UpsertCommonCodeDetailPayload {
+    pub connection: DbConnectionPayload,
+    pub detail: CodeDetailPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteCommonCodeDetailPayload {
-    connection: DbConnectionPayload,
-    group_id: String,
-    code: String,
+pub struct DeleteCommonCodeDetailPayload {
+    pub connection: DbConnectionPayload,
+    pub group_id: String,
+    pub code: String,
 }
 
 #[derive(Debug, Serialize)]
-struct MutationResult {
-    success: bool,
-    message: String,
+pub struct MutationResult {
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize)]
-struct ReservationMutationResult {
-    success: bool,
-    message: String,
-    reservation_id: i64,
+pub struct ReservationMutationResult {
+    pub success: bool,
+    pub message: String,
+    pub reservation_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct CommonCodeGroupDto {
-    id: String,
-    name: String,
-    desc: String,
-    count: i32,
-    display_order: i32,
+pub struct CommonCodeGroupDto {
+    pub id: String,
+    pub name: String,
+    pub desc: String,
+    pub count: i32,
+    pub display_order: i32,
 }
 
 #[derive(Debug, Serialize)]
-struct CommonCodeDetailDto {
-    group: String,
-    code: String,
-    name: String,
-    order: i32,
-    use_yn: String,
+pub struct CommonCodeDetailDto {
+    pub group: String,
+    pub code: String,
+    pub name: String,
+    pub order: i32,
+    pub use_yn: String,
 }
 
 #[derive(Debug, Serialize)]
-struct CommonCodeDataResult {
-    success: bool,
-    message: String,
-    groups: Vec<CommonCodeGroupDto>,
-    details: Vec<CommonCodeDetailDto>,
+pub struct CommonCodeDataResult {
+    pub success: bool,
+    pub message: String,
+    pub groups: Vec<CommonCodeGroupDto>,
+    pub details: Vec<CommonCodeDetailDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct StoreBindingStatusPayload {
-    connection: DbConnectionPayload,
+pub struct StoreBindingStatusPayload {
+    pub connection: DbConnectionPayload,
 }
 
 #[derive(Debug, Serialize)]
-struct StoreBindingStatusResult {
-    success: bool,
-    message: String,
-    hwid: String,
-    cpu_id: String,
-    bound_store_code: Option<String>,
-    registered_at: Option<String>,
+pub struct StoreBindingStatusResult {
+    pub success: bool,
+    pub message: String,
+    pub hwid: String,
+    pub cpu_id: String,
+    pub bound_store_code: Option<String>,
+    pub registered_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct VerifyStoreBindingPayload {
-    connection: DbConnectionPayload,
-    store_code: String,
-    cdkey: String,
+pub struct VerifyStoreBindingPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: String,
+    pub cdkey: String,
 }
 
 #[derive(Debug, Serialize)]
-struct VerifyStoreBindingResult {
-    success: bool,
-    message: String,
-    store_code: String,
-    hwid: String,
-    cpu_id: String,
-    registered_at: String,
-    is_new_registration: bool,
+pub struct VerifyStoreBindingResult {
+    pub success: bool,
+    pub message: String,
+    pub store_code: String,
+    pub hwid: String,
+    pub cpu_id: String,
+    pub registered_at: String,
+    pub is_new_registration: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct RoleQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct RoleQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RoleMenuPermissionQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    role_id: String,
+pub struct RoleMenuPermissionQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub role_id: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct RolePayload {
-    role_id: String,
-    role_name: String,
-    role_desc: String,
-    user_count: i32,
+pub struct RolePayload {
+    pub role_id: String,
+    pub role_name: String,
+    pub role_desc: String,
+    pub user_count: i32,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertRolePayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    role: RolePayload,
+pub struct UpsertRolePayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub role: RolePayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteRolePayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    role_id: String,
+pub struct DeleteRolePayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub role_id: String,
 }
 
 #[derive(Debug, Serialize)]
-struct RoleDto {
-    role_id: String,
-    role_name: String,
-    role_desc: String,
-    user_count: i32,
+pub struct RoleDto {
+    pub role_id: String,
+    pub role_name: String,
+    pub role_desc: String,
+    pub user_count: i32,
 }
 
 #[derive(Debug, Serialize)]
-struct RoleDataResult {
-    success: bool,
-    message: String,
-    roles: Vec<RoleDto>,
+pub struct RoleDataResult {
+    pub success: bool,
+    pub message: String,
+    pub roles: Vec<RoleDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RoleMenuPermissionPayload {
-    role_id: String,
-    menu_id: i64,
-    can_read: bool,
-    can_write: bool,
-    can_delete: bool,
+pub struct RoleMenuPermissionPayload {
+    pub role_id: String,
+    pub menu_id: i64,
+    pub can_read: bool,
+    pub can_write: bool,
+    pub can_delete: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertRoleMenuPermissionPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    permission: RoleMenuPermissionPayload,
+pub struct UpsertRoleMenuPermissionPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub permission: RoleMenuPermissionPayload,
 }
 
 #[derive(Debug, Serialize)]
-struct RoleMenuPermissionDto {
-    id: i64,
-    role_id: String,
-    menu_id: i64,
-    menu_name_ko: String,
-    menu_name_en: String,
-    menu_name_zh: String,
-    can_read: bool,
-    can_write: bool,
-    can_delete: bool,
+pub struct RoleMenuPermissionDto {
+    pub id: i64,
+    pub role_id: String,
+    pub menu_id: i64,
+    pub menu_name_ko: String,
+    pub menu_name_en: String,
+    pub menu_name_zh: String,
+    pub can_read: bool,
+    pub can_write: bool,
+    pub can_delete: bool,
 }
 
 #[derive(Debug, Serialize)]
-struct RoleMenuPermissionDataResult {
-    success: bool,
-    message: String,
-    permissions: Vec<RoleMenuPermissionDto>,
+pub struct RoleMenuPermissionDataResult {
+    pub success: bool,
+    pub message: String,
+    pub permissions: Vec<RoleMenuPermissionDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct EmployeePayload {
-    employee_id: Option<i64>,
-    employee_name: String,
-    employee_code: String,
-    role_id: Option<String>,
-    email: Option<String>,
-    gender: Option<String>,
-    phone: Option<String>,
-    hire_date: Option<String>,
-    status: Option<String>,
-    remarks: Option<String>,
+pub struct EmployeePayload {
+    pub employee_id: Option<i64>,
+    pub employee_name: String,
+    pub employee_code: String,
+    pub role_id: Option<String>,
+    pub email: Option<String>,
+    pub gender: Option<String>,
+    pub phone: Option<String>,
+    pub hire_date: Option<String>,
+    pub status: Option<String>,
+    pub remarks: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct EmployeeQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct EmployeeQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertEmployeePayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    employee: EmployeePayload,
+pub struct UpsertEmployeePayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub employee: EmployeePayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteEmployeePayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    employee_id: i64,
+pub struct DeleteEmployeePayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub employee_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct EmployeeDto {
-    employee_id: i64,
-    employee_name: String,
-    employee_code: String,
-    role_id: Option<String>,
-    role_name: Option<String>,
-    email: Option<String>,
-    gender: Option<String>,
-    phone: Option<String>,
-    hire_date: Option<String>,
-    status: Option<String>,
-    remarks: Option<String>,
+pub struct EmployeeDto {
+    pub employee_id: i64,
+    pub employee_name: String,
+    pub employee_code: String,
+    pub role_id: Option<String>,
+    pub role_name: Option<String>,
+    pub email: Option<String>,
+    pub gender: Option<String>,
+    pub phone: Option<String>,
+    pub hire_date: Option<String>,
+    pub status: Option<String>,
+    pub remarks: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct EmployeeDataResult {
-    success: bool,
-    message: String,
-    employees: Vec<EmployeeDto>,
+pub struct EmployeeDataResult {
+    pub success: bool,
+    pub message: String,
+    pub employees: Vec<EmployeeDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UserPayload {
-    user_id: Option<i64>,
-    name: String,
-    email: Option<String>,
-    gender: Option<String>,
-    phone: Option<String>,
-    address: Option<String>,
-    remarks: Option<String>,
+pub struct UserPayload {
+    pub user_id: Option<i64>,
+    pub name: String,
+    pub email: Option<String>,
+    pub gender: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    pub remarks: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UserQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct UserQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertUserPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    user: UserPayload,
+pub struct UpsertUserPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub user: UserPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteUserPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    user_id: i64,
+pub struct DeleteUserPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub user_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct UserDto {
-    user_id: i64,
-    name: String,
-    email: Option<String>,
-    gender: Option<String>,
-    phone: Option<String>,
-    address: Option<String>,
-    remarks: Option<String>,
+pub struct UserDto {
+    pub user_id: i64,
+    pub name: String,
+    pub email: Option<String>,
+    pub gender: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    pub remarks: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct UserDataResult {
-    success: bool,
-    message: String,
-    users: Vec<UserDto>,
+pub struct UserDataResult {
+    pub success: bool,
+    pub message: String,
+    pub users: Vec<UserDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ServiceCatalogItemPayload {
-    service_id: Option<i64>,
-    category_code: String,
-    service_name: String,
-    unit_price: i64,
-    duration_minutes: i32,
-    use_yn: String,
-    note: Option<String>,
+pub struct ServiceCatalogItemPayload {
+    pub service_id: Option<i64>,
+    pub category_code: String,
+    pub service_name: String,
+    pub unit_price: i64,
+    pub duration_minutes: i32,
+    pub use_yn: String,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ServiceCatalogQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct ServiceCatalogQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertServiceCatalogPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    item: ServiceCatalogItemPayload,
+pub struct UpsertServiceCatalogPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub item: ServiceCatalogItemPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteServiceCatalogPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    service_id: i64,
+pub struct DeleteServiceCatalogPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub service_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct ServiceCatalogItemDto {
-    service_id: i64,
-    category_code: String,
-    category_name: String,
-    service_name: String,
-    unit_price: i64,
-    duration_minutes: i32,
-    use_yn: String,
-    note: Option<String>,
+pub struct ServiceCatalogItemDto {
+    pub service_id: i64,
+    pub category_code: String,
+    pub category_name: String,
+    pub service_name: String,
+    pub unit_price: i64,
+    pub duration_minutes: i32,
+    pub use_yn: String,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct ServiceCatalogDataResult {
-    success: bool,
-    message: String,
-    items: Vec<ServiceCatalogItemDto>,
+pub struct ServiceCatalogDataResult {
+    pub success: bool,
+    pub message: String,
+    pub items: Vec<ServiceCatalogItemDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ReservationCalendarItemPayload {
-    reservation_id: Option<i64>,
-    reservation_date: String,
-    start_time: String,
-    customer_name: String,
-    customer_id: Option<i64>,
-    customer_phone: Option<String>,
-    gender: Option<String>,
-    designer_name: String,
-    status: String,
-    note: Option<String>,
-    service_ids: Vec<i64>,
+pub struct ReservationCalendarItemPayload {
+    pub reservation_id: Option<i64>,
+    pub reservation_date: String,
+    pub start_time: String,
+    pub customer_name: String,
+    pub customer_id: Option<i64>,
+    pub customer_phone: Option<String>,
+    pub gender: Option<String>,
+    pub designer_name: String,
+    pub status: String,
+    pub note: Option<String>,
+    pub service_ids: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ReservationCalendarQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct ReservationCalendarQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertReservationCalendarPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    item: ReservationCalendarItemPayload,
+pub struct UpsertReservationCalendarPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub item: ReservationCalendarItemPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteReservationCalendarPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    reservation_id: i64,
+pub struct DeleteReservationCalendarPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub reservation_id: i64,
 }
 
 #[derive(Debug, Serialize)]
-struct ReservationCalendarServiceDto {
-    line_id: i64,
-    service_id: i64,
-    category_code: String,
-    category_name: String,
-    service_name: String,
-    unit_price: i64,
-    duration_minutes: i32,
+pub struct ReservationCalendarServiceDto {
+    pub line_id: i64,
+    pub service_id: i64,
+    pub category_code: String,
+    pub category_name: String,
+    pub service_name: String,
+    pub unit_price: i64,
+    pub duration_minutes: i32,
 }
 
 #[derive(Debug, Serialize)]
-struct ReservationCalendarDto {
-    reservation_id: i64,
-    reservation_date: String,
-    start_time: String,
-    customer_name: String,
-    customer_id: Option<i64>,
-    customer_phone: Option<String>,
-    gender: Option<String>,
-    designer_name: String,
-    status: String,
-    note: Option<String>,
-    services: Vec<ReservationCalendarServiceDto>,
+pub struct ReservationCalendarDto {
+    pub reservation_id: i64,
+    pub reservation_date: String,
+    pub start_time: String,
+    pub customer_name: String,
+    pub customer_id: Option<i64>,
+    pub customer_phone: Option<String>,
+    pub gender: Option<String>,
+    pub designer_name: String,
+    pub status: String,
+    pub note: Option<String>,
+    pub services: Vec<ReservationCalendarServiceDto>,
 }
 
 #[derive(Debug, Serialize)]
-struct ReservationCalendarDataResult {
-    success: bool,
-    message: String,
-    reservations: Vec<ReservationCalendarDto>,
+pub struct ReservationCalendarDataResult {
+    pub success: bool,
+    pub message: String,
+    pub reservations: Vec<ReservationCalendarDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct MemberPointQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    include_histories: Option<bool>,
+pub struct MemberPointQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub include_histories: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
-struct MemberPointRechargePayload {
-    user_id: i64,
-    recharge_type: String,
-    amount: Option<i64>,
-    received_amount: Option<i64>,
-    service_id: Option<i64>,
-    coupon_count: Option<i32>,
-    payment_method_code: String,
-    memo: Option<String>,
+pub struct MemberPointRechargePayload {
+    pub user_id: i64,
+    pub recharge_type: String,
+    pub amount: Option<i64>,
+    pub received_amount: Option<i64>,
+    pub service_id: Option<i64>,
+    pub coupon_count: Option<i32>,
+    pub payment_method_code: String,
+    pub memo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RechargeMemberPointPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    recharge: MemberPointRechargePayload,
+pub struct RechargeMemberPointPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub recharge: MemberPointRechargePayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct MemberPointUsePayload {
-    user_id: i64,
-    use_type: String,
-    amount: Option<i64>,
-    service_id: Option<i64>,
-    coupon_count: Option<i32>,
-    memo: Option<String>,
+pub struct MemberPointUsePayload {
+    pub user_id: i64,
+    pub use_type: String,
+    pub amount: Option<i64>,
+    pub service_id: Option<i64>,
+    pub coupon_count: Option<i32>,
+    pub memo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UseMemberPointPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    usage: MemberPointUsePayload,
+pub struct UseMemberPointPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub usage: MemberPointUsePayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct CancelMemberPointRechargePayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    history_id: i64,
-    cancel_reason: String,
+pub struct CancelMemberPointRechargePayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub history_id: i64,
+    pub cancel_reason: String,
 }
 
 #[derive(Debug, Serialize)]
-struct MemberPointCouponDto {
-    service_id: i64,
-    service_name: String,
-    count: i32,
+pub struct MemberPointCouponDto {
+    pub service_id: i64,
+    pub service_name: String,
+    pub count: i32,
 }
 
 #[derive(Debug, Serialize)]
-struct MemberPointMemberDto {
-    user_id: i64,
-    user_name: String,
-    phone: Option<String>,
-    point_balance: i64,
-    coupons: Vec<MemberPointCouponDto>,
+pub struct MemberPointMemberDto {
+    pub user_id: i64,
+    pub user_name: String,
+    pub phone: Option<String>,
+    pub point_balance: i64,
+    pub coupons: Vec<MemberPointCouponDto>,
 }
 
 #[derive(Debug, Serialize)]
-struct MemberPointHistoryDto {
-    id: i64,
-    action_type: String,
-    user_id: i64,
-    user_name: String,
-    user_phone: Option<String>,
-    recharge_type: String,
-    amount: Option<i64>,
-    received_amount: Option<i64>,
-    service_id: Option<i64>,
-    service_name: Option<String>,
-    coupon_count: Option<i32>,
-    payment_method_code: String,
-    payment_method_name: String,
-    memo: String,
-    created_at: String,
-    is_cancelled: bool,
-    cancel_reason: Option<String>,
-    cancelled_at: Option<String>,
+pub struct MemberPointHistoryDto {
+    pub id: i64,
+    pub action_type: String,
+    pub user_id: i64,
+    pub user_name: String,
+    pub user_phone: Option<String>,
+    pub recharge_type: String,
+    pub amount: Option<i64>,
+    pub received_amount: Option<i64>,
+    pub service_id: Option<i64>,
+    pub service_name: Option<String>,
+    pub coupon_count: Option<i32>,
+    pub payment_method_code: String,
+    pub payment_method_name: String,
+    pub memo: String,
+    pub created_at: String,
+    pub is_cancelled: bool,
+    pub cancel_reason: Option<String>,
+    pub cancelled_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct MemberPointDataResult {
-    success: bool,
-    message: String,
-    members: Vec<MemberPointMemberDto>,
-    histories: Vec<MemberPointHistoryDto>,
+pub struct MemberPointDataResult {
+    pub success: bool,
+    pub message: String,
+    pub members: Vec<MemberPointMemberDto>,
+    pub histories: Vec<MemberPointHistoryDto>,
 }
 
 #[derive(Debug, Deserialize)]
-struct SalesSettlementQueryPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
+pub struct SalesSettlementQueryPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct SalesSettlementPaymentPayload {
-    payment_method_code: String,
-    amount: i64,
-    coupon_service_id: Option<i64>,
+pub struct SalesSettlementPaymentPayload {
+    pub payment_method_code: String,
+    pub amount: i64,
+    pub coupon_service_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
-struct SalesSettlementPayload {
-    settlement_id: Option<i64>,
-    member_user_id: Option<String>,
-    manager_employee_id: i64,
-    service_ids: Vec<i64>,
-    payments: Vec<SalesSettlementPaymentPayload>,
-    status: String,
-    reservation_ref: Option<String>,
-    guest_customer_name: Option<String>,
-    guest_customer_phone: Option<String>,
+pub struct SalesSettlementPayload {
+    pub settlement_id: Option<i64>,
+    pub member_user_id: Option<String>,
+    pub manager_employee_id: i64,
+    pub service_ids: Vec<i64>,
+    pub payments: Vec<SalesSettlementPaymentPayload>,
+    pub status: String,
+    pub reservation_ref: Option<String>,
+    pub guest_customer_name: Option<String>,
+    pub guest_customer_phone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertSalesSettlementPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    settlement: SalesSettlementPayload,
+pub struct UpsertSalesSettlementPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub settlement: SalesSettlementPayload,
 }
 
 #[derive(Debug, Deserialize)]
-struct DeleteSalesSettlementPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    settlement_id: i64,
+pub struct DeleteSalesSettlementPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub settlement_id: i64,
 }
 
 #[derive(Debug, Deserialize)]
-struct ResetSalonDataPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    target: String,
+pub struct ResetSalonDataPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub target: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct CancelSalesSettlementPayload {
-    connection: DbConnectionPayload,
-    store_code: Option<String>,
-    settlement_id: i64,
-    cancel_type: String,
-    cancel_reason: String,
+pub struct CancelSalesSettlementPayload {
+    pub connection: DbConnectionPayload,
+    pub store_code: Option<String>,
+    pub settlement_id: i64,
+    pub cancel_type: String,
+    pub cancel_reason: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
-struct SalesSettlementPaymentDto {
-    payment_method_code: String,
-    amount: i64,
-    coupon_service_id: Option<i64>,
+pub struct SalesSettlementPaymentDto {
+    pub payment_method_code: String,
+    pub amount: i64,
+    pub coupon_service_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
-struct SalesSettlementDto {
-    settlement_id: i64,
-    settlement_datetime: String,
-    member_user_id: Option<String>,
-    manager_employee_id: i64,
-    service_ids: Vec<i64>,
-    total_amount: i64,
-    total_time_minutes: i32,
-    payments: Vec<SalesSettlementPaymentDto>,
-    status: String,
-    reservation_ref: Option<String>,
-    guest_customer_name: Option<String>,
-    guest_customer_phone: Option<String>,
-    cancel_type: Option<String>,
-    cancel_reason: Option<String>,
-    cancelled_at: Option<String>,
+pub struct SalesSettlementDto {
+    pub settlement_id: i64,
+    pub settlement_datetime: String,
+    pub member_user_id: Option<String>,
+    pub manager_employee_id: i64,
+    pub service_ids: Vec<i64>,
+    pub total_amount: i64,
+    pub total_time_minutes: i32,
+    pub payments: Vec<SalesSettlementPaymentDto>,
+    pub status: String,
+    pub reservation_ref: Option<String>,
+    pub guest_customer_name: Option<String>,
+    pub guest_customer_phone: Option<String>,
+    pub cancel_type: Option<String>,
+    pub cancel_reason: Option<String>,
+    pub cancelled_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct SalesSettlementDataResult {
-    success: bool,
-    message: String,
-    settlements: Vec<SalesSettlementDto>,
+pub struct SalesSettlementDataResult {
+    pub success: bool,
+    pub message: String,
+    pub settlements: Vec<SalesSettlementDto>,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum ResetSalonDataTarget {
+pub enum ResetSalonDataTarget {
     Sales,
     Reservation,
     ServiceCatalog,
@@ -938,7 +937,7 @@ enum ResetSalonDataTarget {
 }
 
 impl ResetSalonDataTarget {
-    fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_uppercase().as_str() {
             "SALES" | "SALES_DATA" => Ok(Self::Sales),
             "RESERVATION" | "RESERVATION_DATA" => Ok(Self::Reservation),
@@ -953,7 +952,7 @@ impl ResetSalonDataTarget {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Sales => "매출데이터",
             Self::Reservation => "예약데이터",
@@ -967,7 +966,7 @@ impl ResetSalonDataTarget {
 }
 
 // SQL 식별자 주입을 막기 위해 스키마명을 이스케이프합니다.
-fn get_safe_schema(schema: &str) -> Result<String, String> {
+pub fn get_safe_schema(schema: &str) -> Result<String, String> {
     let trimmed = schema.trim();
     if trimmed.is_empty() {
         return Err("스키마 값이 비어 있습니다.".to_string());
@@ -1010,7 +1009,7 @@ async fn connect_client(connection: &DbConnectionPayload) -> Result<Client, Stri
  * @param client &Client: 활성화된 DB 클라이언트
  * @param schema &str: 타겟 스키마명
  */
-async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
+pub async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
     let safe_schema = get_safe_schema(schema)?;
     client
         .batch_execute(&format!(
@@ -1028,7 +1027,7 @@ async fn prepare_schema(client: &Client, schema: &str) -> Result<(), String> {
  * @function connect_with_schema
  * @description DB 연결과 스키마 준비(Search Path 설정)를 한 번에 수행합니다.
  */
-async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client, String> {
+pub async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client, String> {
     let client = connect_client(connection).await?;
     prepare_schema(&client, &connection.schema).await?;
     Ok(client)
@@ -1039,7 +1038,7 @@ async fn connect_with_schema(connection: &DbConnectionPayload) -> Result<Client,
  * @function normalize_system_type_code
  * @description 시스템 타입 코드를 대문자로 변환하고 비어있을 경우 기본값(ALL)으로 채워 반환합니다.
  */
-fn normalize_system_type_code(value: Option<&str>) -> String {
+pub fn normalize_system_type_code(value: Option<&str>) -> String {
     let normalized = value.unwrap_or("").trim().to_uppercase();
     if normalized.is_empty() {
         DEFAULT_SYSTEM_TYPE_CODE.to_string()
@@ -1048,7 +1047,7 @@ fn normalize_system_type_code(value: Option<&str>) -> String {
     }
 }
 
-fn normalize_optional_system_type_code(value: Option<&str>) -> Option<String> {
+pub fn normalize_optional_system_type_code(value: Option<&str>) -> Option<String> {
     let normalized = value.unwrap_or("").trim().to_uppercase();
     if normalized.is_empty() {
         None
@@ -1061,7 +1060,7 @@ fn normalize_optional_system_type_code(value: Option<&str>) -> Option<String> {
  * @function normalize_store_code
  * @description 매장 코드를 대문자로 변환하고 비어있을 경우 기본 매장 코드로 채워 반환합니다.
  */
-fn normalize_store_code(value: Option<&str>) -> String {
+pub fn normalize_store_code(value: Option<&str>) -> String {
     let normalized = value.unwrap_or("").trim().to_uppercase();
     if normalized.is_empty() {
         DEFAULT_STORE_CODE.to_string()
@@ -1074,12 +1073,12 @@ fn normalize_store_code(value: Option<&str>) -> String {
  * @function normalize_phone_digits
  * @description 문자열에서 숫자만 추출하여 반환합니다. (전화번호 비교용 정규화)
  */
-fn normalize_phone_digits(value: &str) -> String {
+pub fn normalize_phone_digits(value: &str) -> String {
     value.chars().filter(|ch| ch.is_ascii_digit()).collect()
 }
 
 // 회원 식별자(ID/이름/전화)를 공통 규칙으로 해석합니다.
-async fn resolve_member_snapshot_by_identifier(
+pub async fn resolve_member_snapshot_by_identifier(
     client: &Client,
     store_code: &str,
     identifier: &str,
@@ -1142,6 +1141,7 @@ async fn resolve_member_snapshot_by_identifier(
     }
 
     // 3단계: 특수문자가 섞인 경우 숫자만 추출하여(정규화) 전화번호 패턴 매칭을 시도합니다.
+    let digits = normalize_phone_digits(trimmed);
     let member_by_phone_digits = client
         .query_opt(
             r#"
@@ -1167,7 +1167,7 @@ async fn resolve_member_snapshot_by_identifier(
 }
 
 // HWID 생성에 쓰일 토큰을 안전한 문자만 남기고 정규화합니다.
-fn sanitize_hardware_token(value: &str) -> Option<String> {
+pub fn sanitize_hardware_token(value: &str) -> Option<String> {
     let trimmed = value.trim().trim_matches('"');
     if trimmed.is_empty() {
         return None;
@@ -1183,7 +1183,7 @@ fn sanitize_hardware_token(value: &str) -> Option<String> {
     }
 }
 
-fn extract_non_empty_lines(raw: &str) -> Vec<String> {
+pub fn extract_non_empty_lines(raw: &str) -> Vec<String> {
     raw.lines()
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
@@ -1195,7 +1195,7 @@ fn extract_non_empty_lines(raw: &str) -> Vec<String> {
  * @function run_command_output
  * @description 시스템 명령을 실행하고 그 결과를 문자열로 반환합니다. 윈도우 환경에서는 콘솔 창을 띄우지 않도록 설정합니다.
  */
-fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
+pub fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
     #[cfg(target_os = "windows")]
@@ -1217,7 +1217,7 @@ fn run_command_output(command: &str, args: &[&str]) -> Option<String> {
  * @function read_windows_machine_guid
  * @description 윈도우 레지스트리(HKLM\SOFTWARE\Microsoft\Cryptography)에서 MachineGuid 값을 읽어옵니다.
  */
-fn read_windows_machine_guid() -> Option<String> {
+pub fn read_windows_machine_guid() -> Option<String> {
     if !cfg!(target_os = "windows") {
         return None;
     }
@@ -1252,7 +1252,7 @@ fn read_windows_machine_guid() -> Option<String> {
  * @function read_windows_wmic_value
  * @description wmic 명령을 통해 특정 하드웨어 정보(CPU ID, UUID 등)의 속성값을 읽어옵니다.
  */
-fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
+pub fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
     if !cfg!(target_os = "windows") {
         return None;
     }
@@ -1274,7 +1274,7 @@ fn read_windows_wmic_value(alias: &str, column: &str) -> Option<String> {
  * @function detect_host_name
  * @description 환경 변수에서 컴퓨터 호스트명을 감지하여 정규화 후 반환합니다. 결과는 캐싱됩니다.
  */
-fn detect_host_name() -> String {
+pub fn detect_host_name() -> String {
     HOST_NAME_CACHE
         .get_or_init(|| {
             std::env::var("COMPUTERNAME")
@@ -1294,7 +1294,7 @@ fn detect_host_name() -> String {
  * @function detect_cpu_id
  * @description wmic 또는 환경 변수에서 CPU 고유 식별자(ID)를 감지합니다. 결과는 캐싱됩니다.
  */
-fn detect_cpu_id() -> String {
+pub fn detect_cpu_id() -> String {
     CPU_ID_CACHE
         .get_or_init(|| {
             read_windows_wmic_value("cpu", "ProcessorId")
@@ -1313,7 +1313,7 @@ fn detect_cpu_id() -> String {
  * @description 윈도우의 MachineGuid, 제품 UUID, CPU ID, 호스트명을 조합하여 장치 고유 식별자(HWID)를 생성합니다.
  * @return String: 파이프(|)로 연결된 장치 정보 문자열
  */
-fn detect_hwid() -> String {
+pub fn detect_hwid() -> String {
     HWID_CACHE
         .get_or_init(|| {
             let machine_guid = read_windows_machine_guid();
@@ -1344,7 +1344,7 @@ fn detect_hwid() -> String {
  * @function ensure_store_binding_table
  * @description 점포 단말 바인딩 정보를 저장하는 보안 테이블(security_store_binding)을 생성하고 컬럼을 보정합니다.
  */
-async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
             r#"
@@ -1426,7 +1426,7 @@ async fn ensure_store_binding_table(client: &Client) -> Result<(), String> {
  * @function ensure_cdkey_table
  * @description 보안 인증에 사용되는 CDKEY 관리 테이블을 생성하고, 서버 가동 시 최소 20개의 여유 CDKEY가 상시 존재하도록 자동 생성 로직을 수행합니다.
  */
-async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
             r#"
@@ -1556,7 +1556,7 @@ async fn ensure_cdkey_table(client: &Client) -> Result<(), String> {
  * @function validate_store_code_in_str_cd
  * @description 입력된 점포 코드가 공통 코드(STR_CD) 시스템에 유효하게 등록되어 있는지 검증합니다.
  */
-async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<(), String> {
+pub async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<(), String> {
     ensure_common_code_tables(client).await?;
 
     let exists = client
@@ -1587,7 +1587,7 @@ async fn validate_store_code_in_str_cd(client: &Client, code: &str) -> Result<()
  * @function validate_store_code
  * @description 기본 점포 코드를 포함하여, 입력된 점포 코드가 전체 시스템 기준에 부합하는지 확인합니다.
  */
-async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
+pub async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> {
     if code == DEFAULT_STORE_CODE {
         return Ok(());
     }
@@ -1600,7 +1600,7 @@ async fn validate_store_code(client: &Client, code: &str) -> Result<(), String> 
  * @description 현재 장치(HWID)가 해당 점포 코드로 정상적으로 바인딩(인증)되어 있는지 확인합니다.
  * 인증되지 않거나 차단된 장치의 접근을 방지하는 보안 게이트웨이 역할을 합니다.
  */
-async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), String> {
+pub async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), String> {
     ensure_store_binding_table(client).await?;
 
     let hwid = detect_hwid();
@@ -1676,7 +1676,7 @@ async fn assert_store_binding(client: &Client, store_code: &str) -> Result<(), S
  * @function resolve_store_code
  * @description 입력받은 점포 코드를 정규화하고, 시스템 유효성 검증 및 장치 바인딩 확인을 일괄 수행하여 신뢰할 수 있는 매장 코드를 반환합니다.
  */
-async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<String, String> {
+pub async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<String, String> {
     let store_code = normalize_store_code(value);
     validate_store_code(client, &store_code).await?;
     assert_store_binding(client, &store_code).await?;
@@ -1687,7 +1687,7 @@ async fn resolve_store_code(client: &Client, value: Option<&str>) -> Result<Stri
  * @function validate_system_type_code
  * @description 시스템 타입(기능 구분) 코드가 공통 코드 정의에 유효한지 검사합니다.
  */
-async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), String> {
+pub async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), String> {
     if code == DEFAULT_SYSTEM_TYPE_CODE {
         return Ok(());
     }
@@ -1722,7 +1722,7 @@ async fn validate_system_type_code(client: &Client, code: &str) -> Result<(), St
  * @function ensure_menu_table
  * @description 메뉴 관리 테이블(menu_management)의 존재 여부를 확인하고, 필요한 컬럼 및 인덱스를 자동 보정합니다.
  */
-async fn ensure_menu_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_menu_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -1745,11 +1745,11 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
                 menu_status VARCHAR(20) NOT NULL DEFAULT '사용중',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            // [SQL] 시스템 타입 코드 컬럼이 없는 경우 추가하고 기본값(ALL)으로 채웁니다.
+            -- [SQL] 시스템 타입 코드 컬럼이 없는 경우 추가하고 기본값(ALL)으로 채웁니다.
             ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS system_type_code VARCHAR(100);
 
             UPDATE menu_management
                SET system_type_code = 'ALL'
@@ -1765,8 +1765,9 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_system_type
             ON menu_management (system_type_code);
 
-            // [SQL] 매장 코드 컬럼이 없는 경우 추가하고 기본 매장 코드로 초기화합니다.
+            -- [SQL] 매장 코드 컬럼이 없는 경우 추가하고 기본 매장 코드로 초기화합니다.
             ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS store_code VARCHAR(50);
 
             UPDATE menu_management
                SET store_code = 'HAIR_001'
@@ -1782,8 +1783,9 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_store
             ON menu_management (store_code);
 
-            // [SQL] 시작 메뉴 여부(is_start_menu) 컬럼을 추가하고 인덱스를 생성합니다.
+            -- [SQL] 시작 메뉴 여부(is_start_menu) 컬럼을 추가하고 인덱스를 생성합니다.
             ALTER TABLE menu_management
+            ADD COLUMN IF NOT EXISTS is_start_menu BOOLEAN;
 
             UPDATE menu_management
                SET is_start_menu = FALSE
@@ -1798,7 +1800,7 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_menu_management_store_system_start
             ON menu_management (store_code, system_type_code, is_start_menu);
 
-            // [SQL] 기존 유니크 제약을 제거하고, 매장별 경로(store_code, menu_path) 유니크 인덱스를 생성합니다.
+            -- [SQL] 기존 유니크 제약을 제거하고, 매장별 경로(store_code, menu_path) 유니크 인덱스를 생성합니다.
             ALTER TABLE menu_management
             DROP CONSTRAINT IF EXISTS menu_management_menu_path_key;
 
@@ -1810,7 +1812,7 @@ async fn ensure_menu_table(client: &Client) -> Result<(), String> {
         .map_err(|e| format!("menu_management 테이블 생성 실패: {e}"))
 }
 
-async fn ensure_menu_start_menu_column(client: &Client) -> Result<(), String> {
+pub async fn ensure_menu_start_menu_column(client: &Client) -> Result<(), String> {
     client
         .batch_execute(
             r#"
@@ -1839,7 +1841,7 @@ async fn ensure_menu_start_menu_column(client: &Client) -> Result<(), String> {
  * @function get_next_menu_id
  * @description 저장된 메뉴 중 최대 ID값을 조회하여 다음 등록할 메뉴의 ID를 결정합니다.
  */
-async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
+pub async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
     let row = client
         .query_one(
             "SELECT COALESCE(MAX(menu_id), 0) + 1 FROM menu_management",
@@ -1854,7 +1856,7 @@ async fn get_next_menu_id(client: &Client) -> Result<i64, String> {
  * @function ensure_common_code_tables
  * @description 공통 코드 그룹(common_code_group) 및 상세 코드(common_code_detail) 테이블을 생성합니다.
  */
-async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
+pub async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -1895,7 +1897,7 @@ async fn ensure_common_code_tables(client: &Client) -> Result<(), String> {
  * @function refresh_group_detail_count
  * @description 특정 공통 코드 그룹에 속한 상세 코드의 개수를 집계하여 그룹 테이블의 detail_count 컬럼을 동기화합니다.
  */
-async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(), String> {
+pub async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(), String> {
     client
         .execute(
             r#"
@@ -1920,7 +1922,7 @@ async fn refresh_group_detail_count(client: &Client, group_id: &str) -> Result<(
  * @function ensure_role_management_tables
  * @description 역할(role_management) 및 역할별 메뉴 권한(role_menu_permission) 테이블을 생성하고 보정합니다.
  */
-async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
+pub async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2003,7 +2005,7 @@ async fn ensure_role_management_tables(client: &Client) -> Result<(), String> {
  * @function ensure_employee_management_table
  * @description 직원 관리 테이블(employee_management)을 생성하고, 하위 호환성을 위해 컬럼 타입을 보정합니다.
  */
-async fn ensure_employee_management_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_employee_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2063,7 +2065,7 @@ async fn ensure_employee_management_table(client: &Client) -> Result<(), String>
  * @function ensure_user_management_table
  * @description 회원(고객) 관리 테이블(user_management)을 생성하고 컬럼 누락 시 보정합니다.
  */
-async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2105,7 +2107,7 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_user_management_store
         ON user_management (store_code)
     "#;
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     client
         .batch_execute(sql)
         .await
@@ -2116,7 +2118,7 @@ async fn ensure_user_management_table(client: &Client) -> Result<(), String> {
  * @function ensure_service_catalog_management_table
  * @description 시술 항목 카탈로그 테이블(service_catalog_management)을 생성하고 제약 조건 및 인덱스를 설정합니다.
  */
-async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), String> {
+pub async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2159,7 +2161,7 @@ async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), 
         CREATE INDEX IF NOT EXISTS idx_service_catalog_management_store
         ON service_catalog_management (store_code);
     "#;
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     client
         .batch_execute(sql)
         .await
@@ -2167,7 +2169,7 @@ async fn ensure_service_catalog_management_table(client: &Client) -> Result<(), 
 }
 
 // 예약 헤더/라인 스키마와 store_code 마이그레이션을 준비합니다.
-async fn ensure_reservation_calendar_management_tables(
+pub async fn ensure_reservation_calendar_management_tables(
     client: &Client,
     connection: &DbConnectionPayload,
 ) -> Result<(), String> {
@@ -2231,7 +2233,7 @@ async fn ensure_reservation_calendar_management_tables(
         CREATE INDEX IF NOT EXISTS idx_reservation_calendar_service_line_service
         ON reservation_calendar_service_line (service_id);
     "#;
-    log_sql!(create_sql);
+    log_sql_fn(create_sql, None);
     client
         .batch_execute(create_sql)
         .await
@@ -2282,7 +2284,7 @@ async fn ensure_reservation_calendar_management_tables(
         CREATE INDEX IF NOT EXISTS idx_reservation_calendar_service_line_store
         ON reservation_calendar_service_line (store_code);
     "#;
-    log_sql!(patch_sql);
+    log_sql_fn(patch_sql, None);
     client
         .batch_execute(patch_sql)
         .await
@@ -2296,7 +2298,7 @@ async fn ensure_reservation_calendar_management_tables(
  * @function ensure_member_point_management_tables
  * @description 회원 포인트 잔액, 쿠폰 잔액, 충전/사용 이력 테이블들을 일괄 생성 및 보정합니다.
  */
-async fn ensure_member_point_management_tables(client: &Client) -> Result<(), String> {
+pub async fn ensure_member_point_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2423,7 +2425,7 @@ async fn ensure_member_point_management_tables(client: &Client) -> Result<(), St
         CREATE INDEX IF NOT EXISTS idx_member_point_usage_history_store
         ON member_point_usage_history (store_code, user_id, created_at DESC);
     "#;
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     client
         .batch_execute(sql)
         .await
@@ -2462,7 +2464,7 @@ async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Resul
         ON member_point_history (store_code, status_code, created_at DESC);
     "#;
 
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     client
         .batch_execute(sql)
         .await
@@ -2473,7 +2475,7 @@ async fn ensure_member_point_recharge_cancel_log_table(client: &Client) -> Resul
  * @function ensure_sales_settlement_management_tables
  * @description 시술 정산 마스터, 시술 상세 라인, 결제 상세 라인 테이블을 생성하고 연관 관계를 보정합니다.
  */
-async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
+pub async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<(), String> {
     if !is_db_integrity_check_mode() {
         return Ok(());
     }
@@ -2628,7 +2630,7 @@ async fn ensure_sales_settlement_management_tables(client: &Client) -> Result<()
         CREATE INDEX IF NOT EXISTS idx_sales_settlement_payment_line_store_settlement
         ON sales_settlement_payment_line (store_code, settlement_id);
     "#;
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     client
         .batch_execute(sql)
         .await

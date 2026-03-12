@@ -1,3 +1,6 @@
+use crate::app::core::foundation::*;
+use chrono::NaiveDate;
+
 /**
  * @file employee.rs
  * @description 매장 내 직원 정보를 조회, 등록, 수정 및 삭제하는 기능을 담당하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +14,7 @@
  * @return EmployeeDataResult: 조회된 직원 리스트 결과
  */
 #[tauri::command]
-async fn get_employee_management_data(
+pub async fn get_employee_management_data(
     payload: EmployeeQueryPayload,
 ) -> Result<EmployeeDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -79,7 +82,7 @@ async fn get_employee_management_data(
  * @param payload UpsertEmployeePayload: 저장할 직원 데이터 정보
  */
 #[tauri::command]
-async fn upsert_employee_management(
+pub async fn upsert_employee_management(
     payload: UpsertEmployeePayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
@@ -220,7 +223,7 @@ async fn upsert_employee_management(
  * @param payload DeleteEmployeePayload: 삭제할 직원의 고유 ID 및 점포 정보
  */
 #[tauri::command]
-async fn delete_employee_management(
+pub async fn delete_employee_management(
     payload: DeleteEmployeePayload,
 ) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;

@@ -1,3 +1,5 @@
+use crate::app::core::foundation::*;
+
 /**
  * @file user.rs
  * @description 매장의 회원(고객) 기본 정보(이름, 연락처, 성별, 주소 등)를 관리하는 백엔드 명령 정의 파일입니다.
@@ -11,7 +13,7 @@
  * @return UserDataResult: 회원 리스트 결과
  */
 #[tauri::command]
-async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
+pub async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -23,7 +25,7 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
          WHERE store_code = $1
          ORDER BY user_id DESC
     "#;
-    log_sql!(sql);
+    log_sql_fn(sql, None);
     let rows = client
         .query(sql, &[&store_code])
         .await
@@ -51,7 +53,7 @@ async fn get_user_management_data(payload: UserQueryPayload) -> Result<UserDataR
 
 // 회원(고객) 정보를 생성/수정합니다.
 #[tauri::command]
-async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationResult, String> {
+pub async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -105,17 +107,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
                 remarks = EXCLUDED.remarks,
                 updated_at = NOW()
         "#;
-        log_sql!(
-            sql,
-            id,
-            &store_code,
-            &name,
-            &email,
-            &gender,
-            &phone,
-            &address,
-            &remarks
-        );
+        log_sql_fn(sql, Some(format!("{:?}", (id, &store_code, &name, &email, &gender, &phone, &address, &remarks))));
         client
             .execute(
                 sql,
@@ -129,7 +121,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
             INSERT INTO user_management (store_code, name, email, gender, phone, address, remarks)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#;
-        log_sql!(sql, &store_code, &name, &email, &gender, &phone, &address, &remarks);
+        log_sql_fn(sql, Some(format!("{:?}", (&store_code, &name, &email, &gender, &phone, &address, &remarks))));
         client
             .execute(
                 sql,
@@ -151,7 +143,7 @@ async fn upsert_user_management(payload: UpsertUserPayload) -> Result<MutationRe
  * @param payload DeleteUserPayload: 삭제할 회원 ID 정보
  */
 #[tauri::command]
-async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationResult, String> {
+pub async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationResult, String> {
     let client = connect_with_schema(&payload.connection).await?;
     ensure_user_management_table(&client).await?;
     let store_code = resolve_store_code(&client, payload.store_code.as_deref()).await?;
@@ -161,7 +153,7 @@ async fn delete_user_management(payload: DeleteUserPayload) -> Result<MutationRe
     }
 
     let sql = "DELETE FROM user_management WHERE user_id = $1::BIGINT AND store_code = $2";
-    log_sql!(sql, payload.user_id, &store_code);
+    log_sql_fn(sql, Some(format!("{:?}", (payload.user_id, &store_code))));
     let affected = client
         .execute(sql, &[&payload.user_id, &store_code])
         .await
