@@ -43,4 +43,3 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           includeRelease: true
-          includeAssets: "src-tauri/target/release/bundle/msi/*.msi, src-tauri/target/release/bundle/msi/*.sig, src-tauri/target/release/bundle/nsis/*.exe, src-tauri/target/release/bundle/nsis/*.sig"
