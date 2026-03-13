@@ -153,5 +153,6 @@ jobs:
             throw "No files to upload from updater_upload"
           }
 
-          & scp -o StrictHostKeyChecking=no -i $keyPath -P $port $files "$target:$($env:UPDATER_REMOTE_DIR)/"
+          $remoteSpec = "${target}:$($env:UPDATER_REMOTE_DIR)/"
+          & scp -o StrictHostKeyChecking=no -i $keyPath -P $port $files $remoteSpec
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload updater files" }
