@@ -35,7 +35,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://gist.githubusercontent.com/cuizhengri88/50b3e3d54e9cb3e1c389626fc4cd7ddc/raw/0014278b2ecb7632d9509a6a2401fd3df526ee52/update.json"
+        "https://gist.githubusercontent.com/cuizhengri88/50b3e3d54e9cb3e1c389626fc4cd7ddc/raw/e60a5f00683ae63d82e5e1304f63c4bc72a3b70b/update.json"
       ],
       "dialog": true,
       "pubkey": "RWRAlP/x4QSAitfd0dl/Tdw2xfjZbFBGxH6/E7cnhjfhimvfuadXn1uB"
