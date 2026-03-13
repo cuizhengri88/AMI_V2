@@ -1,5 +1,7 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { isTauri } from '@tauri-apps/api/core';
+import { check } from '@tauri-apps/plugin-updater';
 import DashboardLayout from './layouts/DashboardLayout';
 import { invokeDbCommand } from './lib/dbClient';
 import { normalizeSystemTypeCode, SYSTEM_TYPE_STORAGE_KEY } from './constants/systemType';
@@ -168,6 +170,7 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
   const [storeCodeInput, setStoreCodeInput] = useState('');
   const [cdkeyInput, setCdkeyInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const hasCheckedUpdateRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -208,6 +211,43 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== 'ready' || hasCheckedUpdateRef.current || !isTauri()) {
+      return;
+    }
+
+    hasCheckedUpdateRef.current = true;
+    let isDisposed = false;
+
+    const runUpdateCheck = async () => {
+      let update: Awaited<ReturnType<typeof check>> = null;
+      try {
+        update = await check();
+        if (!update || isDisposed) return;
+
+        const confirmed = window.confirm(
+          `A new update is available.\nCurrent version: ${update.currentVersion}\nLatest version: ${update.version}\nInstall now?`,
+        );
+        if (!confirmed || isDisposed) return;
+
+        await update.downloadAndInstall();
+        if (isDisposed) return;
+
+        window.alert('Update installed. Please restart the app to apply the new version.');
+      } catch (error) {
+        console.error('Failed to check or install update:', error);
+      } finally {
+        await update?.close().catch(() => undefined);
+      }
+    };
+
+    runUpdateCheck();
+
+    return () => {
+      isDisposed = true;
+    };
+  }, [phase]);
 
   const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
