@@ -27,7 +27,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           VITE_DB_HOST: ${{ secrets.VITE_DB_HOST }}
           VITE_DB_PORT: ${{ secrets.VITE_DB_PORT }}
           VITE_DB_NAME: ${{ secrets.VITE_DB_NAME }}

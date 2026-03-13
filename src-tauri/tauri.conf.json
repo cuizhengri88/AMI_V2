@@ -1,6 +1,6 @@
 {
   "productName": "AMI",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "identifier": "com.gov-data.management",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -35,10 +35,10 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://gist.githubusercontent.com/cuizhengri88/395aa2478fffdad2f438fe8ee20ff47f/raw/726368facd901483a546d819586ac0d9f34965a9/updater.json"
+        "https://github.com/cuizhengri88/AMI_V2/releases/latest/download/updater.json"
       ],
       "dialog": true,
-      "pubkey": "RWRAlP/x4QSAitfd0dl/Tdw2xfjZbFBGxH6/E7cnhjfhimvfuadXn1uB"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzMDM5OEIzQUEwQjBCRDYKUldUV0N3dXFzNWdEZzN1UXhxbEJtVzVnS2x0WWZWemIzQ1RPNDBLdEdDS2dkOTVkeWZlNHA2ODcK"
     }
   }
 }
