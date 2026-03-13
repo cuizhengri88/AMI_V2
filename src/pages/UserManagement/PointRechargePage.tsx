@@ -451,11 +451,11 @@ export default function MemberRechargePage() {
         <table className="w-full text-left border-collapse min-w-[980px]">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t017')}</th> {/* pt('t017') -> 회원정보 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t023')}</th> {/* pt('t023') -> 연락처 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t042')}</th> {/* pt('t042') -> 충전금 잔액 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th> {/* pt('t006') -> 보유 쿠폰(횟수권) */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t024')}</th> {/* pt('t024') -> 작업 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t017')}</th>{/* pt('t017') -> 회원정보 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t023')}</th>{/* pt('t023') -> 연락처 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t042')}</th>{/* pt('t042') -> 충전금 잔액 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>{/* pt('t006') -> 보유 쿠폰(횟수권) */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t024')}</th>{/* pt('t024') -> 작업 */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

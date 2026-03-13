@@ -311,16 +311,16 @@ export default function EmployeeManagementPage() {
           <table className="w-full text-left border-collapse min-w-[1320px]">
             <thead>
               <tr className="bg-slate-900 text-slate-200">
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t031')}</th> {/* pt('t031') -> ID */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t032')}</th> {/* pt('t032') -> 직원명 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t015')}</th> {/* pt('t015') -> 직원코드 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t047')}</th> {/* pt('t047') -> 성별 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th> {/* pt('t001') -> 역할 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t033')}</th> {/* pt('t033') -> 이메일 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th> {/* pt('t007') -> 전화 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005')}</th> {/* pt('t005') -> 입사일 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t034')}</th> {/* pt('t034') -> 상태 */}
-                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th> {/* pt('t035') -> 작업 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t031')}</th>{/* pt('t031') -> ID */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t032')}</th>{/* pt('t032') -> 직원명 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t015')}</th>{/* pt('t015') -> 직원코드 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t047')}</th>{/* pt('t047') -> 성별 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>{/* pt('t001') -> 역할 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t033')}</th>{/* pt('t033') -> 이메일 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>{/* pt('t007') -> 전화 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t005')}</th>{/* pt('t005') -> 입사일 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t034')}</th>{/* pt('t034') -> 상태 */}
+                <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th>{/* pt('t035') -> 작업 */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

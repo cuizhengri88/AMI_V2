@@ -15,6 +15,7 @@ use crate::app::commands::reset::*;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             test_db_connection,
             backup_database_to_file,

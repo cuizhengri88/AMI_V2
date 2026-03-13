@@ -466,13 +466,13 @@ export default function MenuManagementPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider w-1/3">{pt('t006')}</th> {/* pt('t006') -> 메뉴명 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t014')}</th> {/* pt('t014') -> 시스템 타입 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th> {/* pt('t001') -> 경로 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t015')}</th> {/* pt('t015') -> 정렬 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t034')}</th> {/* pt('t034') -> 상태 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider w-1/3">{pt('t006')}</th>{/* pt('t006') -> 메뉴명 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t014')}</th>{/* pt('t014') -> 시스템 타입 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>{/* pt('t001') -> 경로 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t015')}</th>{/* pt('t015') -> 정렬 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t034')}</th>{/* pt('t034') -> 상태 */}
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">시작메뉴</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th> {/* pt('t035') -> 작업 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t035')}</th>{/* pt('t035') -> 작업 */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

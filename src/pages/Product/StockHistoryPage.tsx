@@ -132,11 +132,11 @@ export default function StockHistoryPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th> {/* pt('t004') -> 일시 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th> {/* pt('t001') -> 구분 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t002')}</th> {/* pt('t002') -> 상품 정보 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th>{/* pt('t004') -> 일시 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>{/* pt('t001') -> 구분 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t002')}</th>{/* pt('t002') -> 상품 정보 */}
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">수량</th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t007')}</th> {/* pt('t007') -> 처리자 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t007')}</th>{/* pt('t007') -> 처리자 */}
               <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">비고</th>
             </tr>
           </thead>

@@ -856,13 +856,13 @@ export default function HairSalesStatisticsPage() {
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
-                <th className="py-4 px-6">{pt('t002')}</th> {/* 날짜 */}
-                <th className="py-4 px-6">{pt('t007')}</th> {/* 시술 건수 */}
-                <th className="py-4 px-6">{pt('t010')}</th> {/* 총 매출액 */}
-                <th className="py-4 px-6">{pt('t012')}</th> {/* 할인 금액 */}
-                <th className="py-4 px-6">{pt('t008')}</th> {/* 실수납액 */}
-                <th className="py-4 px-6">{pt('t001')}</th> {/* 객단가 */}
-                <th className="py-4 px-6">{pt('t006')}</th> {/* 성장률 */}
+                <th className="py-4 px-6">{pt('t002')}</th>{/* 날짜 */}
+                <th className="py-4 px-6">{pt('t007')}</th>{/* 시술 건수 */}
+                <th className="py-4 px-6">{pt('t010')}</th>{/* 총 매출액 */}
+                <th className="py-4 px-6">{pt('t012')}</th>{/* 할인 금액 */}
+                <th className="py-4 px-6">{pt('t008')}</th>{/* 실수납액 */}
+                <th className="py-4 px-6">{pt('t001')}</th>{/* 객단가 */}
+                <th className="py-4 px-6">{pt('t006')}</th>{/* 성장률 */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -905,3 +905,4 @@ export default function HairSalesStatisticsPage() {
     </motion.div>
   );
 }
+

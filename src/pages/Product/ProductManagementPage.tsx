@@ -186,14 +186,14 @@ export default function ProductManagementPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_code')}</th> {/* product.col_code -> 상품코드 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_name')}</th> {/* product.col_name -> 상품명 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_category')}</th> {/* product.col_category -> 카테고리 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_size')}</th> {/* product.col_size -> 사이즈 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{t('product.col_price')}</th> {/* product.col_price -> 판매가 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_stock')}</th> {/* product.col_stock -> 재고 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_status')}</th> {/* product.col_status -> 상태 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th> {/* common.action -> 작업 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_code')}</th>{/* product.col_code -> 상품코드 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_name')}</th>{/* product.col_name -> 상품명 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{t('product.col_category')}</th>{/* product.col_category -> 카테고리 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_size')}</th>{/* product.col_size -> 사이즈 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{t('product.col_price')}</th>{/* product.col_price -> 판매가 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_stock')}</th>{/* product.col_stock -> 재고 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('product.col_status')}</th>{/* product.col_status -> 상태 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{t('common.action')}</th>{/* common.action -> 작업 */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

@@ -489,11 +489,11 @@ export default function CommonCodePage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-900 text-slate-200">
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t021')}</th> {/* pt('t021') -> 코드 */}
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t022')}</th> {/* pt('t022') -> 코드명 */}
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t019')}</th> {/* pt('t019') -> 정렬 */}
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011')}</th> {/* pt('t011') -> 사용여부 */}
-                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t039')}</th> {/* pt('t039') -> 작업 */}
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t021')}</th>{/* pt('t021') -> 코드 */}
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t022')}</th>{/* pt('t022') -> 코드명 */}
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t019')}</th>{/* pt('t019') -> 정렬 */}
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t011')}</th>{/* pt('t011') -> 사용여부 */}
+                  <th className="py-3 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t039')}</th>{/* pt('t039') -> 작업 */}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

@@ -375,17 +375,17 @@ export default function MemberPointHistoryPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900 text-slate-200">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t008')}</th> {/* pt('t008') -> 일시 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th> {/* pt('t007') -> 유형 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t019')}</th> {/* pt('t019') -> 회원 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t028')}</th> {/* pt('t028') -> 전화번호 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th> {/* pt('t006') -> 시술 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t023')}</th> {/* pt('t023') -> 횟수 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t003')}</th> {/* pt('t003') -> 금액 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t040')}</th> {/* pt('t040') -> 수납금액 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th> {/* pt('t001') -> 결제수단 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th> {/* pt('t004') -> 메모/취소사유 */}
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t002')}</th> {/* pt('t002') -> 관리 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t008')}</th>{/* pt('t008') -> 일시 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t007')}</th>{/* pt('t007') -> 유형 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t019')}</th>{/* pt('t019') -> 회원 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t028')}</th>{/* pt('t028') -> 전화번호 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t006')}</th>{/* pt('t006') -> 시술 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t023')}</th>{/* pt('t023') -> 횟수 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t003')}</th>{/* pt('t003') -> 금액 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-right">{pt('t040')}</th>{/* pt('t040') -> 수납금액 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t001')}</th>{/* pt('t001') -> 결제수단 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">{pt('t004')}</th>{/* pt('t004') -> 메모/취소사유 */}
+              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider text-center">{pt('t002')}</th>{/* pt('t002') -> 관리 */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
