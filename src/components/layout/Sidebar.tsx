@@ -5,6 +5,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
+import { isTauri } from '@tauri-apps/api/core';
 import {
   Database,
   ShoppingBag,
@@ -185,6 +187,7 @@ export default function Sidebar() {
 
   // [상태] 다국어 선택 메뉴 표시 여부
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [appVersion, setAppVersion] = useState(`v${__APP_VERSION__}`);
 
   const location = useLocation();
 
@@ -258,6 +261,27 @@ export default function Sidebar() {
   useEffect(() => {
     setExpandedIds(defaultExpandedIds);
   }, [defaultExpandedIds]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAppVersion = async () => {
+      if (!isTauri()) return;
+      try {
+        const version = await getVersion();
+        if (!isMounted) return;
+        setAppVersion(`v${version}`);
+      } catch (error) {
+        console.warn('Failed to load app version from Tauri runtime:', error);
+      }
+    };
+
+    loadAppVersion();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   /**
    * @function getMenuName
@@ -436,7 +460,7 @@ export default function Sidebar() {
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">CZR System</p>
-              <p className="text-xs text-slate-500">v0.1.27</p>
+              <p className="text-xs text-slate-500">{appVersion}</p>
             </div>
           )}
         </div>

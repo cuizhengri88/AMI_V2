@@ -1,15 +1,16 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.1.27",
+  "version": "0.1.28",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "sync:version": "node scripts/sync-version.mjs",
+    "dev": "npm run sync:version && vite --port=3000 --host=0.0.0.0",
+    "build": "npm run sync:version && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "npm run sync:version && tauri"
   },
   "dependencies": {
     "@fontsource/public-sans": "^5.2.7",

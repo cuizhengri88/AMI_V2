@@ -1,6 +1,7 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isTauri } from '@tauri-apps/api/core';
+import { getBundleType, getVersion } from '@tauri-apps/api/app';
 import { check } from '@tauri-apps/plugin-updater';
 import DashboardLayout from './layouts/DashboardLayout';
 import { invokeDbCommand } from './lib/dbClient';
@@ -223,20 +224,29 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
     const runUpdateCheck = async () => {
       let update: Awaited<ReturnType<typeof check>> = null;
       try {
+        const [appVersion, bundleType] = await Promise.all([
+          getVersion().catch(() => 'unknown'),
+          getBundleType().catch(() => 'unknown'),
+        ]);
+
         update = await check();
         if (!update || isDisposed) return;
 
         const confirmed = window.confirm(
-          `A new update is available.\nCurrent version: ${update.currentVersion}\nLatest version: ${update.version}\nInstall now?`,
+          `A new update is available.\nCurrent version: ${update.currentVersion}\nLatest version: ${update.version}\nDetected app version: ${appVersion}\nDetected bundle type: ${bundleType}\nInstall now?`,
         );
         if (!confirmed || isDisposed) return;
 
+        window.alert('Update download will start now. The app may close when installation starts.');
         await update.downloadAndInstall();
         if (isDisposed) return;
 
         window.alert('Update installed. Please restart the app to apply the new version.');
       } catch (error) {
         console.error('Failed to check or install update:', error);
+        if (!isDisposed) {
+          window.alert(`Update failed: ${getErrorMessage(error)}`);
+        }
       } finally {
         await update?.close().catch(() => undefined);
       }
