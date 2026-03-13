@@ -436,7 +436,7 @@ export default function Sidebar() {
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">CZR System</p>
-              <p className="text-xs text-slate-500">v0.1.23</p>
+              <p className="text-xs text-slate-500">v0.1.25</p>
             </div>
           )}
         </div>
