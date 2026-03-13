@@ -29,6 +29,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           # TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_DB_HOST: ${{ secrets.VITE_DB_HOST }}
           VITE_DB_PORT: ${{ secrets.VITE_DB_PORT }}
           VITE_DB_NAME: ${{ secrets.VITE_DB_NAME }}
@@ -39,7 +40,7 @@ jobs:
           # v__VERSION__ 대신 실제 푸시된 태그 이름을 사용하여 혼선을 방지합니다.
           tagName: ${{ github.ref_name }}
           releaseName: "AMI ${{ github.ref_name }}"
-          releaseBody: "자동 업데이트 테스트 버전"
+          releaseBody: "자동 업데이트 기능이 포함된 AMI 버전 ${{ github.ref_name }} 릴리스입니다."
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
