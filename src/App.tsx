@@ -61,8 +61,31 @@ type VerifyStoreBindingResult = {
   is_new_registration: boolean;
 };
 
+type UpdateDialogStatus = 'hidden' | 'available' | 'downloading' | 'installing' | 'completed' | 'failed';
+
+type UpdateUiState = {
+  status: UpdateDialogStatus;
+  currentVersion: string;
+  nextVersion: string;
+  bundleType: string;
+  releaseNotes: string;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  errorMessage: string;
+};
+
 const STATUS_ACTIVE = '사용중';
 const STORE_BINDING_DENIED_MESSAGE = '인증이 거부 되었습니다.';
+const DEFAULT_UPDATE_UI_STATE: UpdateUiState = {
+  status: 'hidden',
+  currentVersion: '',
+  nextVersion: '',
+  bundleType: '',
+  releaseNotes: '',
+  downloadedBytes: 0,
+  totalBytes: null,
+  errorMessage: '',
+};
 
 const ROUTABLE_PATHS = new Set<string>([
   // --- Product (상품관리) ---
@@ -96,6 +119,27 @@ function getErrorMessage(error: unknown): string {
     if (typeof message === 'string') return message;
   }
   return '요청 처리 중 오류가 발생했습니다.';
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const digits = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function getProgressPercent(downloadedBytes: number, totalBytes: number | null): number | null {
+  if (!totalBytes || totalBytes <= 0) return null;
+  return Math.min(100, Math.max(0, Math.round((downloadedBytes / totalBytes) * 100)));
 }
 
 function resolveDefaultPath(menus: MenuRow[], selectedSystemType: string): string {
@@ -166,12 +210,142 @@ function MenuAwareRedirect() {
   return <Navigate to={targetPath} replace />;
 }
 
+function UpdateStatusDialog({
+  updateUi,
+  onStart,
+  onClose,
+}: {
+  updateUi: UpdateUiState;
+  onStart: () => void;
+  onClose: () => void;
+}) {
+  if (updateUi.status === 'hidden') return null;
+
+  const progressPercent = getProgressPercent(updateUi.downloadedBytes, updateUi.totalBytes);
+  const progressWidth = progressPercent !== null ? `${progressPercent}%` : updateUi.status === 'installing' ? '100%' : '35%';
+  const isBusy = updateUi.status === 'downloading' || updateUi.status === 'installing';
+
+  const titleMap: Record<Exclude<UpdateDialogStatus, 'hidden'>, string> = {
+    available: '새 업데이트가 준비되었습니다',
+    downloading: '업데이트를 다운로드하고 있습니다',
+    installing: '설치를 준비하고 있습니다',
+    completed: '업데이트 설치가 완료되었습니다',
+    failed: '업데이트 중 문제가 발생했습니다',
+  };
+
+  const descriptionMap: Record<Exclude<UpdateDialogStatus, 'hidden'>, string> = {
+    available: '지금 업데이트하면 최신 버전을 바로 설치할 수 있습니다.',
+    downloading: '다운로드가 완료되면 설치 프로그램이 자동으로 이어서 실행됩니다.',
+    installing: '환경에 따라 앱이 잠시 종료되거나 설치 프로그램 창이 나타날 수 있습니다.',
+    completed: '설치가 끝났습니다. 환경에 따라 앱을 다시 실행해야 반영될 수 있습니다.',
+    failed: updateUi.errorMessage || '업데이트 파일을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/20">
+        <div className="absolute -top-24 right-0 size-56 rounded-full bg-sky-200/35 blur-3xl" />
+        <div className="absolute -bottom-24 left-0 size-56 rounded-full bg-indigo-200/35 blur-3xl" />
+
+        <div className="relative px-7 py-6 border-b border-slate-100">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-bold text-sky-700">
+            <span className={`size-2 rounded-full bg-sky-500 ${isBusy ? 'animate-pulse' : ''}`} />
+            AUTO UPDATE
+          </div>
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">{titleMap[updateUi.status]}</h2>
+          <p className="mt-2 text-sm text-slate-600">{descriptionMap[updateUi.status]}</p>
+        </div>
+
+        <div className="relative px-7 py-6 space-y-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[11px] font-extrabold tracking-wide text-slate-500 uppercase">현재 버전</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{updateUi.currentVersion || '-'}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[11px] font-extrabold tracking-wide text-slate-500 uppercase">새 버전</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{updateUi.nextVersion || '-'}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[11px] font-extrabold tracking-wide text-slate-500 uppercase">패키지 형식</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{updateUi.bundleType || 'unknown'}</p>
+            </div>
+          </div>
+
+          {updateUi.status === 'downloading' || updateUi.status === 'installing' ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-500">
+                <span>{updateUi.status === 'downloading' ? '다운로드 진행률' : '설치 준비 단계'}</span>
+                <span>{progressPercent !== null ? `${progressPercent}%` : updateUi.status === 'installing' ? '설치 중' : '크기 확인 중'}</span>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={`h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_100%)] ${progressPercent === null ? 'animate-pulse' : 'transition-[width] duration-300 ease-out'}`}
+                  style={{ width: progressWidth }}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                <span>{formatBytes(updateUi.downloadedBytes)} 다운로드됨</span>
+                <span>{updateUi.totalBytes ? `${formatBytes(updateUi.totalBytes)} 전체` : '전체 크기 확인 중'}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {updateUi.releaseNotes ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-[11px] font-extrabold tracking-wide text-slate-500 uppercase">릴리스 노트</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{updateUi.releaseNotes}</p>
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            업데이트 다운로드가 끝나면 설치 프로그램이 실행될 수 있고, Windows에서는 앱이 잠시 종료되는 것이 정상일 수 있습니다.
+          </div>
+        </div>
+
+        <div className="relative flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 px-7 py-5 bg-slate-50/80">
+          {updateUi.status === 'available' ? (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                나중에
+              </button>
+              <button
+                type="button"
+                onClick={onStart}
+                className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-black text-white transition-colors hover:bg-slate-800"
+              >
+                지금 업데이트
+              </button>
+            </>
+          ) : null}
+
+          {updateUi.status === 'completed' || updateUi.status === 'failed' ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-black text-white transition-colors hover:bg-slate-800"
+            >
+              확인
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StoreBindingGate({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<'checking' | 'input' | 'verifying' | 'ready' | 'denied'>('checking');
   const [storeCodeInput, setStoreCodeInput] = useState('');
   const [cdkeyInput, setCdkeyInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [updateUi, setUpdateUi] = useState<UpdateUiState>(DEFAULT_UPDATE_UI_STATE);
   const hasCheckedUpdateRef = useRef(false);
+  const pendingUpdateRef = useRef<Awaited<ReturnType<typeof check>>>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -214,6 +388,84 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    return () => {
+      const pendingUpdate = pendingUpdateRef.current;
+      pendingUpdateRef.current = null;
+      void pendingUpdate?.close().catch(() => undefined);
+    };
+  }, []);
+
+  const closePendingUpdate = async () => {
+    const pendingUpdate = pendingUpdateRef.current;
+    pendingUpdateRef.current = null;
+    await pendingUpdate?.close().catch(() => undefined);
+  };
+
+  const handleCloseUpdateDialog = () => {
+    void closePendingUpdate();
+    setUpdateUi(DEFAULT_UPDATE_UI_STATE);
+  };
+
+  const handleStartUpdate = async () => {
+    const update = pendingUpdateRef.current;
+    if (!update) return;
+
+    let downloadedBytes = 0;
+
+    try {
+      setUpdateUi((current) => ({
+        ...current,
+        status: 'downloading',
+        downloadedBytes: 0,
+        totalBytes: null,
+        errorMessage: '',
+      }));
+
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          downloadedBytes = 0;
+          setUpdateUi((current) => ({
+            ...current,
+            status: 'downloading',
+            downloadedBytes: 0,
+            totalBytes: typeof event.data.contentLength === 'number' ? event.data.contentLength : null,
+          }));
+          return;
+        }
+
+        if (event.event === 'Progress') {
+          downloadedBytes += event.data.chunkLength;
+          setUpdateUi((current) => ({
+            ...current,
+            status: 'downloading',
+            downloadedBytes,
+          }));
+          return;
+        }
+
+        setUpdateUi((current) => ({
+          ...current,
+          status: 'installing',
+          downloadedBytes: current.totalBytes ?? downloadedBytes,
+        }));
+      });
+
+      setUpdateUi((current) => ({
+        ...current,
+        status: 'completed',
+        downloadedBytes: current.totalBytes ?? current.downloadedBytes,
+      }));
+    } catch (error) {
+      console.error('Failed to check or install update:', error);
+      setUpdateUi((current) => ({
+        ...current,
+        status: 'failed',
+        errorMessage: getErrorMessage(error),
+      }));
+    }
+  };
+
+  useEffect(() => {
     if (phase !== 'ready' || hasCheckedUpdateRef.current || !isTauri()) {
       return;
     }
@@ -231,24 +483,26 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
 
         update = await check();
         if (!update || isDisposed) return;
-
-        const confirmed = window.confirm(
-          `A new update is available.\nCurrent version: ${update.currentVersion}\nLatest version: ${update.version}\nDetected app version: ${appVersion}\nDetected bundle type: ${bundleType}\nInstall now?`,
-        );
-        if (!confirmed || isDisposed) return;
-
-        window.alert('Update download will start now. The app may close when installation starts.');
-        await update.downloadAndInstall();
-        if (isDisposed) return;
-
-        window.alert('Update installed. Please restart the app to apply the new version.');
+        pendingUpdateRef.current = update;
+        setUpdateUi({
+          status: 'available',
+          currentVersion: update.currentVersion || appVersion,
+          nextVersion: update.version,
+          bundleType,
+          releaseNotes: typeof update.body === 'string' ? update.body.trim() : '',
+          downloadedBytes: 0,
+          totalBytes: null,
+          errorMessage: '',
+        });
       } catch (error) {
         console.error('Failed to check or install update:', error);
         if (!isDisposed) {
-          window.alert(`Update failed: ${getErrorMessage(error)}`);
+          setUpdateUi({
+            ...DEFAULT_UPDATE_UI_STATE,
+            status: 'failed',
+            errorMessage: getErrorMessage(error),
+          });
         }
-      } finally {
-        await update?.close().catch(() => undefined);
       }
     };
 
@@ -290,7 +544,20 @@ function StoreBindingGate({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (phase === 'ready') return <>{children}</>;
+  if (phase === 'ready') {
+    return (
+      <>
+        {children}
+        <UpdateStatusDialog
+          updateUi={updateUi}
+          onStart={() => {
+            void handleStartUpdate();
+          }}
+          onClose={handleCloseUpdateDialog}
+        />
+      </>
+    );
+  }
   if (phase === 'checking') {
     return (
       <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe_0%,#e2e8f0_45%,#f8fafc_100%)] flex items-center justify-center p-6">
