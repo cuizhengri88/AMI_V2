@@ -2,7 +2,8 @@ pub mod core;
 pub mod commands;
 
 use tauri_plugin_updater::UpdaterExt; // 추가: 업데이트 기능을 사용하기 위해 필요합니다.
-
+// 1. 필요한 모듈들을 파일 최상단에 임포트합니다.
+use tauri_plugin_updater::UpdaterExt;
 use crate::app::commands::system::*;
 use crate::app::commands::menu::*;
 use crate::app::commands::common_code::*;
@@ -15,19 +16,25 @@ use crate::app::commands::point::*;
 use crate::app::commands::sales::*;
 use crate::app::commands::reset::*;
 
+// 업데이트 체크 로직을 담은 함수
+async fn update_check(handle: tauri::AppHandle) {
+    // 릴리스된 최신 버전 정보를 확인합니다.
+    if let Ok(Some(update)) = handle.updater().expect("failed to get updater").check().await {
+        println!("새로운 업데이트 발견: {}", update.version());
+        
+        // 만약 수동 코드로 즉시 설치까지 진행하고 싶다면 아래 주석을 해제하세요.
+        // update.download_and_install(|_chunk_length, _content_length| {}, || {}).await.unwrap();
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
-        // 1. 업데이트 플러그인 등록
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // 2. 앱 시작 시 업데이트 자동 체크 (필요한 경우)
         .setup(|app| {
+            // 3. 앱 실행 시 비동기로 업데이트 체크 함수를 호출합니다.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // 앱 시작 시 조용히 업데이트를 확인합니다.
-                if let Ok(Some(update)) = handle.updater().expect("failed to get updater").check().await {
-                    println!("새로운 업데이트 발견: {}", update.version);
-                    // 여기서 사용자에게 알림을 띄우거나 다운로드를 시작할 수 있습니다.
-                }
+                update_check(handle).await;
             });
             Ok(())
         })
