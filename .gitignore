@@ -9,3 +9,7 @@ coverage/
 
 # Rust 빌드 임시 파일 (이미지에 보이는 주범)
 src-tauri/target/
+
+# Tauri updater signing keys
+src-tauri/ami.key
+src-tauri/ami.key.pub
