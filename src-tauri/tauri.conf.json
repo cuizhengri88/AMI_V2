@@ -1,6 +1,6 @@
 {
   "productName": "AMI",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "identifier": "com.gov-data.management",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -36,7 +36,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/cuizhengri88/AMI_V2/releases/latest/download/latest.json"
+        "https://czars.net/ami/latest.json"
       ],
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2Qzc2MjQ2OTg1QTlDRjEKUldUeG5GcVlSbUxIVnQ0emIrSUpFc0g4eWdPaDNxUEZJY1EvRHF2TlJ5MUFYTHNHemFsalY5TFIK"
